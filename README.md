@@ -1,33 +1,139 @@
+<div align="center">
+
 # understory 🌱
 
 **Memory that grows.**
 
-The layer beneath your agents: a self-wiring, plain-markdown memory. Every fact your agents learn is filed as a markdown concept, cross-linked into a living knowledge graph, and kept healthy by the agent itself — searchable, diffable, and entirely yours. Runs great on local models.
+A long-term memory for your AI assistants — stored as plain markdown files you own.
 
-Bundles follow the [Open Knowledge Format (OKF) v0.1 spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) — plain markdown files with YAML frontmatter, readable by humans, diffable in git, portable across tools.
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-339933.svg)](package.json)
+[![Spec](https://img.shields.io/badge/spec-OKF%20v0.1-8b5cf6.svg)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+[![MCP](https://img.shields.io/badge/MCP-stdio%20%2B%20HTTP-f59e0b.svg)](#connect-your-agent)
 
-**Three ways in, one agent:**
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Troubleshooting](#troubleshooting) · [Configuration](#configuration)
 
-- **MCP server** — `memory_query` / `memory_add` / `memory_update` / `memory_status` / `memory_maintain` tools over stdio or streamable HTTP. Each call drives an internal LLM agent with the OKF spec in its system prompt.
-- **Web UI** — browse the bundle (tree, concept viewer, update log, conformance badge), see the memory as an Obsidian-style **force-directed graph** (drag/pan/zoom, colored by type, sized by connections, orphans ringed red, click to open), and chat with the same agent to test it. Tool calls render inline so you can watch it work.
-- **Query-path replay** — every agent run (query/mutation/chat) records its traversal (searches → reads → writes) as a compact notation, persisted under `<bundle>/.traces/`. The graph view lists recent runs; selecting one replays the path as numbered directed hops over the graph — visited concepts ringed, search hits dotted, everything else faded.
-- **CLI** — `pnpm agent:query "..."` / `pnpm agent:mutate "..."` smoke entries.
+</div>
 
-**Design rule: conformance is enforced in code, not prompts.** The deterministic bundle layer validates frontmatter (`type` required), regenerates `index.md` files, appends `log.md` entries (newest-first, spec §7), and sandboxes all paths to the bundle root. The LLM decides *what* to change; the code guarantees the result is a conformant bundle.
+---
 
-## Quick start (Docker)
+Your AI coding assistant forgets everything when the session ends. Tell it about your deploy process
+on Monday, and on Tuesday you explain it again.
 
-No clone needed — the image is public. Save this as `docker-compose.yml`:
+understory is a place it can write things down and look them up later. It connects over **MCP** (Model
+Context Protocol — the standard that lets AI assistants use external tools), so any MCP-capable client
+works: Claude Code, Claude Desktop, Cursor, and others. Your assistant gets five tools — ask the
+memory, teach it, correct it, check its health, repair it — and understory takes care of *where* each
+fact belongs.
+
+What makes it different from a database: **the memory is just a folder of markdown files.** You can
+read it, hand-edit it, search it with `grep`, and track it in git. Nothing is locked in a binary
+format, and if you delete understory tomorrow, your knowledge is still sitting there in plain text.
+
+**Runs great on local models** — the model doing this work never has to be an expensive one.
+
+## What the memory looks like
+
+A memory is a directory — a **bundle** — of markdown files. Each file is one **concept**: a thing
+worth remembering, with a few structured fields at the top and free prose below.
+
+```
+my-memory/
+├── index.md            ← generated table of contents
+├── log.md              ← generated history of every change
+├── apis/
+│   └── billing-api.md
+├── tables/
+│   └── customers.md
+└── playbooks/
+    └── oncall-billing.md
+```
+
+One concept, from the sample bundle in this repo (trimmed):
+
+```markdown
+---
+type: BigQuery Table
+title: Customers
+description: 'Core customer dimension table, one row per registered customer.'
+tags: [crm, pii]
+---
+The canonical customer record. Downstream marts join on `customer_id`.
+Billing events reference this table from the [Billing API](/apis/billing-api.md).
+
+# Schema
+* `customer_id` (STRING, required) — stable UUID
+* `email` (STRING) — PII, masked in non-prod
+```
+
+That link to `/apis/billing-api.md` is the important part. Concepts point at each other, so the memory
+is a **graph**, not a pile of loose notes — and understory maintains those links for you, including
+[repairing them](#graph-health--maintenance) when they rot.
+
+`index.md` and `log.md` are written by understory, never by hand.
+
+```mermaid
+flowchart LR
+    A["Your assistant<br/>Claude Code, Cursor, …"]
+    subgraph U["understory"]
+        direction TB
+        B["5 tools:<br/>query · add · update<br/>status · maintain"]
+        C["its own small AI agent<br/>search → read → write"]
+        D["rule-checking layer<br/>validate · index · log · sandbox"]
+        B --> C --> D
+    end
+    E["📁 your bundle<br/>plain markdown, in git"]
+    A -->|MCP| B
+    D --> E
+```
+
+The file format follows the [Open Knowledge Format (OKF) v0.1 spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
+a small open standard for exactly this kind of markdown knowledge base — so other tools can read your
+memory too.
+
+## Contents
+
+- [What you need](#what-you-need) · [Quick start](#quick-start) · [Connect your agent](#connect-your-agent)
+- [Choosing a model provider](#choosing-a-model-provider)
+- [Troubleshooting](#troubleshooting)
+- [How it works](#how-it-works) — [enforced in code](#why-the-files-stay-valid), [memory layers](#memory-layers), [seed memory](#seed-memory), [graph health](#graph-health--maintenance), [dreaming](#dreaming), [query-path replay](#query-path-replay)
+- [Configuration](#configuration) · [Security](#security)
+- [From source](#from-source) · [Repo layout](#repo-layout) · [Tests](#tests)
+
+## What you need
+
+- **[Docker](https://docs.docker.com/get-started/get-docker/)**, including Compose.
+  Check with `docker compose version`.
+- **An API key for a language model.** A hosted one (DeepSeek, OpenAI, …) costs cents for typical
+  use; a [local model](#choosing-a-model-provider) works too and costs nothing.
+- About five minutes.
+
+> [!IMPORTANT]
+> **Why does understory need its own API key when my assistant already has a model?**
+>
+> Because understory does its own thinking. When your assistant says *"remember that we deploy on
+> Fridays"*, understory's internal model has to decide: does a concept about deployments already
+> exist? Should this be added there, or become a new file? What should it link to? Does it contradict
+> something already written?
+>
+> That work happens inside understory, on **its own** model — which is why you can pair an expensive
+> coding assistant with a cheap or fully local model here.
+
+## Quick start
+
+You don't need to clone this repo — the container image is public.
+
+**1.** Create an empty folder and save this as `docker-compose.yml` inside it:
 
 ```yaml
 services:
   understory:
-    image: ghcr.io/thecodacus/understory:latest
+    image: ghcr.io/medienlampe/understory:latest
     ports:
       - "3800:3800"
     volumes:
-      # Your memory lives here as plain markdown — a named volume, or point
-      # a bind mount (e.g. ./my-memory:/bundle) at any OKF bundle.
+      # Your memory lives here. This keeps it in a Docker volume; to keep it in a
+      # folder you can see, replace this line with e.g.  - ./my-memory:/bundle
       - understory-memory:/bundle
     environment:
       BUNDLE_ROOT: /bundle
@@ -35,121 +141,91 @@ services:
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_API_FORMAT: openai
       LLM_MODEL: ${LLM_MODEL:-}
-      # Optional fallback
-      LLM_FALLBACK_API_BASE_URL: ${LLM_FALLBACK_API_BASE_URL:-}
-      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
-      LLM_FALLBACK_API_FORMAT: ${LLM_FALLBACK_API_FORMAT:-openai}
-      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
     restart: unless-stopped
 
 volumes:
   understory-memory:
 ```
 
+**2.** In the **same folder**, save your model settings as `.env` — Compose picks this file up
+automatically. This example uses DeepSeek ([get a key](https://platform.deepseek.com/); [other
+providers →](#choosing-a-model-provider)):
+
+```bash
+LLM_API_BASE_URL=https://api.deepseek.com/v1
+LLM_API_KEY=sk-...
+LLM_MODEL=deepseek-chat
+```
+
+**3.** Start it:
+
 ```bash
 docker compose up -d
 ```
 
-### Choosing a provider
+**4.** Check that it came up:
 
-The generic provider system supports any OpenAI-compatible or Anthropic-compatible API.
-Set `LLM_API_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` and leave `LLM_PROVIDER` unset.
-
-**DeepSeek:**
 ```bash
-LLM_API_BASE_URL=https://api.deepseek.com/v1 LLM_API_KEY=sk-... LLM_MODEL=deepseek-chat
+docker compose logs understory | tail -3
 ```
 
-**OpenAI:**
-```bash
-LLM_API_BASE_URL=https://api.openai.com/v1 LLM_API_KEY=sk-... LLM_MODEL=gpt-4o
+You should see a line like:
+
+```
+understory serving bundle /bundle on 0.0.0.0:3800 (web + /api + /mcp)
 ```
 
-**Anthropic (Claude):**
+If the container exited instead, the log says why — see [Troubleshooting](#troubleshooting).
+
+**→ Now open [http://localhost:3800](http://localhost:3800).** Three things to look at:
+
+- **Browser** — your markdown files as a folder tree, rendered for reading.
+- **Graph** — every concept as a dot, every link as a line, arranged so related things cluster
+  together (like Obsidian's graph view). Drag it around, zoom, click a dot to open that file. Dots
+  ringed in red are *orphans*: nothing links to them yet.
+- **Chat** — talk to understory's own agent directly, without hooking up an assistant first. Each
+  step it takes (searching, reading, writing) appears as you watch.
+
+> [!TIP]
+> **Try this first.** Your memory starts empty, so teach it something. In the chat, say:
+> *"We deploy on Fridays, never Mondays."* Then open the graph view and watch the new concept appear.
+> Add a second, related fact and watch understory link the two together.
+
+Deploying with Portainer? Use [docker-compose.portainer.yml](docker-compose.portainer.yml) as a
+repository stack.
+
+## Connect your agent
+
+Now hand the memory to your actual assistant. For **Claude Code**:
+
 ```bash
-LLM_API_BASE_URL=https://api.anthropic.com/v1 LLM_API_KEY=sk-ant-... LLM_API_FORMAT=anthropic LLM_MODEL=claude-sonnet-5
+claude mcp add --transport http ustory http://localhost:3800/mcp
 ```
 
-**Groq:**
-```bash
-LLM_API_BASE_URL=https://api.groq.com/openai/v1 LLM_API_KEY=gsk_... LLM_MODEL=llama-3.3-70b-versatile
-```
+`ustory` is just the label the tools appear under — pick any name you like. For **other MCP clients**,
+add `http://localhost:3800/mcp` as a *streamable HTTP* MCP server; consult that client's docs for
+where to put it. Restart the client afterwards, so it picks up the new tools.
 
-**Local llama.cpp:**
-```bash
-LLM_API_BASE_URL=http://localhost:8080/v1 LLM_MODEL=
-```
+Your assistant now has these five tools:
 
-**Local llama.cpp with DeepSeek fallback:**
-```bash
-LLM_API_BASE_URL=http://localhost:8080/v1 LLM_MODEL= \
-LLM_FALLBACK_API_BASE_URL=https://api.deepseek.com/v1 LLM_FALLBACK_API_KEY=sk-... LLM_FALLBACK_MODEL=deepseek-chat
-```
-
-The old `LLM_PROVIDER` + per-provider key env vars still work (backward-compatible) but are deprecated.
-
-Then:
-
-- **Web UI** → http://localhost:3800 — browse the memory, watch the graph, chat with the agent
-- **MCP endpoint** → `http://localhost:3800/mcp` (streamable HTTP) — register it in any MCP client:
-  ```bash
-  claude mcp add --transport http ustory http://localhost:3800/mcp
-  ```
-- Your agent now has `memory_query` / `memory_add` / `memory_update` / `memory_status` / `memory_maintain`, and gets a seed overview of the memory at every session start.
-
-Teach it something (`memory_add`: "We deploy on Fridays, never Mondays"), then open the graph and watch the concept wire itself in. Deploying with Portainer? Use [docker-compose.portainer.yml](docker-compose.portainer.yml) as a repository stack.
-
-## Stack
-
-pnpm monorepo:
-
-| Package | What |
+| Tool | What it does |
 |---|---|
-| `packages/core` | OKF bundle layer (zero LLM) + agent (Vercel AI SDK tool loop: search/read/list/write/patch/delete) + provider registry |
-| `packages/server` | Express: MCP streamable-HTTP at `/mcp`, stdio bin, REST browse API at `/api/*`, streaming chat at `/api/chat`, serves the web build |
-| `packages/web` | Vite + React + TS + Tailwind: bundle browser + agent chat (`useChat`) |
+| `memory_query` | Ask the memory a question, get an answer in prose. |
+| `memory_add` | Teach it something new. understory decides where it belongs: folded into a file that already covers the topic, or a new file linked to related ones. |
+| `memory_update` | Correct something. The outdated version is replaced, not left standing next to the new one. |
+| `memory_status` | Health check — how many concepts, are the files valid, are any links broken. |
+| `memory_maintain` | Repair pass: connect up concepts nothing links to, fix broken links. Does nothing when the memory is already healthy. |
 
-Providers are configured through `LLM_API_BASE_URL`, `LLM_API_KEY`, `LLM_API_FORMAT` (`openai` or `anthropic`), and `LLM_MODEL`. Any OpenAI-compatible endpoint (DeepSeek, OpenAI, Groq, OpenRouter, llama.cpp, etc.) works with `LLM_API_FORMAT=openai`; Anthropic-compatible endpoints use `LLM_API_FORMAT=anthropic`. Optional fallback uses the matching `LLM_FALLBACK_*` variables.
+An assistant that only sees five tool names never thinks to *check* its memory, so understory also
+sends it a short summary of what the memory contains at the start of every session — see
+[seed memory](#seed-memory).
 
-### llama.cpp
+<details>
+<summary><b>Other ways in</b> — running it without the HTTP server, or from the shell</summary>
 
-```bash
-# on the inference box — --jinja enables OpenAI-style tool calling
-llama-server -m model.gguf --jinja --host 0.0.0.0 --port 8080
-
-# here — no model id needed, it's discovered for llama-server-like local endpoints
-LLM_API_BASE_URL=http://inference-box:8080/v1 LLM_API_FORMAT=openai LLM_MODEL= \
-BUNDLE_ROOT=./sample-bundle node packages/server/dist/index.js
-```
-
-Works behind llama-swap too: discovery prefers the currently **loaded** model so a query doesn't trigger a multi-minute model swap. Pin a specific model with `LLM_MODEL=`.
-
-## From source
-
-```bash
-pnpm install
-pnpm build
-cp .env.example .env   # add your API key
-
-BUNDLE_ROOT=./sample-bundle \
-LLM_API_BASE_URL=https://api.deepseek.com/v1 \
-LLM_API_KEY=sk-... \
-LLM_API_FORMAT=openai \
-LLM_MODEL=deepseek-chat \
-node packages/server/dist/index.js
-# → http://localhost:3800  (web UI + /api + /mcp)
-```
-
-Or build the container yourself: `docker compose up --build` (the repo's [docker-compose.yml](docker-compose.yml) builds from source and mounts `./sample-bundle`).
-
-Dev mode (server on :3800, Vite HMR on :5180 with proxy):
-
-```bash
-BUNDLE_ROOT=./sample-bundle pnpm --filter @understory/server dev
-pnpm --filter @understory/web dev
-```
-
-## MCP registration (Claude Code / Desktop)
+**stdio transport.** Instead of talking to a running server over HTTP, the client starts understory as
+a local process and talks to it over its input/output streams. Needs no auth token, since nothing
+touches the network:
 
 ```bash
 claude mcp add ustory \
@@ -161,65 +237,307 @@ claude mcp add ustory \
   -- node /path/to/understory/packages/server/dist/mcp/stdio.js
 ```
 
-Or point an HTTP MCP client at `http://host:3800/mcp`.
+**From the shell.** Same agent, no client involved — handy for a quick check that your setup works
+(requires a [source checkout](#from-source)):
+
+```bash
+BUNDLE_ROOT=./sample-bundle pnpm agent:query  "What do we know about billing?"
+BUNDLE_ROOT=./sample-bundle pnpm agent:mutate "Record that we deploy on Fridays"
+```
+
+</details>
+
+## Choosing a model provider
+
+Any **OpenAI-compatible** or **Anthropic-compatible** API works — that covers nearly every provider
+and every local server. Set `LLM_API_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL`, and set
+`LLM_API_FORMAT` to `openai` (the default) or `anthropic`.
+
+**Not sure what to pick?** DeepSeek is a good default: cheap, and strong enough at the tool-calling
+this needs.
+
+| Provider | Settings |
+|---|---|
+| **DeepSeek** | `LLM_API_BASE_URL=https://api.deepseek.com/v1` `LLM_API_KEY=sk-...` `LLM_MODEL=deepseek-chat` |
+| **OpenAI** | `LLM_API_BASE_URL=https://api.openai.com/v1` `LLM_API_KEY=sk-...` `LLM_MODEL=gpt-4o` |
+| **Anthropic** | `LLM_API_BASE_URL=https://api.anthropic.com/v1` `LLM_API_KEY=sk-ant-...` `LLM_API_FORMAT=anthropic` `LLM_MODEL=claude-sonnet-5` |
+| **Groq** | `LLM_API_BASE_URL=https://api.groq.com/openai/v1` `LLM_API_KEY=gsk_...` `LLM_MODEL=llama-3.3-70b-versatile` |
+| **Local llama.cpp** | `LLM_API_BASE_URL=http://localhost:8080/v1` `LLM_MODEL=` *(discovered automatically)* |
+
+> [!IMPORTANT]
+> The model must support **tool calling** (sometimes called function calling). understory's agent
+> works by calling search/read/write tools in a loop, so a model that can't do that will fail or
+> produce nothing. Most current models are fine; very small local models often are not.
+
+<details>
+<summary><b>Local llama.cpp — full setup</b></summary>
+
+```bash
+# on the machine running the model — --jinja is what enables OpenAI-style tool calling
+llama-server -m model.gguf --jinja --host 0.0.0.0 --port 8080
+
+# on the understory side — no model id needed, it's discovered from the endpoint
+LLM_API_BASE_URL=http://inference-box:8080/v1 LLM_API_FORMAT=openai LLM_MODEL= \
+BUNDLE_ROOT=./sample-bundle node packages/server/dist/index.js
+```
+
+Works behind llama-swap too: discovery prefers the model that is currently **loaded**, so a query
+doesn't trigger a multi-minute model swap. Pin one explicitly with `LLM_MODEL=`.
+
+</details>
+
+<details>
+<summary><b>Fallback model</b> — e.g. a local model with a hosted backup</summary>
+
+Set the matching `LLM_FALLBACK_*` variables. The fallback takes over when the primary model fails
+with an error worth retrying (a timeout, or a 5xx). `LLM_FALLBACK_ALLOW_FOR=query` restricts it to
+read-only operations, so nothing gets written by the backup model.
+
+```bash
+LLM_API_BASE_URL=http://localhost:8080/v1 LLM_MODEL= \
+LLM_FALLBACK_API_BASE_URL=https://api.deepseek.com/v1 \
+LLM_FALLBACK_API_KEY=sk-... LLM_FALLBACK_MODEL=deepseek-chat
+```
+
+</details>
+
+> [!NOTE]
+> The older `LLM_PROVIDER` + per-provider key variables (`DEEPSEEK_API_KEY`, `LLAMACPP_BASE_URL`, …)
+> still work and are translated automatically, but are **deprecated** — prefer the `LLM_API_*` ones.
+
+## Troubleshooting
+
+Start with `docker compose logs understory`. Most failures print exactly what is missing.
+
+| What you see | What it means |
+|---|---|
+| `BUNDLE_ROOT env var is required` | The `BUNDLE_ROOT` setting is missing from the `environment:` block. |
+| `LLM configuration error: No LLM configured.` | No model settings arrived. Usually the `.env` file isn't next to `docker-compose.yml`, or is named something else. Run `docker compose config` — it prints the values Compose actually resolved. |
+| `LLM_MODEL is required for this endpoint.` | Your provider doesn't support automatic model discovery. Set `LLM_MODEL` to a concrete model id. |
+| `Model discovery failed: 404` / `No models listed` | `LLM_API_BASE_URL` is probably wrong. It must include the API version path, e.g. `https://api.deepseek.com/v1`, not just the host. |
+| `port is already allocated` | Something else uses port 3800. Change the **left** number: `"3900:3800"`, then open `localhost:3900`. |
+| Web UI loads but the graph is empty | Expected on a fresh memory — there's nothing in it yet. Teach it a fact in the chat first. |
+| Web UI asks for a token | `AUTH_TOKEN` is set; paste that value. See [Auth](#auth). |
+| Your assistant has the tools but never uses them | Restart the client after adding the server, so it receives the [seed overview](#seed-memory). Then ask it explicitly once — *"check your memory for what you know about X"*. |
+| The agent replies but writes nothing | The model likely doesn't do tool calling well. Try a stronger one — see the note [above](#choosing-a-model-provider). |
+| Errors mentioning ambiguous legacy configuration | Old and new variables are both set. Remove the legacy ones and keep `LLM_API_*`. |
+
+## How it works
+
+### Why the files stay valid
+
+The rule that governs the whole design: **correctness is enforced in code, not by asking the model
+nicely.**
+
+A language model told "always keep the index up to date" will eventually forget. So understory doesn't
+rely on that. A separate, plain-code layer — no AI involved — does the parts that must always hold:
+it checks that each file has the required fields, regenerates `index.md`, appends the change to
+`log.md`, and refuses any write that would land outside your bundle folder.
+
+The model decides *what* to change. The code guarantees the result is still a valid bundle.
+
+### Memory layers
+
+Not every question deserves a full search. `memory_query` tries three layers in order and stops at
+the first one that can answer. Answers from the upper two are labelled in the reply
+(`(cached answer)` / `(hot memory)`), so you can always tell what a question actually cost:
+
+| Layer | When it answers | Cost |
+|---|---|---|
+| **1. Exact cache** | The same question was asked before, and nothing in the memory has changed since. | Free — no model call |
+| **2. Hot memory** | The answer is in the handful of concepts written and questions asked recently — a short-term working set, checked with one cheap model call. | One small call |
+| **3. Deep memory** | Anything else: search the memory, read the relevant files, answer. | A full agent run |
+
+Both upper layers are on by default; tune them with `QUERY_CACHE*` / `HOT_MEMORY*`.
+
+<details>
+<summary>How the cache knows the memory changed</summary>
+
+Rather than hooking into the write path, the cache compares a fingerprint of the bundle — the path,
+modification time, and size of every concept file. Any write moves the fingerprint and invalidates
+every cached answer, which means edits made *outside* understory (by hand, or by another client) are
+picked up as well. Two different edits within the same millisecond that leave the file size identical
+are the one case it can miss.
+
+</details>
+
+### Seed memory
+
+An assistant that only sees five bare tool names never gets the instinct to check its memory. So at
+**session start** understory hands it a compact overview of what the knowledge base contains —
+folders, concepts with their types and descriptions, recent activity — through both channels that
+reach the model:
+
+1. the MCP `instructions` field sent during connection setup (clients like Claude put it in the
+   system prompt), and
+2. the description of the `memory_query` tool itself — the universal fallback, since every
+   tool-calling client loads tool descriptions.
+
+The overview is regenerated for every new session. In a long-lived stdio session, it also refreshes
+after `memory_add` / `memory_update`, so the session sees its own writes. Edits from elsewhere are
+picked up at the next session.
+
+### Graph health & maintenance
+
+Memory is a graph, not a pile of notes, and graphs rot. Two things go wrong over time: a concept
+becomes **orphaned** (nothing links to it, so nothing will ever lead the agent to it), and a link goes
+**broken** (it points at a file that no longer exists). Two mechanisms counter that:
+
+- **Linking at write time** — a new fact either enriches the concept it belongs to (an attribute of a
+  thing that already has a file gets added there, not filed separately), or, when it really is a
+  distinct thing, gets its own file *and* links back from related concepts. A fact that contradicts
+  an existing one replaces it, rather than sitting next to it.
+- **`memory_maintain`** — a plain-code check finds the orphans and broken links (they're also in
+  `memory_status` under `graph`), then hands them to the agent to wire up and repair. Run it now and
+  then; it does nothing when there's nothing wrong.
+
+### Dreaming
+
+What `memory_maintain` does when asked, dreaming does on a schedule — consolidation while nobody's
+looking, the way a brain works during sleep. It is **off by default**; switch it on with
+`DREAM_INTERVAL=6h`.
+
+- Plain-code signals decide whether there is anything to do at all: orphans, broken links, probable
+  duplicates, concepts grown too large, recent activity worth summarising. **No signals, no run, no
+  tokens spent** — a healthy memory costs nothing to leave running.
+- The first pass runs one interval after startup, never at startup itself. Intervals shorter than
+  five minutes are raised to five.
+- `DREAM_INSIGHTS=false` limits it to repair work, without drawing new conclusions from activity.
+
+### Query-path replay
+
+Every agent run — query, write, or chat — records the path it took (what it searched, what it read,
+what it wrote) under `<bundle>/.traces/`. The graph view lists recent runs, and selecting one replays
+that path as numbered hops across the graph: concepts it visited get a ring, search hits a dotted
+outline, everything else fades. It's the answer to *"why did it tell me that?"*
+
+> [!NOTE]
+> This design follows the pattern in Karpathy's
+> [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) (`index.md` +
+> `log.md`, enrich-before-create, linting for orphans). Two things from that pattern are deliberately
+> deferred until scale demands them: a fixed schema of page types, and smarter search combining
+> full-text indexing with embeddings — the straightforward scan in `search.ts` holds up into the low
+> thousands of concepts.
+
+## Configuration
+
+`BUNDLE_ROOT` is the only required setting. The full annotated list lives in [.env.example](.env.example).
+
+| Variable | Effect |
+|---|---|
+| `BUNDLE_ROOT` | The folder holding the memory. **Required.** |
+| `LLM_API_BASE_URL` / `LLM_API_KEY` / `LLM_API_FORMAT` / `LLM_MODEL` | The model understory uses. `LLM_MODEL` may be left empty for OpenAI-compatible endpoints that list their models — it's then discovered automatically. |
+| `LLM_FALLBACK_*` | Optional backup model, used when the primary fails with a retryable error. |
+| `PORT` | Default `3800`. |
+| `HOST` | Which network interface to listen on. Default `127.0.0.1` (this machine only); `0.0.0.0` exposes it to the network. |
+| `AUTH_TOKEN` | Require this token on `/mcp` and `/api`. Unset = no auth. |
+| `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Extra origins/hostnames allowed past the browser guard. |
+| `GIT_AUTOCOMMIT` | Commit the bundle after every change. Default `false`. |
+| `QUERY_CACHE` / `QUERY_CACHE_TTL` | Exact-answer cache. On by default, `24h`. |
+| `HOT_MEMORY` / `HOT_MEMORY_TTL` | Short-term working set. On by default, `1h`. |
+| `DREAM_INTERVAL` / `DREAM_INSIGHTS` | Scheduled consolidation. Off by default. |
+
+## Security
+
+Your memory is worth protecting: it is readable *and writable* by anyone who can reach the port.
 
 ### Network exposure
 
-The server binds **loopback only** (`127.0.0.1`) unless you tell it otherwise, and `/mcp` + `/api`
-reject browser requests from foreign origins. Both together close the drive-by case: without them,
-any page the user visits could read and rewrite the whole memory from their browser.
+By default the server listens on **loopback only** (`127.0.0.1`), meaning nothing outside your machine
+can connect. On top of that, `/mcp` and `/api` reject browser requests coming from other websites.
+Together those close the drive-by case — without them, any page you visit could quietly read and
+rewrite your whole memory through your browser.
 
-- `HOST=0.0.0.0` exposes it on the network. That is a deliberate step — pair it with `AUTH_TOKEN`;
-  the server warns at startup if you don't. (The Docker image sets `HOST=0.0.0.0` itself, since a
-  published container port requires it.)
-- Same-origin browser requests always pass, so the web UI and the Vite dev proxy need no config.
-  A browser app on a *different* origin needs `ALLOWED_ORIGINS=https://your-frontend`.
-- Non-browser clients (curl, MCP over stdio, native MCP clients) send no `Origin` and are unaffected.
-- On a loopback bind the `Host` header is also checked, which is what stops DNS rebinding. If you
-  reach the server by a hostname rather than `localhost`, add it: `ALLOWED_HOSTS=my-box.local`.
+- `HOST=0.0.0.0` exposes it to your network. That's a deliberate step — pair it with `AUTH_TOKEN`;
+  the server warns at startup if you don't. (The Docker image sets `HOST=0.0.0.0` itself, because a
+  published container port requires it — which is why `AUTH_TOKEN` matters as soon as the container's
+  port is reachable by others.)
+- Requests from understory's own web UI always pass, so the UI and the dev proxy need no setup. A
+  browser app on a *different* address needs `ALLOWED_ORIGINS=https://your-frontend`.
+- Non-browser clients (curl, MCP over stdio, native MCP clients) are unaffected.
+- On a loopback bind, the `Host` header is checked too — that's what stops DNS rebinding attacks. If
+  you reach the server by hostname rather than `localhost`, add it: `ALLOWED_HOSTS=my-box.local`.
 
 ### Auth
 
-By default the server is open — fine on localhost. Before exposing it anywhere else, set `AUTH_TOKEN`:
+With no token set the server is open, which is fine on localhost. **Before exposing it anywhere else,
+set `AUTH_TOKEN`** to a long random value:
 
 ```bash
 AUTH_TOKEN=$(openssl rand -hex 24)
 ```
 
-With it set, `/mcp` and `/api` require `Authorization: Bearer <token>` (the web UI stays reachable and prompts for the token). Register authenticated MCP clients with a header:
+Then `/mcp` and `/api` require it as a bearer token. The web UI stays reachable and simply prompts you
+for the value. Authenticated MCP clients need it as a header:
 
 ```bash
 claude mcp add --transport http ustory http://host:3800/mcp \
   --header "Authorization: Bearer <token>"
 ```
 
-The stdio transport needs no token — it's a local process spawned by the client.
+The stdio transport needs no token — there the client starts understory itself, as a local process.
 
-### Seed memory
+## From source
 
-A client LLM that only sees four bare tool names never gets the instinct to check memory. So at **session start** the server injects a compact overview of what the knowledge base contains (directories, concepts with types + descriptions, recent activity) through both channels that reach the model:
+Requires **Node ≥ 20** and **pnpm 10.15.0** (pinned in `package.json` — `corepack enable` gets you the
+right version).
 
-1. the MCP initialize **`instructions`** field (clients like Claude put it in the system prompt), and
-2. the **`memory_query` tool description** — the universal fallback every tool-calling client loads.
+```bash
+pnpm install
+pnpm build
+cp .env.example .env   # then add your API key
 
-The seed regenerates fresh for every new session. After `memory_add` / `memory_update` in a long-lived (stdio) session, the tool description refreshes via `tools/list_changed`, so the session sees its own writes. Out-of-band edits (hand edits, other clients) are picked up on the next session.
+BUNDLE_ROOT=./sample-bundle \
+LLM_API_BASE_URL=https://api.deepseek.com/v1 \
+LLM_API_KEY=sk-... \
+LLM_API_FORMAT=openai \
+LLM_MODEL=deepseek-chat \
+node packages/server/dist/index.js
+# → http://localhost:3800  (web UI + /api + /mcp)
+```
 
-### Graph health & maintenance
+`./sample-bundle` is a small example memory included in the repo — good for poking around before
+pointing understory at a real one.
 
-Memory is a graph, not a pile of notes, and graphs rot: concepts go **orphaned** (nothing links to them) and links go **broken**. Two mechanisms keep it healthy:
+Or build the container yourself with `docker compose up --build`: the [docker-compose.yml](docker-compose.yml)
+in this repo builds from source and mounts `./sample-bundle`.
 
-- **Write-time linking** — new knowledge either enriches the concept it belongs to (an attribute of an existing entity is patched in, not filed separately) or, when it's a distinct entity, is created *and* back-linked from related concepts. Contradictions are superseded in place, never left standing alongside the old value.
-- **`memory_maintain`** — a deterministic lint (orphans + broken links, surfaced in `memory_status` under `graph`) drives an internal agent to wire orphans into related concepts and fix dangling links. Run it periodically to counter drift; it's a no-op when the graph is already healthy.
+**Dev mode** — two terminals, server on `:3800` and the Vite dev server with hot reload on `:5180`:
 
-This design mirrors the pattern in Karpathy's [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) (index.md + log.md, create-vs-enrich, lint for orphans). Deferred from that pattern until scale warrants: an explicit page-type schema, and hybrid FTS5+embedding search (the naive scan in `search.ts` is fine into the low thousands of concepts).
+```bash
+BUNDLE_ROOT=./sample-bundle pnpm --filter @understory/server dev
+pnpm --filter @understory/web dev
+```
+
+Planning to contribute? [AGENT.md](AGENT.md) documents the invariants, conventions, and sharp edges.
+
+## Repo layout
+
+A pnpm monorepo:
+
+| Package | What's in it |
+|---|---|
+| [`packages/core`](packages/core) | The bundle layer (plain code, no AI) + the agent (a tool loop over search/read/list/write/patch/delete, built on the Vercel AI SDK) + the memory layers + provider setup |
+| [`packages/server`](packages/server) | Express: MCP over streamable HTTP at `/mcp`, the stdio entry point, a read-only browse API at `/api/*`, streaming chat at `/api/chat`, and it serves the web UI |
+| [`packages/web`](packages/web) | Vite + React + TypeScript + Tailwind: file browser, graph view, chat |
+
+Dependencies point one way only: `okf ← agent ← server`. The plain-code layer never imports the AI
+layer — that's what keeps it testable and trustworthy.
 
 ## Tests
 
 ```bash
-pnpm test                                  # core: 18 tests (spec §5/§6/§7/§9, sandbox, search, concurrency)
-pnpm --filter @understory/server exec tsx scripts/mcp-smoke.mts   # MCP stdio round-trip (needs SMOKE_BUNDLE + an API key)
+pnpm test    # core:   58 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
+             #                    write concurrency, providers, cache, hot memory, dreaming
+             # server: 25 tests — auth, network guard, seed memory (plus a typecheck)
+
+# End-to-end check of the MCP stdio transport (needs SMOKE_BUNDLE + an API key)
+pnpm --filter @understory/server exec tsx scripts/mcp-smoke.mts
 ```
 
-## Environment
+Tests build real bundles in temp directories — the filesystem is never mocked. Model calls are
+injected rather than stubbed globally, so no test ever hits a real provider.
 
-See [.env.example](.env.example). `BUNDLE_ROOT` is required; `GIT_AUTOCOMMIT=true` commits every mutation.
+## License
+
+[Apache 2.0](LICENSE)
