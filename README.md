@@ -163,9 +163,24 @@ claude mcp add ustory \
 
 Or point an HTTP MCP client at `http://host:3800/mcp`.
 
+### Network exposure
+
+The server binds **loopback only** (`127.0.0.1`) unless you tell it otherwise, and `/mcp` + `/api`
+reject browser requests from foreign origins. Both together close the drive-by case: without them,
+any page the user visits could read and rewrite the whole memory from their browser.
+
+- `HOST=0.0.0.0` exposes it on the network. That is a deliberate step — pair it with `AUTH_TOKEN`;
+  the server warns at startup if you don't. (The Docker image sets `HOST=0.0.0.0` itself, since a
+  published container port requires it.)
+- Same-origin browser requests always pass, so the web UI and the Vite dev proxy need no config.
+  A browser app on a *different* origin needs `ALLOWED_ORIGINS=https://your-frontend`.
+- Non-browser clients (curl, MCP over stdio, native MCP clients) send no `Origin` and are unaffected.
+- On a loopback bind the `Host` header is also checked, which is what stops DNS rebinding. If you
+  reach the server by a hostname rather than `localhost`, add it: `ALLOWED_HOSTS=my-box.local`.
+
 ### Auth
 
-By default the server is open — fine on localhost or a trusted LAN. Before exposing it anywhere else, set `AUTH_TOKEN`:
+By default the server is open — fine on localhost. Before exposing it anywhere else, set `AUTH_TOKEN`:
 
 ```bash
 AUTH_TOKEN=$(openssl rand -hex 24)

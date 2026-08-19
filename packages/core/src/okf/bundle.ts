@@ -25,26 +25,72 @@ export class BundleError extends Error {
  */
 export class Bundle {
   readonly root: string;
+  private realRootPromise: Promise<string> | null = null;
 
   constructor(root: string) {
     this.root = path.resolve(root);
   }
 
+  /** Is `abs` the given root or below it? Purely textual — see assertRealPathInside. */
+  private static contains(root: string, abs: string): boolean {
+    return abs === root || abs.startsWith(root + path.sep);
+  }
+
   /** Resolve a bundle-relative path to an absolute one, rejecting escapes. */
   resolve(bundlePath: string): string {
-    // Already an OS-absolute path inside the bundle (e.g. from a directory walk).
-    if (
-      path.isAbsolute(bundlePath) &&
-      (bundlePath === this.root || bundlePath.startsWith(this.root + path.sep))
-    ) {
-      return path.resolve(bundlePath);
+    let abs: string;
+    if (path.isAbsolute(bundlePath)) {
+      // Two kinds of input look absolute: an OS path from a directory walk
+      // ("/<root>/dir/x.md") and a canonical bundle-relative path ("/dir/x.md").
+      // Normalize BEFORE deciding which it is — "/<root>/../../etc/passwd"
+      // carries the root as a literal prefix but points outside it, so a
+      // prefix test on the raw string would wave it through.
+      const normalized = path.resolve(bundlePath);
+      abs = Bundle.contains(this.root, normalized)
+        ? normalized
+        : path.resolve(this.root, bundlePath.replace(/^\/+/, ""));
+    } else {
+      abs = path.resolve(this.root, bundlePath);
     }
-    const cleaned = bundlePath.replace(/^\/+/, "");
-    const abs = path.resolve(this.root, cleaned);
-    if (abs !== this.root && !abs.startsWith(this.root + path.sep)) {
+    if (!Bundle.contains(this.root, abs)) {
       throw new BundleError(`Path escapes bundle root: ${bundlePath}`, "OUTSIDE_BUNDLE");
     }
     return abs;
+  }
+
+  /** The bundle root with symlinks resolved. Cached — the root doesn't move. */
+  private realRoot(): Promise<string> {
+    this.realRootPromise ??= fs.realpath(this.root).catch(() => this.root);
+    return this.realRootPromise;
+  }
+
+  /**
+   * Containment check that follows symlinks. resolve() reasons about the path
+   * textually, so a symlink stored INSIDE the bundle can still point outside
+   * it — planting one would turn write access to the bundle into arbitrary
+   * host-file reads. Every path whose contents we are about to read or write
+   * goes through here as well.
+   */
+  private async assertRealPathInside(abs: string, bundlePath: string): Promise<void> {
+    const realRoot = await this.realRoot();
+    let real: string;
+    try {
+      real = await fs.realpath(abs);
+    } catch {
+      // Not on disk yet (a new concept): check the nearest existing ancestor
+      // instead, so a symlinked parent directory can't smuggle the write out.
+      try {
+        real = path.join(await fs.realpath(path.dirname(abs)), path.basename(abs));
+      } catch {
+        return; // Nothing resolvable — the textual check already passed.
+      }
+    }
+    if (!Bundle.contains(realRoot, real)) {
+      throw new BundleError(
+        `Path escapes bundle root through a symlink: ${bundlePath}`,
+        "OUTSIDE_BUNDLE"
+      );
+    }
   }
 
   /** Normalize any input to a canonical bundle-relative path starting with "/". */
@@ -79,6 +125,7 @@ export class Bundle {
   async readConcept(bundlePath: string): Promise<Concept> {
     const canonical = this.toBundlePath(bundlePath);
     const abs = this.resolve(canonical);
+    await this.assertRealPathInside(abs, canonical);
     let raw: string;
     try {
       raw = await fs.readFile(abs, "utf-8");
@@ -91,6 +138,7 @@ export class Bundle {
 
   async readFileRaw(bundlePath: string): Promise<string> {
     const abs = this.resolve(bundlePath);
+    await this.assertRealPathInside(abs, bundlePath);
     try {
       return await fs.readFile(abs, "utf-8");
     } catch {
@@ -117,6 +165,7 @@ export class Bundle {
     };
     const abs = this.resolve(canonical);
     await fs.mkdir(path.dirname(abs), { recursive: true });
+    await this.assertRealPathInside(abs, canonical);
     await fs.writeFile(abs, serializeDoc(stamped, body), "utf-8");
     return { path: canonical, frontmatter: stamped, body, raw: serializeDoc(stamped, body) };
   }

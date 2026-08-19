@@ -76,6 +76,87 @@ describe("sandbox", () => {
     const bundle = new Bundle(root);
     expect(bundle.resolve("/a/b/c.md")).toBe(path.join(root, "a/b/c.md"));
   });
+
+  it("accepts OS-absolute paths inside the bundle (directory-walk output)", () => {
+    const bundle = new Bundle(root);
+    const inside = path.join(root, "a/b/c.md");
+    expect(bundle.resolve(inside)).toBe(inside);
+    expect(bundle.resolve(root)).toBe(root);
+  });
+
+  it("never resolves outside the root, whatever the input looks like", () => {
+    const bundle = new Bundle(root);
+    // Hostile inputs either throw or fall back to bundle-relative interpretation
+    // (which keeps them under the root). Which of the two happens depends on how
+    // deep the root sits, so the invariant to assert is containment, not throwing.
+    // The ".." strings are built by concatenation, not path.join, so the segments
+    // survive into resolve() and exercise the normalize-before-decide path — the
+    // shape that used to slip through the raw-prefix test.
+    const hostile = [
+      `${root}/../../etc/passwd`,
+      `${root}/x/../../../etc/shadow`,
+      `${root}/../${path.basename(root)}-sibling/secret.md`,
+      `${root}-evil/secret.md`,
+      "/etc/passwd",
+      "//etc/passwd",
+      "/../../etc/passwd",
+      "../outside.md",
+    ];
+    for (const input of hostile) {
+      let resolved: string | null = null;
+      try {
+        resolved = bundle.resolve(input);
+      } catch (err) {
+        expect(err).toBeInstanceOf(BundleError);
+        expect((err as BundleError).code).toBe("OUTSIDE_BUNDLE");
+      }
+      if (resolved !== null) {
+        expect(
+          resolved === root || resolved.startsWith(root + path.sep),
+          `${input} resolved outside the bundle: ${resolved}`
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("refuses to read through a symlink that points outside the bundle", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
+    try {
+      await fs.writeFile(path.join(outside, "secret.md"), "---\ntype: Secret\n---\n\ntop secret\n");
+      await fs.symlink(path.join(outside, "secret.md"), path.join(root, "leak.md"));
+
+      await expect(kb.readConcept("/leak.md")).rejects.toMatchObject({
+        code: "OUTSIDE_BUNDLE",
+      });
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to write through a symlinked directory that points outside the bundle", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
+    try {
+      await fs.symlink(outside, path.join(root, "escape"), "dir");
+
+      await expect(
+        kb.writeConcept("/escape/planted.md", { type: "T" }, "body", "log")
+      ).rejects.toMatchObject({ code: "OUTSIDE_BUNDLE" });
+      await expect(fs.access(path.join(outside, "planted.md"))).rejects.toThrow();
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("still works when the bundle root itself is reached through a symlink", async () => {
+    // os.tmpdir() is itself symlinked on macOS (/var → /private/var), so the
+    // real-path check must compare against the RESOLVED root, not the given one.
+    const linkRoot = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "okf-link-")), "bundle");
+    await fs.symlink(root, linkRoot, "dir");
+    const linked = new KnowledgeBase(linkRoot);
+
+    await linked.writeConcept("/a/b.md", { type: "T", title: "B" }, "body", "log");
+    expect((await linked.readConcept("/a/b.md")).frontmatter.title).toBe("B");
+  });
 });
 
 describe("index regeneration (spec §6)", () => {

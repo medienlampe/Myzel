@@ -8,6 +8,7 @@ import { mcpRouter } from "./mcp/http.js";
 import { browseRouter } from "./api/browse.js";
 import { chatRouter } from "./api/chat.js";
 import { bearerAuth } from "./auth.js";
+import { corsDelegate, isLoopbackHost, netGuard, parseList } from "./net-guard.js";
 import { startDreamer } from "./dreamer.js";
 
 const bundleRoot = process.env.BUNDLE_ROOT;
@@ -42,28 +43,30 @@ try {
   process.exit(1);
 }
 
-// Reflect the request origin; expose Mcp-Session-Id so browser MCP clients can
-// read it back off the initialize response.
-app.use(
-  cors({
-    origin: true,
-    exposedHeaders: ["Mcp-Session-Id"],
-    allowedHeaders: [
-      "Content-Type",
-      "Accept",
-      "Authorization",
-      "Mcp-Session-Id",
-      "Mcp-Protocol-Version",
-      "Last-Event-ID",
-    ],
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
-  })
-);
+// Bind to loopback unless a public interface is explicitly requested. The
+// memory is personal data and auth is optional, so "reachable from the LAN"
+// must be a decision, not a default.
+const host = process.env.HOST ?? "127.0.0.1";
+const authToken = process.env.AUTH_TOKEN;
+
+const guardConfig = {
+  allowedOrigins: parseList(process.env.ALLOWED_ORIGINS),
+  allowedHosts: parseList(process.env.ALLOWED_HOSTS),
+  checkHost: isLoopbackHost(host),
+};
+
+// Same-origin plus an explicit allowlist — never a blanket reflection of the
+// request origin, which would let any page in the user's browser read the
+// memory off an unauthenticated instance.
+app.use(cors(corsDelegate(guardConfig)));
 app.use(express.json({ limit: "4mb" }));
+
+// Origin/Host validation for the two routers that touch the memory. Runs
+// before auth so a hostile origin is refused whether or not a token is set.
+app.use(["/mcp", "/api"], netGuard(guardConfig));
 
 // Optional bearer auth (issue #1): protects the memory (/mcp + /api) when
 // AUTH_TOKEN is set. Static web UI stays open and prompts for the token.
-const authToken = process.env.AUTH_TOKEN;
 if (authToken) {
   app.use(["/mcp", "/api"], bearerAuth(authToken));
   console.log("[understory] auth: bearer token required for /mcp and /api");
@@ -85,6 +88,17 @@ if (existsSync(webDist)) {
 }
 
 const port = Number(process.env.PORT ?? 3800);
-app.listen(port, "0.0.0.0", () => {
-  console.log(`understory serving bundle ${bundleRoot} on :${port} (web + /api + /mcp)`);
+app.listen(port, host, () => {
+  console.log(
+    `[understory] origin guard: same-origin` +
+      (guardConfig.allowedOrigins.length ? ` + ${guardConfig.allowedOrigins.join(", ")}` : "") +
+      (guardConfig.checkHost ? "; Host header restricted to loopback" : "")
+  );
+  if (!isLoopbackHost(host) && !authToken) {
+    console.warn(
+      "[understory] WARNING: bound to a non-loopback interface with AUTH_TOKEN unset — " +
+        "anyone who can reach this port can read and rewrite the memory. Set AUTH_TOKEN."
+    );
+  }
+  console.log(`understory serving bundle ${bundleRoot} on ${host}:${port} (web + /api + /mcp)`);
 });
