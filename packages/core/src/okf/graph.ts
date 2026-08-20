@@ -40,6 +40,9 @@ export async function scanGraph(bundle: Bundle): Promise<GraphScan> {
   const known = new Set(paths);
 
   const nodes = new Map<string, GraphNode>();
+  // Bodies are only needed for the link pass below, so they stay in their own
+  // map rather than riding along on the nodes we are about to return.
+  const bodies = new Map<string, string>();
   for (const p of paths) {
     let title: string | undefined;
     let type: string | undefined;
@@ -56,8 +59,7 @@ export async function scanGraph(bundle: Bundle): Promise<GraphScan> {
       // Permissive: unreadable concept still appears as a node.
     }
     nodes.set(p, { path: p, title, type, description, links: 0 });
-    nodes.get(p)!.links = 0;
-    (nodes.get(p) as GraphNode & { _body?: string })._body = body;
+    bodies.set(p, body);
   }
 
   const edges: GraphEdge[] = [];
@@ -65,8 +67,8 @@ export async function scanGraph(bundle: Bundle): Promise<GraphScan> {
   const inbound = new Map<string, number>();
   for (const p of paths) inbound.set(p, 0);
 
-  for (const [source, node] of nodes) {
-    const body = (node as GraphNode & { _body?: string })._body ?? "";
+  for (const source of nodes.keys()) {
+    const body = bodies.get(source) ?? "";
     const targeted = new Set<string>();
     for (const match of body.matchAll(LINK_RE)) {
       const target = match[1];
@@ -79,7 +81,6 @@ export async function scanGraph(bundle: Bundle): Promise<GraphScan> {
         brokenLinks.push({ path: source, target });
       }
     }
-    delete (node as GraphNode & { _body?: string })._body;
   }
 
   for (const edge of edges) {

@@ -16,7 +16,13 @@ export function Tree({
     <div>
       {(node.children ?? []).map((child) =>
         child.kind === "directory" ? (
-          <DirNode key={child.path} node={child} selected={selected} onSelect={onSelect} depth={depth} />
+          <DirNode
+            key={child.path}
+            node={child}
+            selected={selected}
+            onSelect={onSelect}
+            depth={depth}
+          />
         ) : (
           <button
             key={child.path}

@@ -10,7 +10,10 @@ import { streamChat, type KnowledgeBase } from "@understory/core";
  * client-chosen `model` out of the provider call.
  */
 const chatBodySchema = z.object({
-  messages: z.array(z.object({ role: z.string() }).passthrough()).min(1).max(200),
+  messages: z
+    .array(z.object({ role: z.string() }).passthrough())
+    .min(1)
+    .max(200),
   model: z.string().min(1).max(200).optional(),
 });
 

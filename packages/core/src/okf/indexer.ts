@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { writeFileAtomic } from "./atomic.js";
 import { parseDoc } from "./frontmatter.js";
 import { RESERVED_FILENAMES } from "./types.js";
 import type { Bundle } from "./bundle.js";
@@ -28,9 +29,7 @@ export async function regenerateIndex(bundle: Bundle, dir = "/"): Promise<string
     let title = entry.name.replace(/\.md$/, "");
     let description = "";
     try {
-      const { frontmatter } = parseDoc(
-        await fs.readFile(path.join(absDir, entry.name), "utf-8")
-      );
+      const { frontmatter } = parseDoc(await fs.readFile(path.join(absDir, entry.name), "utf-8"));
       if (typeof frontmatter.title === "string" && frontmatter.title) title = frontmatter.title;
       if (typeof frontmatter.description === "string") description = frontmatter.description;
     } catch {
@@ -50,7 +49,7 @@ export async function regenerateIndex(bundle: Bundle, dir = "/"): Promise<string
   }
 
   const content = sections.join("\n");
-  await fs.writeFile(path.join(absDir, "index.md"), content, "utf-8");
+  await writeFileAtomic(path.join(absDir, "index.md"), content);
   return content;
 }
 

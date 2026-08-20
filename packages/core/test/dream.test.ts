@@ -20,9 +20,24 @@ afterEach(async () => {
 describe("duplicateCandidates", () => {
   it("flags near-identical title/description pairs and ignores distinct ones", () => {
     const nodes = [
-      { path: "/a.md", title: "Billing API rate limits", description: "100 requests per minute per client", links: 1 },
-      { path: "/b.md", title: "API rate limits for billing", description: "per client limit of 100 requests per minute", links: 0 },
-      { path: "/c.md", title: "Office WiFi", description: "guest network password rotation", links: 0 },
+      {
+        path: "/a.md",
+        title: "Billing API rate limits",
+        description: "100 requests per minute per client",
+        links: 1,
+      },
+      {
+        path: "/b.md",
+        title: "API rate limits for billing",
+        description: "per client limit of 100 requests per minute",
+        links: 0,
+      },
+      {
+        path: "/c.md",
+        title: "Office WiFi",
+        description: "guest network password rotation",
+        links: 0,
+      },
     ];
     const dupes = duplicateCandidates(nodes);
     expect(dupes).toHaveLength(1);
@@ -34,8 +49,18 @@ describe("duplicateCandidates", () => {
 describe("runDream", () => {
   it("skips (no agent run) when the memory is healthy and quiet", async () => {
     // Two concepts linking to each other: no orphans, no broken links, <5 log entries.
-    await kb.writeConcept("/a.md", { type: "T", title: "Alpha topic", description: "first subject" }, "See [B](/b.md).", "add a");
-    await kb.writeConcept("/b.md", { type: "T", title: "Beta subject", description: "second matter" }, "See [A](/a.md).", "add b");
+    await kb.writeConcept(
+      "/a.md",
+      { type: "T", title: "Alpha topic", description: "first subject" },
+      "See [B](/b.md).",
+      "add a"
+    );
+    await kb.writeConcept(
+      "/b.md",
+      { type: "T", title: "Beta subject", description: "second matter" },
+      "See [A](/a.md).",
+      "add b"
+    );
     const runner = vi.fn();
     const report = await runDream(kb, {}, runner as never);
     expect(report.ran).toBe(false);
@@ -43,9 +68,27 @@ describe("runDream", () => {
   });
 
   it("dreams when there are orphans, feeding them into the instruction", async () => {
-    await kb.writeConcept("/hub.md", { type: "T", title: "Central hub", description: "main entry" }, "core", "add");
-    await kb.writeConcept("/stray.md", { type: "T", title: "Stray note", description: "unconnected detail" }, "alone", "add");
-    const runner = vi.fn(async () => ({ summary: "wired stray into hub", filesChanged: ["/hub.md"], steps: 3, traceId: "t" }));
+    await kb.writeConcept(
+      "/hub.md",
+      { type: "T", title: "Central hub", description: "main entry" },
+      "core",
+      "add"
+    );
+    await kb.writeConcept(
+      "/stray.md",
+      { type: "T", title: "Stray note", description: "unconnected detail" },
+      "alone",
+      "add"
+    );
+    const runner = vi.fn(async () => ({
+      ok: true as const,
+      result: {
+        summary: "wired stray into hub",
+        filesChanged: ["/hub.md"],
+        steps: 3,
+        traceId: "t",
+      },
+    }));
     const report = await runDream(kb, {}, runner as never);
     expect(report.ran).toBe(true);
     expect(report.summary).toBe("wired stray into hub");
@@ -54,21 +97,63 @@ describe("runDream", () => {
     expect(instruction).toContain("/stray.md");
   });
 
-  it("normalizes the PR#5 MutationOutcome shape too", async () => {
-    await kb.writeConcept("/only.md", { type: "T", title: "Only one", description: "solo" }, "x", "add");
-    const runner = vi.fn(async () => ({ ok: true, result: { summary: "done", filesChanged: ["/only.md"], steps: 1, traceId: "t" } }));
+  it("reports a failed run instead of throwing — a dream has no caller waiting", async () => {
+    await kb.writeConcept(
+      "/only.md",
+      { type: "T", title: "Only one", description: "solo" },
+      "x",
+      "add"
+    );
+    const runner = vi.fn(async () => ({
+      ok: false as const,
+      status: "failed" as const,
+      error: "model unreachable",
+    }));
     const report = await runDream(kb, {}, runner as never);
     expect(report.ran).toBe(true);
-    expect(report.summary).toBe("done");
+    expect(report.summary).toContain("model unreachable");
+    expect(report.filesChanged).toEqual([]);
+  });
+
+  it("keeps the files a partial run already wrote", async () => {
+    await kb.writeConcept(
+      "/only.md",
+      { type: "T", title: "Only one", description: "solo" },
+      "x",
+      "add"
+    );
+    const runner = vi.fn(async () => ({
+      ok: false as const,
+      status: "partial" as const,
+      filesChanged: ["/only.md"],
+      error: "timed out mid-run",
+      traceId: "t",
+    }));
+    const report = await runDream(kb, {}, runner as never);
+    expect(report.ran).toBe(true);
+    expect(report.summary).toContain("timed out mid-run");
     expect(report.filesChanged).toEqual(["/only.md"]);
   });
 });
 
 describe("oversizedConcepts", () => {
   it("flags many-sectioned or very long bodies, not small concepts", async () => {
-    const fatBody = Array.from({ length: 7 }, (_, i) => `# Topic ${i}\n\ncontent for topic ${i}`).join("\n\n");
-    await kb.writeConcept("/people/fat.md", { type: "Person", title: "Fat Profile", description: "overgrown" }, fatBody, "add");
-    await kb.writeConcept("/facts/tiny.md", { type: "Fact", title: "Tiny", description: "small" }, "one line", "add");
+    const fatBody = Array.from(
+      { length: 7 },
+      (_, i) => `# Topic ${i}\n\ncontent for topic ${i}`
+    ).join("\n\n");
+    await kb.writeConcept(
+      "/people/fat.md",
+      { type: "Person", title: "Fat Profile", description: "overgrown" },
+      fatBody,
+      "add"
+    );
+    await kb.writeConcept(
+      "/facts/tiny.md",
+      { type: "Fact", title: "Tiny", description: "small" },
+      "one line",
+      "add"
+    );
 
     const fat = await oversizedConcepts(kb);
     expect(fat.map((f) => f.path)).toEqual(["/people/fat.md"]);
@@ -76,13 +161,32 @@ describe("oversizedConcepts", () => {
   });
 
   it("feeds the split instruction into the dream (hub kept, path preserved)", async () => {
-    const fatBody = Array.from({ length: 7 }, (_, i) => `# Topic ${i}\n\ncontent ${i}`).join("\n\n");
-    await kb.writeConcept("/people/fat.md", { type: "Person", title: "Fat", description: "big" }, fatBody, "add");
+    const fatBody = Array.from({ length: 7 }, (_, i) => `# Topic ${i}\n\ncontent ${i}`).join(
+      "\n\n"
+    );
+    await kb.writeConcept(
+      "/people/fat.md",
+      { type: "Person", title: "Fat", description: "big" },
+      fatBody,
+      "add"
+    );
     // Link it both ways with a friend so no orphan/broken signals muddy the test.
-    await kb.patchConcept("/people/fat.md", { replaceSection: { heading: "Topic 0", content: "see [Friend](/facts/friend.md)" } }, "link");
-    await kb.writeConcept("/facts/friend.md", { type: "Fact", title: "Friend", description: "companion" }, "see [Fat](/people/fat.md)", "add");
+    await kb.patchConcept(
+      "/people/fat.md",
+      { replaceSection: { heading: "Topic 0", content: "see [Friend](/facts/friend.md)" } },
+      "link"
+    );
+    await kb.writeConcept(
+      "/facts/friend.md",
+      { type: "Fact", title: "Friend", description: "companion" },
+      "see [Fat](/people/fat.md)",
+      "add"
+    );
 
-    const runner = vi.fn(async () => ({ summary: "split", filesChanged: ["/people/fat.md"], steps: 4, traceId: "t" }));
+    const runner = vi.fn(async () => ({
+      ok: true as const,
+      result: { summary: "split", filesChanged: ["/people/fat.md"], steps: 4, traceId: "t" },
+    }));
     const report = await runDream(kb, {}, runner as never);
     expect(report.ran).toBe(true);
     const instruction = runner.mock.calls[0][1] as unknown as string;

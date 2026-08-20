@@ -37,7 +37,12 @@ describe("hotLookup", () => {
   });
 
   it("answers from recently written concepts (read fresh) and falls through on UNKNOWN", async () => {
-    await kb.writeConcept("/facts/deploy.md", { type: "Fact", title: "Deploy day" }, "We deploy on Fridays.", "add");
+    await kb.writeConcept(
+      "/facts/deploy.md",
+      { type: "Fact", title: "Deploy day" },
+      "We deploy on Fridays.",
+      "add"
+    );
     recordHotWrite(root, "/facts/deploy.md");
 
     const confident = vi.fn(async () => "We deploy on Fridays. (from /facts/deploy.md)");
@@ -88,7 +93,11 @@ describe("hotLookup", () => {
 
 describe("runQueryCached layering", () => {
   it("hot answers short-circuit the deep agent and land in the exact cache", async () => {
-    const deep = vi.fn(async (): Promise<QueryResult> => ({ answer: "deep", steps: 5, traceId: "t" }));
+    const deep = vi.fn(async (): Promise<QueryResult> => ({
+      answer: "deep",
+      steps: 5,
+      traceId: "t",
+    }));
     const hot = vi.fn(async () => "hot answer");
 
     const first = await runQueryCached(kb, "q?", {}, deep, hot);
@@ -103,7 +112,11 @@ describe("runQueryCached layering", () => {
   });
 
   it("deep answers feed the hot working set", async () => {
-    const deep = vi.fn(async (): Promise<QueryResult> => ({ answer: "42", steps: 3, traceId: "t" }));
+    const deep = vi.fn(async (): Promise<QueryResult> => ({
+      answer: "42",
+      steps: 3,
+      traceId: "t",
+    }));
     await runQueryCached(kb, "meaning of life?", {}, deep, async () => null);
 
     // The recorded Q&A is now available to a real hot lookup.
@@ -120,7 +133,12 @@ describe("hot memory isolation", () => {
     const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ustory-hot-other-"));
     try {
       const other = new KnowledgeBase(otherRoot);
-      await other.writeConcept("/facts/deploy.md", { type: "Fact" }, "Other bundle: Tuesdays.", "log");
+      await other.writeConcept(
+        "/facts/deploy.md",
+        { type: "Fact" },
+        "Other bundle: Tuesdays.",
+        "log"
+      );
       await kb.writeConcept("/facts/deploy.md", { type: "Fact" }, "This bundle: Fridays.", "log");
       // Only the other bundle is marked hot — identical path, different bundle.
       recordHotWrite(otherRoot, "/facts/deploy.md");

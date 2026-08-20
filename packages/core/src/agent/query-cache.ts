@@ -28,6 +28,10 @@ const cache = new Map<string, CacheEntry>();
  * Content fingerprint of the bundle: path + mtime + size of every concept
  * file. Any write moves the fingerprint, which implicitly invalidates every
  * cached answer — no hooks into the write path needed.
+ *
+ * index.md and log.md are deliberately NOT part of it: they are regenerated on
+ * every mutation, and including them would only restate what the concept files
+ * already say. Do not "fix" that by adding them.
  */
 export async function bundleFingerprint(kb: KnowledgeBase): Promise<string> {
   const paths = await kb.bundle.listConceptPaths();
@@ -57,7 +61,12 @@ export async function runQueryCached(
   options: AgentOptions = {},
   // Injectable for tests.
   runner: typeof runQuery = runQuery,
-  hot: (kb: KnowledgeBase, q: string, o: AgentOptions, g?: HotGenerate) => Promise<string | null> = hotLookup
+  hot: (
+    kb: KnowledgeBase,
+    q: string,
+    o: AgentOptions,
+    g?: HotGenerate
+  ) => Promise<string | null> = hotLookup
 ): Promise<CachedQueryResult> {
   if (process.env.QUERY_CACHE === "false") {
     return { ...(await runner(kb, question, options)), cached: false, source: "deep" };

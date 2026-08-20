@@ -32,7 +32,10 @@ export class KnowledgeBase {
   private readonly git: SimpleGit | null;
   private mutationQueue: Promise<unknown> = Promise.resolve();
 
-  constructor(bundleRoot: string, private readonly options: KnowledgeBaseOptions = {}) {
+  constructor(
+    bundleRoot: string,
+    private readonly options: KnowledgeBaseOptions = {}
+  ) {
     this.bundle = new Bundle(bundleRoot);
     this.git = options.gitAutocommit ? simpleGit(this.bundle.root) : null;
   }

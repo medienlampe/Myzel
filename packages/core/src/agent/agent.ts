@@ -94,7 +94,12 @@ async function resolveAgentModel(
 
 function resolveAllowFor(raw: string | undefined): Set<string> | null {
   if (!raw || raw === "*") return null;
-  return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
 }
 
 function withModelOverride(config: ModelConfig, model: string | undefined): ModelConfig {
@@ -185,7 +190,13 @@ export async function runMutation(
       const summary = `Partial mutation: ${files.length} file(s) changed before failure. Error: ${message}`;
       const trace = recorder.finalize("mutation", instruction, summary, "partial", modelChain);
       await traceStore(kb).save(trace);
-      return { ok: false, status: "partial", filesChanged: files, error: message, traceId: trace.id };
+      return {
+        ok: false,
+        status: "partial",
+        filesChanged: files,
+        error: message,
+        traceId: trace.id,
+      };
     }
     const trace = recorder.finalize("mutation", instruction, message, "failed", modelChain);
     await traceStore(kb).save(trace);
@@ -208,10 +219,10 @@ export async function streamChat(
   const input =
     typeof lastUser?.content === "string"
       ? lastUser.content
-      : lastUser?.content
+      : (lastUser?.content
           ?.map((part) => (part.type === "text" ? part.text : ""))
           .join(" ")
-          .trim() ?? "(chat)";
+          .trim() ?? "(chat)");
 
   try {
     const resolved = await resolveAgentModel(options, "chat");
@@ -233,7 +244,9 @@ export async function streamChat(
     return { result, filesChanged };
   } catch (err) {
     const outcome = filesChanged.size > 0 ? "partial" : "failed";
-    await traceStore(kb).save(recorder.finalize("chat", input, errorMessage(err), outcome, modelChain));
+    await traceStore(kb).save(
+      recorder.finalize("chat", input, errorMessage(err), outcome, modelChain)
+    );
     throw err;
   }
 }

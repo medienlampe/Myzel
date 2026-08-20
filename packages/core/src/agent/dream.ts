@@ -78,7 +78,9 @@ export async function runDream(
         `as a hub — a short summary that links to every extracted concept. NEVER delete or ` +
         `rename the original path; other concepts link to it. If the content is one ` +
         `indivisible topic, leave it alone:\n` +
-        fat.map((f) => `- ${sanitizePath(f.path)} (${f.chars} chars, ${f.sections} sections)`).join("\n")
+        fat
+          .map((f) => `- ${sanitizePath(f.path)} (${f.chars} chars, ${f.sections} sections)`)
+          .join("\n")
     );
   }
   if (insightsEnabled && log.length >= 5) {
@@ -89,7 +91,10 @@ export async function runDream(
         `emerges, skip this — do not force an insight.\n` +
         log
           .slice(0, 10)
-          .map((e) => `- ${sanitizeInline(e.date, 20)} ${sanitizeInline(e.action, 20)}: ${sanitizeInline(e.summary, 200)}`)
+          .map(
+            (e) =>
+              `- ${sanitizeInline(e.date, 20)} ${sanitizeInline(e.action, 20)}: ${sanitizeInline(e.summary, 200)}`
+          )
           .join("\n")
     );
   }
@@ -104,31 +109,21 @@ export async function runDream(
     `\n\nWork through the applicable items above. Be conservative: prefer small, clearly ` +
     `justified edits over sweeping rewrites. Summarize exactly what changed.`;
 
-  const result = await runner(kb, `${instruction}`, options);
-  return { ran: true, ...normalizeMutation(result) };
-}
-
-/**
- * PR #5 changes runMutation's return shape from MutationResult to a
- * MutationOutcome union — accept both so this file needs no edits (and no
- * conflicts) whichever lands first.
- */
-function normalizeMutation(result: unknown): { summary: string; filesChanged: string[] } {
-  const r = result as Record<string, unknown>;
-  if (r && typeof r === "object" && "ok" in r) {
-    // MutationOutcome shape.
-    if (r.ok === true) {
-      const inner = r.result as { summary: string; filesChanged: string[] };
-      return { summary: inner.summary, filesChanged: inner.filesChanged };
-    }
+  const outcome = await runner(kb, instruction, options);
+  if (outcome.ok) {
     return {
-      summary: `dream run failed: ${String(r.error ?? "unknown error")}`,
-      filesChanged: Array.isArray(r.filesChanged) ? (r.filesChanged as string[]) : [],
+      ran: true,
+      summary: outcome.result.summary,
+      filesChanged: outcome.result.filesChanged,
     };
   }
-  // MutationResult shape.
-  const m = r as { summary?: string; filesChanged?: string[] };
-  return { summary: m.summary ?? "", filesChanged: m.filesChanged ?? [] };
+  // A dream runs unattended, so a failure is reported, not thrown: a partial
+  // run still changed files the caller should hear about.
+  return {
+    ran: true,
+    summary: `dream run failed: ${outcome.error}`,
+    filesChanged: outcome.status === "partial" ? outcome.filesChanged : [],
+  };
 }
 
 export interface OversizedConcept {

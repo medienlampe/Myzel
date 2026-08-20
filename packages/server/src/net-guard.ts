@@ -97,7 +97,11 @@ export function netGuard(config: NetGuardConfig) {
       return;
     }
     const origin = req.headers.origin;
-    if (typeof origin === "string" && origin && !isAllowedOrigin(origin, host, config.allowedOrigins)) {
+    if (
+      typeof origin === "string" &&
+      origin &&
+      !isAllowedOrigin(origin, host, config.allowedOrigins)
+    ) {
       res.status(403).json({
         error: `forbidden: origin "${origin}" is not allowed. Add it to ALLOWED_ORIGINS.`,
       });
@@ -125,10 +129,7 @@ const CORS_BASE: CorsOptions = {
  * its preflight instead of merely being rejected after the fact.
  */
 export function corsDelegate(config: NetGuardConfig) {
-  return (
-    req: Request,
-    callback: (err: Error | null, options: CorsOptions) => void
-  ): void => {
+  return (req: Request, callback: (err: Error | null, options: CorsOptions) => void): void => {
     const origin = req.headers.origin;
     const host = String(req.headers.host ?? "");
     const allow =

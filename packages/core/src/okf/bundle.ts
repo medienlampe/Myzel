@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { writeFileAtomic } from "./atomic.js";
 import { parseDoc, serializeDoc, hasNonEmptyType } from "./frontmatter.js";
 import { RESERVED_FILENAMES } from "./types.js";
 import type { Concept, ConceptFrontmatter, TreeNode } from "./types.js";
@@ -8,11 +9,7 @@ export class BundleError extends Error {
   constructor(
     message: string,
     public readonly code:
-      | "OUTSIDE_BUNDLE"
-      | "RESERVED_NAME"
-      | "NOT_FOUND"
-      | "INVALID_FRONTMATTER"
-      | "NOT_MARKDOWN"
+      "OUTSIDE_BUNDLE" | "RESERVED_NAME" | "NOT_FOUND" | "INVALID_FRONTMATTER" | "NOT_MARKDOWN"
   ) {
     super(message);
     this.name = "BundleError";
@@ -166,7 +163,7 @@ export class Bundle {
     const abs = this.resolve(canonical);
     await fs.mkdir(path.dirname(abs), { recursive: true });
     await this.assertRealPathInside(abs, canonical);
-    await fs.writeFile(abs, serializeDoc(stamped, body), "utf-8");
+    await writeFileAtomic(abs, serializeDoc(stamped, body));
     return { path: canonical, frontmatter: stamped, body, raw: serializeDoc(stamped, body) };
   }
 

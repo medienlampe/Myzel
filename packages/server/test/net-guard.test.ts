@@ -37,13 +37,26 @@ describe("parseList", () => {
 
 describe("isLoopbackHost", () => {
   it("recognizes loopback authorities with and without ports", () => {
-    for (const host of ["localhost", "localhost:3800", "127.0.0.1:3800", "127.5.5.5", "[::1]:3800", "::1"]) {
+    for (const host of [
+      "localhost",
+      "localhost:3800",
+      "127.0.0.1:3800",
+      "127.5.5.5",
+      "[::1]:3800",
+      "::1",
+    ]) {
       expect(isLoopbackHost(host), host).toBe(true);
     }
   });
 
   it("does not mistake public hosts or lookalikes for loopback", () => {
-    for (const host of ["0.0.0.0", "example.com", "localhost.evil.com", "127.0.0.1.evil.com", "192.168.1.10"]) {
+    for (const host of [
+      "0.0.0.0",
+      "example.com",
+      "localhost.evil.com",
+      "127.0.0.1.evil.com",
+      "192.168.1.10",
+    ]) {
       expect(isLoopbackHost(host), host).toBe(false);
     }
   });
@@ -64,8 +77,12 @@ describe("isAllowedOrigin", () => {
   });
 
   it("honours the allowlist and the wildcard, and rejects opaque origins", () => {
-    expect(isAllowedOrigin("https://app.example", "localhost:3800", ["https://app.example"])).toBe(true);
-    expect(isAllowedOrigin("https://app.example/", "localhost:3800", ["https://app.example"])).toBe(true);
+    expect(isAllowedOrigin("https://app.example", "localhost:3800", ["https://app.example"])).toBe(
+      true
+    );
+    expect(isAllowedOrigin("https://app.example/", "localhost:3800", ["https://app.example"])).toBe(
+      true
+    );
     expect(isAllowedOrigin("https://any.example", "localhost:3800", ["*"])).toBe(true);
     expect(isAllowedOrigin("null", "localhost:3800", [])).toBe(false);
   });
@@ -89,7 +106,10 @@ describe("netGuard", () => {
   const guard = netGuard(LOOPBACK_CONFIG);
 
   it("lets same-origin browser requests through", () => {
-    const { next, status } = call(guard, { host: "localhost:3800", origin: "http://localhost:3800" });
+    const { next, status } = call(guard, {
+      host: "localhost:3800",
+      origin: "http://localhost:3800",
+    });
     expect(next).toHaveBeenCalledOnce();
     expect(status).not.toHaveBeenCalled();
   });
@@ -101,7 +121,10 @@ describe("netGuard", () => {
   });
 
   it("blocks a foreign origin with 403", () => {
-    const { next, status } = call(guard, { host: "localhost:3800", origin: "https://evil.example" });
+    const { next, status } = call(guard, {
+      host: "localhost:3800",
+      origin: "https://evil.example",
+    });
     expect(next).not.toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith(403);
   });

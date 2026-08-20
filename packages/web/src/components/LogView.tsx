@@ -38,7 +38,9 @@ export function LogView({
                 </span>
                 <div className="markdown text-sm [&_p]:my-0">
                   <MarkdownRenderer
-                    onNavigate={(href) => (href.startsWith("/") && href.endsWith(".md") ? href : null)}
+                    onNavigate={(href) =>
+                      href.startsWith("/") && href.endsWith(".md") ? href : null
+                    }
                     onNavigateClick={onNavigate}
                   >
                     {e.summary}

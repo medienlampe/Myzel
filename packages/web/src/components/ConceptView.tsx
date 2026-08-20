@@ -36,7 +36,11 @@ export function ConceptView({
     <div className="mx-auto max-w-3xl p-6">
       {isReserved ? (
         <p className="mb-4 font-mono text-xs text-zinc-500">
-          {concept.path} <span className="italic">(generated {concept.path.endsWith("index.md") ? "directory index" : "log"} — maintained automatically)</span>
+          {concept.path}{" "}
+          <span className="italic">
+            (generated {concept.path.endsWith("index.md") ? "directory index" : "log"} — maintained
+            automatically)
+          </span>
         </p>
       ) : (
         <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">

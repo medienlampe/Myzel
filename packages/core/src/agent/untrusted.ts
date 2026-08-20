@@ -61,10 +61,7 @@ const DEFAULT_MAX_LENGTH = 200;
 export function sanitizeInline(value: unknown, maxLength = DEFAULT_MAX_LENGTH): string {
   if (typeof value !== "string") return "";
   let out = value.replace(/[\r\n\t]+/g, " ");
-  out = stripControlAndBidi(out)
-    .replace(LEADING_MARKDOWN, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  out = stripControlAndBidi(out).replace(LEADING_MARKDOWN, "").replace(/\s+/g, " ").trim();
   if (out.length > maxLength) {
     // The ellipsis counts towards the budget, so the result never exceeds it.
     out = maxLength <= 3 ? out.slice(0, maxLength) : out.slice(0, maxLength - 3).trimEnd() + "...";

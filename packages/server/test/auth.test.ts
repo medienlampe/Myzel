@@ -25,7 +25,13 @@ describe("bearerAuth", () => {
   });
 
   it("rejects missing, malformed, and wrong tokens with 401", () => {
-    for (const header of [undefined, "Bearer wrong", "Bearer ", "s3cret-token", "Basic s3cret-token"]) {
+    for (const header of [
+      undefined,
+      "Bearer wrong",
+      "Bearer ",
+      "s3cret-token",
+      "Basic s3cret-token",
+    ]) {
       const { next, status } = call(middleware, header);
       expect(next).not.toHaveBeenCalled();
       expect(status).toHaveBeenCalledWith(401);

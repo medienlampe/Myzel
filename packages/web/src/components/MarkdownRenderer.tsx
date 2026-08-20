@@ -41,7 +41,9 @@ const highlighterPromise = createHighlighterCore({
 /** Sanitize schema: allow everything in defaultSchema plus tables. */
 const sanitizeSchema = {
   ...defaultSchema,
-  tagNames: [...new Set([...(defaultSchema.tagNames || []), "table", "thead", "tbody", "tr", "th", "td"])],
+  tagNames: [
+    ...new Set([...(defaultSchema.tagNames || []), "table", "thead", "tbody", "tr", "th", "td"]),
+  ],
   attributes: {
     ...(defaultSchema.attributes || {}),
     table: [...(defaultSchema.attributes?.table || []), "className"],
@@ -77,7 +79,12 @@ export interface MarkdownRendererProps {
  * Uses createHighlighterCore with the JavaScript regex engine (no WASM)
  * per Shiki best practices for web applications.
  */
-export function MarkdownRenderer({ children, className, onNavigate, onNavigateClick }: MarkdownRendererProps) {
+export function MarkdownRenderer({
+  children,
+  className,
+  onNavigate,
+  onNavigateClick,
+}: MarkdownRendererProps) {
   const [highlighter, setHighlighter] = useState<Awaited<typeof highlighterPromise> | null>(null);
 
   useEffect(() => {
@@ -87,8 +94,8 @@ export function MarkdownRenderer({ children, className, onNavigate, onNavigateCl
   const highlightCode = (code: string, language: string): string => {
     if (!highlighter) return code;
     try {
-      const langs = highlighter.getLoadedLanguages();
-      if (langs.includes(language as any)) {
+      const langs: string[] = highlighter.getLoadedLanguages();
+      if (langs.includes(language)) {
         const highlighted = highlighter.codeToHtml(code, {
           lang: language,
           theme: "github-dark-dimmed",
@@ -127,7 +134,12 @@ export function MarkdownRenderer({ children, className, onNavigate, onNavigateCl
         }
       }
       return (
-        <a href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-cyan-400 hover:underline"
+        >
           {nodeChildren}
         </a>
       );
@@ -168,19 +180,28 @@ export function MarkdownRenderer({ children, className, onNavigate, onNavigateCl
 
       // Inline code — no highlighting
       return (
-        <code className="bg-zinc-800 px-1 py-0.5 rounded text-sm text-amber-300 font-mono" {...props}>
+        <code
+          className="bg-zinc-800 px-1 py-0.5 rounded text-sm text-amber-300 font-mono"
+          {...props}
+        >
           {nodeChildren}
         </code>
       );
     },
     pre: ({ children }) => (
-      <pre className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto">{children}</pre>
+      <pre className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto">
+        {children}
+      </pre>
     ),
   };
 
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeSanitize, sanitizeSchema]]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
+        components={components}
+      >
         {children}
       </ReactMarkdown>
     </div>

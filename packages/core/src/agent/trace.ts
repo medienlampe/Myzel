@@ -64,10 +64,7 @@ export class TraceRecorder {
 
 /** Compact single-line traversal notation, e.g.
  *  `search "rate limit" (2) → read /apis/billing-api.md → ✓` */
-export function buildNotation(
-  steps: TraceStep[],
-  outcome: TraceOutcome = "success"
-): string {
+export function buildNotation(steps: TraceStep[], outcome: TraceOutcome = "success"): string {
   const parts = steps.map((s) => {
     switch (s.tool) {
       case "search_knowledge":

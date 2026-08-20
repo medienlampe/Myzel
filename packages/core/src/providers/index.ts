@@ -44,7 +44,8 @@ function legacyConfig(env: NodeJS.ProcessEnv): ModelConfig | null {
   if (provider) {
     switch (provider) {
       case "anthropic":
-        if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is required for legacy anthropic provider");
+        if (!env.ANTHROPIC_API_KEY)
+          throw new Error("ANTHROPIC_API_KEY is required for legacy anthropic provider");
         legacyNotice();
         return {
           baseURL: "https://api.anthropic.com/v1",
@@ -53,7 +54,8 @@ function legacyConfig(env: NodeJS.ProcessEnv): ModelConfig | null {
           model: env.LLM_MODEL ?? "claude-sonnet-5",
         };
       case "openrouter":
-        if (!env.OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is required for legacy openrouter provider");
+        if (!env.OPENROUTER_API_KEY)
+          throw new Error("OPENROUTER_API_KEY is required for legacy openrouter provider");
         legacyNotice();
         return {
           baseURL: "https://openrouter.ai/api/v1",
@@ -62,7 +64,8 @@ function legacyConfig(env: NodeJS.ProcessEnv): ModelConfig | null {
           model: env.LLM_MODEL ?? "anthropic/claude-sonnet-5",
         };
       case "llamacpp":
-        if (!env.LLAMACPP_BASE_URL) throw new Error("LLAMACPP_BASE_URL is required for legacy llamacpp provider");
+        if (!env.LLAMACPP_BASE_URL)
+          throw new Error("LLAMACPP_BASE_URL is required for legacy llamacpp provider");
         legacyNotice();
         return {
           baseURL: env.LLAMACPP_BASE_URL,
@@ -71,7 +74,8 @@ function legacyConfig(env: NodeJS.ProcessEnv): ModelConfig | null {
           model: env.LLM_MODEL ?? "",
         };
       case "deepseek":
-        if (!env.DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY is required for legacy deepseek provider");
+        if (!env.DEEPSEEK_API_KEY)
+          throw new Error("DEEPSEEK_API_KEY is required for legacy deepseek provider");
         legacyNotice();
         return {
           baseURL: "https://api.deepseek.com/v1",
@@ -80,7 +84,8 @@ function legacyConfig(env: NodeJS.ProcessEnv): ModelConfig | null {
           model: env.LLM_MODEL ?? "deepseek-chat",
         };
       case "local":
-        if (!env.LOCAL_BASE_URL) throw new Error("LOCAL_BASE_URL is required for legacy local provider");
+        if (!env.LOCAL_BASE_URL)
+          throw new Error("LOCAL_BASE_URL is required for legacy local provider");
         legacyNotice();
         return {
           baseURL: env.LOCAL_BASE_URL,
@@ -89,7 +94,9 @@ function legacyConfig(env: NodeJS.ProcessEnv): ModelConfig | null {
           model: env.LLM_MODEL ?? "local-model",
         };
       default:
-        throw new Error(`Unknown legacy LLM_PROVIDER "${provider}" (anthropic|openrouter|llamacpp|deepseek|local)`);
+        throw new Error(
+          `Unknown legacy LLM_PROVIDER "${provider}" (anthropic|openrouter|llamacpp|deepseek|local)`
+        );
     }
   }
 
@@ -214,7 +221,9 @@ export async function createModel(cfg: ModelConfig): Promise<ResolvedLanguageMod
 
   switch (cfg.format) {
     case "anthropic":
-      return createAnthropic({ baseURL: cfg.baseURL, apiKey: cfg.apiKey })(model) as ResolvedLanguageModel;
+      return createAnthropic({ baseURL: cfg.baseURL, apiKey: cfg.apiKey })(
+        model
+      ) as ResolvedLanguageModel;
     case "openai":
       return createOpenAICompatible({
         name: "custom",

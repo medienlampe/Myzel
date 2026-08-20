@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { discoverLlamaCppModel, resolveFallbackConfig, resolveModelConfig } from "../src/providers/index.js";
+import {
+  discoverLlamaCppModel,
+  resolveFallbackConfig,
+  resolveModelConfig,
+} from "../src/providers/index.js";
 import { isRetryableError, withFallback } from "../src/providers/fallback.js";
 
 function jsonResponse(body: unknown) {
@@ -132,31 +136,43 @@ describe("generic provider config", () => {
   it("maps legacy providers to the generic model config", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    expect(resolveModelConfig(env({ LLM_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "a" }))).toMatchObject({
+    expect(
+      resolveModelConfig(env({ LLM_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "a" }))
+    ).toMatchObject({
       baseURL: "https://api.anthropic.com/v1",
       apiKey: "a",
       format: "anthropic",
       model: "claude-sonnet-5",
     });
-    expect(resolveModelConfig(env({ LLM_PROVIDER: "openrouter", OPENROUTER_API_KEY: "o" }))).toMatchObject({
+    expect(
+      resolveModelConfig(env({ LLM_PROVIDER: "openrouter", OPENROUTER_API_KEY: "o" }))
+    ).toMatchObject({
       baseURL: "https://openrouter.ai/api/v1",
       apiKey: "o",
       format: "openai",
       model: "anthropic/claude-sonnet-5",
     });
-    expect(resolveModelConfig(env({ LLM_PROVIDER: "llamacpp", LLAMACPP_BASE_URL: "http://localhost:8080" }))).toMatchObject({
+    expect(
+      resolveModelConfig(
+        env({ LLM_PROVIDER: "llamacpp", LLAMACPP_BASE_URL: "http://localhost:8080" })
+      )
+    ).toMatchObject({
       baseURL: "http://localhost:8080",
       apiKey: "not-needed",
       format: "openai",
       model: "",
     });
-    expect(resolveModelConfig(env({ LLM_PROVIDER: "deepseek", DEEPSEEK_API_KEY: "d" }))).toMatchObject({
+    expect(
+      resolveModelConfig(env({ LLM_PROVIDER: "deepseek", DEEPSEEK_API_KEY: "d" }))
+    ).toMatchObject({
       baseURL: "https://api.deepseek.com/v1",
       apiKey: "d",
       format: "openai",
       model: "deepseek-chat",
     });
-    expect(resolveModelConfig(env({ LLM_PROVIDER: "local", LOCAL_BASE_URL: "http://local/v1" }))).toMatchObject({
+    expect(
+      resolveModelConfig(env({ LLM_PROVIDER: "local", LOCAL_BASE_URL: "http://local/v1" }))
+    ).toMatchObject({
       baseURL: "http://local/v1",
       apiKey: "not-needed",
       format: "openai",
@@ -190,7 +206,12 @@ describe("fallback middleware", () => {
       }),
     });
     const fallback = fakeModel({
-      doGenerate: vi.fn(async () => ({ content: [], finishReason: "stop", usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, warnings: [] })),
+      doGenerate: vi.fn(async () => ({
+        content: [],
+        finishReason: "stop",
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        warnings: [],
+      })),
       doStream: vi.fn(async () => ({ stream: new ReadableStream() })),
     });
 
@@ -209,7 +230,9 @@ describe("fallback middleware", () => {
     });
     const fallback = fakeModel({ doGenerate: vi.fn() });
 
-    await expect(withFallback(primary, fallback).doGenerate({} as never)).rejects.toMatchObject({ statusCode: 401 });
+    await expect(withFallback(primary, fallback).doGenerate({} as never)).rejects.toMatchObject({
+      statusCode: 401,
+    });
     expect(fallback.doGenerate).not.toHaveBeenCalled();
   });
 
@@ -254,9 +277,9 @@ describe("fallback middleware", () => {
         warnings: [],
       })),
     });
-    const result = await withFallback(primaryYesRetry, fallbackYesRetry, { retry429: true }).doGenerate(
-      {} as never
-    );
+    const result = await withFallback(primaryYesRetry, fallbackYesRetry, {
+      retry429: true,
+    }).doGenerate({} as never);
     expect(result).toMatchObject({ finishReason: "stop" });
     expect(fallbackYesRetry.doGenerate).toHaveBeenCalledTimes(1);
   });
@@ -325,7 +348,12 @@ function fakeModel(overrides: Record<string, unknown> = {}) {
     provider: "test",
     modelId: "test-model",
     supportedUrls: {},
-    doGenerate: async () => ({ content: [], finishReason: "stop", usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, warnings: [] }),
+    doGenerate: async () => ({
+      content: [],
+      finishReason: "stop",
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      warnings: [],
+    }),
     doStream: async () => ({ stream: new ReadableStream() }),
     ...overrides,
   } as any;

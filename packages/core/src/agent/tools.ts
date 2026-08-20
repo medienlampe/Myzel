@@ -7,7 +7,7 @@ import { recordHotDelete, recordHotWrite } from "./hot-memory.js";
 import { sanitizeInline, sanitizePath } from "./untrusted.js";
 
 /** Bundle-relative concept path, e.g. "/tables/customers.md". */
-const conceptPath = z
+const conceptPathSchema = z
   .string()
   .describe('Bundle-relative path starting with "/", ending in .md');
 
@@ -34,13 +34,19 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder) {
       description:
         "Search the knowledge base by keywords, optionally filtered by concept type and/or tags. Returns ranked hits with paths and snippets. NOTE: matching is keyword-based, not semantic — a miss does NOT mean the knowledge is absent; it may be worded differently.",
       inputSchema: z.object({
-        query: z.string().describe("Keywords to search for. May be empty when filtering by type/tags only."),
+        query: z
+          .string()
+          .describe("Keywords to search for. May be empty when filtering by type/tags only."),
         type: z.string().optional().describe("Exact concept type filter"),
         tags: z.array(z.string()).optional().describe("Require ALL of these tags"),
       }),
       execute: async ({ query, type, tags }) => {
         const hits = await kb.search(query, { type, tags });
-        trace?.record("search_knowledge", query, hits.map((h) => h.path));
+        trace?.record(
+          "search_knowledge",
+          query,
+          hits.map((h) => h.path)
+        );
         if (hits.length > 0) return hits;
         // Keyword miss ≠ knowledge absent. Put the map in the tool result so
         // the model's next step is to read plausible concepts, not give up.
@@ -55,9 +61,9 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder) {
     }),
     read_concept: tool({
       description: "Read one concept document in full: frontmatter and markdown body.",
-      inputSchema: z.object({ path: conceptPath }),
-      execute: async ({ path }) => {
-        const c = await kb.readConcept(path);
+      inputSchema: z.object({ path: conceptPathSchema }),
+      execute: async ({ path: conceptPath }) => {
+        const c = await kb.readConcept(conceptPath);
         trace?.record("read_concept", c.path, [c.path]);
         return { path: c.path, frontmatter: c.frontmatter, body: c.body };
       },
@@ -83,19 +89,23 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder) {
   };
 }
 
-export function buildWriteTools(kb: KnowledgeBase, filesChanged: Set<string>, trace?: TraceRecorder) {
+export function buildWriteTools(
+  kb: KnowledgeBase,
+  filesChanged: Set<string>,
+  trace?: TraceRecorder
+) {
   return {
     write_concept: tool({
       description:
         "Create a new concept or fully overwrite an existing one. Frontmatter must include a non-empty 'type'. index.md and log.md maintenance is automatic — never write those.",
       inputSchema: z.object({
-        path: conceptPath,
+        path: conceptPathSchema,
         frontmatter: frontmatterSchema,
         body: z.string().describe("Markdown body (no frontmatter block)"),
         log_summary: logSummary,
       }),
-      execute: async ({ path, frontmatter, body, log_summary }) => {
-        const c = await kb.writeConcept(path, frontmatter, body, log_summary);
+      execute: async ({ path: conceptPath, frontmatter, body, log_summary }) => {
+        const c = await kb.writeConcept(conceptPath, frontmatter, body, log_summary);
         filesChanged.add(c.path);
         recordHotWrite(kb.bundle.root, c.path);
         trace?.record("write_concept", c.path, [c.path], true);
@@ -106,7 +116,7 @@ export function buildWriteTools(kb: KnowledgeBase, filesChanged: Set<string>, tr
       description:
         "Targeted update of an existing concept: merge frontmatter keys (null deletes a key) and/or replace one top-level '# Section' body section. Prefer this over write_concept for small edits.",
       inputSchema: z.object({
-        path: conceptPath,
+        path: conceptPathSchema,
         frontmatter: z
           .record(z.unknown())
           .optional()
@@ -116,19 +126,29 @@ export function buildWriteTools(kb: KnowledgeBase, filesChanged: Set<string>, tr
             heading: z
               .string()
               .min(1)
-              .describe("Top-level heading name, e.g. 'Schema'. Must be non-empty — to replace the whole body use replace_body instead."),
+              .describe(
+                "Top-level heading name, e.g. 'Schema'. Must be non-empty — to replace the whole body use replace_body instead."
+              ),
             content: z.string().describe("New content for that section"),
           })
           .optional(),
         replace_body: z
           .string()
           .optional()
-          .describe("Replace the entire markdown body (frontmatter untouched). Use for restructuring; prefer replace_section for targeted edits."),
+          .describe(
+            "Replace the entire markdown body (frontmatter untouched). Use for restructuring; prefer replace_section for targeted edits."
+          ),
         log_summary: logSummary,
       }),
-      execute: async ({ path, frontmatter, replace_section, replace_body, log_summary }) => {
+      execute: async ({
+        path: conceptPath,
+        frontmatter,
+        replace_section,
+        replace_body,
+        log_summary,
+      }) => {
         const c = await kb.patchConcept(
-          path,
+          conceptPath,
           {
             frontmatter,
             replaceSection: replace_section
@@ -148,15 +168,15 @@ export function buildWriteTools(kb: KnowledgeBase, filesChanged: Set<string>, tr
       description:
         "Permanently delete a concept file. Prefer deprecation (tag 'deprecated' via patch_concept) unless content is wrong/harmful or deletion was explicitly requested.",
       inputSchema: z.object({
-        path: conceptPath,
+        path: conceptPathSchema,
         log_summary: logSummary,
       }),
-      execute: async ({ path, log_summary }) => {
-        await kb.deleteConcept(path, log_summary);
-        filesChanged.add(path);
-        recordHotDelete(kb.bundle.root, path);
-        trace?.record("delete_concept", path, [path], true);
-        return { deleted: path };
+      execute: async ({ path: conceptPath, log_summary }) => {
+        await kb.deleteConcept(conceptPath, log_summary);
+        filesChanged.add(conceptPath);
+        recordHotDelete(kb.bundle.root, conceptPath);
+        trace?.record("delete_concept", conceptPath, [conceptPath], true);
+        return { deleted: conceptPath };
       },
     }),
   };

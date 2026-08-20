@@ -9,7 +9,13 @@ describe("seed", () => {
     const description =
       "a main-belt asteroid that was discovered on September 2nd, 1983, by the Belgian astronomer Henri Debehogne";
 
-    const cases: Record<string, { input: Pick<TreeNode, 'name'> & Partial<Pick<TreeNode, 'title' | 'description'>>; expected: string }> = {
+    const cases: Record<
+      string,
+      {
+        input: Pick<TreeNode, "name"> & Partial<Pick<TreeNode, "title" | "description">>;
+        expected: string;
+      }
+    > = {
       "name only": {
         input: { name },
         expected: `**${name}**`,

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, setAuthToken, type AppConfig, type Concept, type ConformanceReport, type LogEntry, type SearchHit, type TreeNode } from "./api";
+import {
+  api,
+  ApiError,
+  setAuthToken,
+  type AppConfig,
+  type Concept,
+  type ConformanceReport,
+  type LogEntry,
+  type SearchHit,
+  type TreeNode,
+} from "./api";
 import { Tree } from "./components/Tree";
 import { ConceptView } from "./components/ConceptView";
 import { LogView } from "./components/LogView";
@@ -7,10 +17,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
 
 type View =
-  | { kind: "concept"; path: string }
-  | { kind: "log" }
-  | { kind: "graph" }
-  | { kind: "empty" };
+  { kind: "concept"; path: string } | { kind: "log" } | { kind: "graph" } | { kind: "empty" };
 
 export default function App() {
   const [tree, setTree] = useState<TreeNode | null>(null);
@@ -37,18 +44,30 @@ export default function App() {
         if (e instanceof ApiError && e.status === 401) setNeedsToken(true);
         else setError(String(e));
       });
-    api.validate().then(setReport).catch(() => {});
-    api.log().then(setLog).catch(() => {});
+    api
+      .validate()
+      .then(setReport)
+      .catch(() => {});
+    api
+      .log()
+      .then(setLog)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     refresh();
-    api.config().then(setConfig).catch(() => {});
+    api
+      .config()
+      .then(setConfig)
+      .catch(() => {});
   }, [refresh]);
 
   useEffect(() => {
     if (view.kind === "concept") {
-      api.concept(view.path).then(setConcept).catch((e) => setError(String(e)));
+      api
+        .concept(view.path)
+        .then(setConcept)
+        .catch((e) => setError(String(e)));
     }
   }, [view]);
 
@@ -65,7 +84,14 @@ export default function App() {
       setHits(null);
       return;
     }
-    const t = setTimeout(() => api.search(query).then(setHits).catch(() => {}), 200);
+    const t = setTimeout(
+      () =>
+        api
+          .search(query)
+          .then(setHits)
+          .catch(() => {}),
+      200
+    );
     return () => clearTimeout(t);
   }, [query]);
 
@@ -88,13 +114,17 @@ export default function App() {
             setAuthToken(tokenInput.trim());
             setTokenInput("");
             refresh();
-            api.config().then(setConfig).catch(() => {});
+            api
+              .config()
+              .then(setConfig)
+              .catch(() => {});
           }}
           className="w-80 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5"
         >
           <h1 className="text-sm font-bold tracking-wide text-cyan-300">understory 🌱</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            This server requires an access token (its <code className="text-zinc-300">AUTH_TOKEN</code>).
+            This server requires an access token (its{" "}
+            <code className="text-zinc-300">AUTH_TOKEN</code>).
           </p>
           <input
             type="password"
@@ -192,7 +222,9 @@ export default function App() {
       </aside>
 
       {/* Main */}
-      <main className={`min-w-0 flex-1 ${view.kind === "graph" ? "overflow-hidden" : "overflow-y-auto"}`}>
+      <main
+        className={`min-w-0 flex-1 ${view.kind === "graph" ? "overflow-hidden" : "overflow-y-auto"}`}
+      >
         {error && <p className="p-6 text-sm text-red-400">{error}</p>}
         {!error && view.kind === "empty" && (
           <div className="flex h-full items-center justify-center text-zinc-600">

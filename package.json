@@ -2,16 +2,29 @@
   "name": "understory",
   "version": "0.1.0",
   "private": true,
-  "description": "LLM-managed knowledge base following the OKF spec — MCP server + web UI",
+  "type": "module",
+  "description": "LLM-managed knowledge base following the OKF spec \u2014 MCP server + web UI",
   "scripts": {
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "dev": "pnpm --parallel -r dev",
     "agent:query": "pnpm --filter @understory/core agent:query",
-    "agent:mutate": "pnpm --filter @understory/core agent:mutate"
+    "agent:mutate": "pnpm --filter @understory/core agent:mutate",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@10.15.0"
+  "packageManager": "pnpm@10.15.0",
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "prettier": "^3.9.6",
+    "typescript-eslint": "^8.67.0"
+  }
 }

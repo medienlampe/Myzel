@@ -16,7 +16,9 @@ export function startDreamer(kb: KnowledgeBase): void {
     return;
   }
   const every = Math.max(interval, MIN_INTERVAL_MS);
-  console.log(`[understory] dreaming: every ${raw}${every !== interval ? " (clamped to 5m minimum)" : ""}`);
+  console.log(
+    `[understory] dreaming: every ${raw}${every !== interval ? " (clamped to 5m minimum)" : ""}`
+  );
 
   let busy = false;
   const timer = setInterval(async () => {

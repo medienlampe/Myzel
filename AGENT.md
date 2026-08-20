@@ -43,6 +43,7 @@ packages/core/          # zero-server, zero-express. Reusable library.
     logger.ts           #   log.md append, newest-first (spec §7)
     validate.ts         #   conformance report (spec §9)
     lint.ts / graph.ts  #   orphans, broken links, link graph
+    atomic.ts           #   writeFileAtomic — temp file + rename, used by every writer
     search.ts           #   naive keyword scan (fine into low thousands of concepts)
   src/agent/            # LLM layer
     agent.ts            #   runQuery / runMutation / streamChat (AI SDK tool loop, timed + step-capped)
@@ -76,9 +77,14 @@ Requires **Node ≥ 20** and **pnpm 10.15.0** (pinned via `packageManager`; use 
 
 ```bash
 pnpm install
+pnpm lint                  # eslint (flat config, type-unaware — tsc covers types)
+pnpm format                # prettier --write .   (format:check is what CI runs)
 pnpm build                 # tsc for core+server, tsc -b && vite build for web (topological order)
-pnpm test                  # vitest in core; typecheck + vitest in server
+pnpm test                  # vitest + typecheck in core and server; typecheck in web
 ```
+
+CI runs `pnpm install --frozen-lockfile`, then lint, format:check, build and test. Run
+`pnpm lint && pnpm format:check && pnpm test` before pushing and you will not be surprised.
 
 Run the server from source:
 
@@ -146,6 +152,8 @@ if you dirtied it.
   `.js` extension** (`./bundle.js`, not `./bundle`). `strict: true` everywhere.
 - Cross-package imports use the workspace entry point: `import { KnowledgeBase } from "@understory/core"`.
   New public symbols must be re-exported through the `index.ts` barrel of their directory.
+- Formatting is Prettier's job (`.prettierrc.json`, 100 columns) — don't hand-wrap against it, and
+  don't reformat unrelated lines. Lint is `eslint.config.js`, deliberately type-unaware.
 - Comments explain **why**, not what — see the existing files. Match that density: a short block
   comment above a module or a non-obvious decision, no line-by-line narration.
 - Errors from the bundle layer are `BundleError` with a typed `code`; API layers map the code to
@@ -216,12 +224,12 @@ if you dirtied it.
   prompt on a shared instance. Use `clearQueryCache()` / `clearHotMemory()` in tests.
 - **The query cache is invalidated by a bundle fingerprint** (path + mtime + size of every concept),
   not by write hooks. Out-of-band edits are picked up; sub-millisecond same-size edits are not.
-- **`graph.ts` stashes `_body` on nodes and deletes it** before returning — don't rely on node
-  object identity across `scanGraph`.
 - **The dreamer's first run is one interval after boot**, never at startup, and `DREAM_INTERVAL`
   is clamped to a 5-minute minimum. It is opt-in; unset means zero background token spend.
-- **`normalizeMutation` in `dream.ts` accepts two return shapes** (`MutationResult` and
-  `MutationOutcome`) — a merge-conflict-avoidance leftover. Collapse it when touching that file.
+- **`log.md` is parsed and re-rendered on every append**, not patched with string replacement, and
+  anything not matching the heading/bullet grammar is dropped. That is deliberate: the file is
+  generated (spec §7), and an LLM-written summary must not be able to steer where the next bullet
+  lands. Concept, index and log writes all go through `writeFileAtomic` (temp file + rename).
 - **Web `MarkdownRenderer` uses `dangerouslySetInnerHTML`** for Shiki output. That is safe only
   because Shiki escapes its input; don't route any other HTML through that path.
 

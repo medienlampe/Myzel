@@ -52,19 +52,25 @@ export async function buildSeedMemory(kb: KnowledgeBase): Promise<string> {
   // Log summaries are written by the agent from user-supplied knowledge.
   const recent = log
     .slice(0, 3)
-    .map((e) => `- ${sanitizeInline(e.date, 20)} ${sanitizeInline(e.action, 20)}: ${sanitizeInline(e.summary, 200)}`);
+    .map(
+      (e) =>
+        `- ${sanitizeInline(e.date, 20)} ${sanitizeInline(e.action, 20)}: ${sanitizeInline(e.summary, 200)}`
+    );
 
   const sections = [
-    `Concept types in use: ${types.map((t) => sanitizeInline(t, 60)).filter(Boolean).join(", ") || "(none yet)"}`,
+    `Concept types in use: ${
+      types
+        .map((t) => sanitizeInline(t, 60))
+        .filter(Boolean)
+        .join(", ") || "(none yet)"
+    }`,
     `Memory segments:\n${segments.join("\n") || "(empty — nothing stored yet)"}`,
   ];
   if (recent.length > 0) sections.push(`Recent activity:\n${recent.join("\n")}`);
 
   let seed = sections.join("\n\n");
   if (seed.length > MAX_SEED_CHARS) {
-    seed =
-      seed.slice(0, MAX_SEED_CHARS) +
-      "\n… (truncated — use memory_query to explore further)";
+    seed = seed.slice(0, MAX_SEED_CHARS) + "\n… (truncated — use memory_query to explore further)";
   }
   return seed;
 }

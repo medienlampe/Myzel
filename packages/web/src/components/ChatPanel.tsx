@@ -40,7 +40,10 @@ export function ChatPanel({
         {config && (
           <div className="ml-auto flex items-center gap-1.5">
             {config.fallbackConfigured && (
-              <span title="Fallback model configured" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span
+                title="Fallback model configured"
+                className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+              />
             )}
             {config.modelOverride ? (
               <input
@@ -64,8 +67,8 @@ export function ChatPanel({
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {messages.length === 0 && (
           <p className="p-4 text-sm text-zinc-500">
-            Test the knowledge agent here — ask a question, or tell it something worth
-            remembering. Tool calls show inline so you can watch it work.
+            Test the knowledge agent here — ask a question, or tell it something worth remembering.
+            Tool calls show inline so you can watch it work.
           </p>
         )}
         {messages.map((m) => (

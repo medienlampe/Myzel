@@ -12,9 +12,7 @@ let root: string;
 let kb: KnowledgeBase;
 
 function fakeRunner(answer: string) {
-  return vi.fn(
-    async (): Promise<QueryResult> => ({ answer, steps: 1, traceId: "t" })
-  );
+  return vi.fn(async (): Promise<QueryResult> => ({ answer, steps: 1, traceId: "t" }));
 }
 
 beforeEach(async () => {
@@ -47,7 +45,12 @@ describe("runQueryCached", () => {
   it("invalidates when the bundle changes", async () => {
     const runner = fakeRunner("answer");
     await runQueryCached(kb, "what is A?", {}, runner);
-    await kb.writeConcept("/facts/b.md", { type: "Fact", title: "B" }, "beta — longer content", "add");
+    await kb.writeConcept(
+      "/facts/b.md",
+      { type: "Fact", title: "B" },
+      "beta — longer content",
+      "add"
+    );
     const after = await runQueryCached(kb, "what is A?", {}, runner);
     expect(after.cached).toBe(false);
     expect(runner).toHaveBeenCalledTimes(2);

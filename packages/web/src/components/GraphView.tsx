@@ -26,7 +26,16 @@ interface SimLink {
 }
 
 // Channel palette, assigned to types in first-seen order.
-const PALETTE = ["#64c8ff", "#a78bfa", "#34d399", "#fbbf24", "#f87171", "#f472b6", "#2dd4bf", "#a3e635"];
+const PALETTE = [
+  "#64c8ff",
+  "#a78bfa",
+  "#34d399",
+  "#fbbf24",
+  "#f87171",
+  "#f472b6",
+  "#2dd4bf",
+  "#a3e635",
+];
 
 const KIND_COLOR: Record<TraceSummary["kind"], string> = {
   query: "#64c8ff",
@@ -74,7 +83,12 @@ export function GraphView({
   const [activeTrace, setActiveTrace] = useState<QueryTrace | null>(null);
   const [progress, setProgress] = useState(100); // path scrubber, 0–100
   const [playing, setPlaying] = useState(false);
-  const dragRef = useRef<{ mode: "node" | "pan"; node?: SimNode; lastX: number; lastY: number } | null>(null);
+  const dragRef = useRef<{
+    mode: "node" | "pan";
+    node?: SimNode;
+    lastX: number;
+    lastY: number;
+  } | null>(null);
 
   // Auto-play: sweep the scrubber to 100, then stop.
   useEffect(() => {
@@ -116,14 +130,20 @@ export function GraphView({
         .force("charge", forceManyBody().strength(-220))
         .force("link", forceLink<SimNode, SimLink>(simLinks).distance(90).strength(0.6))
         .force("center", forceCenter(width / 2, height / 2))
-        .force("collide", forceCollide<SimNode>((n) => radius(n) + 6))
+        .force(
+          "collide",
+          forceCollide<SimNode>((n) => radius(n) + 6)
+        )
         .on("tick", () => setTick((t) => t + 1));
       simRef.current = sim;
       setNodes(simNodes);
       setLinks(simLinks);
       setView({ x: 0, y: 0, k: 1 });
     });
-    api.traces().then(setTraces).catch(() => {});
+    api
+      .traces()
+      .then(setTraces)
+      .catch(() => {});
     return () => {
       cancelled = true;
       simRef.current?.stop();
@@ -319,7 +339,9 @@ export function GraphView({
                   />
                   <span className="truncate text-zinc-200">{t.input}</span>
                 </div>
-                <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-500">{t.notation}</div>
+                <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-500">
+                  {t.notation}
+                </div>
               </button>
             ))}
           </div>
@@ -383,7 +405,8 @@ export function GraphView({
 
       {!activeTrace && (
         <div className="absolute bottom-3 left-3 z-10 text-[11px] text-zinc-600">
-          {nodes.length} concepts · {links.length} links — drag background to pan · scroll to zoom · click to open
+          {nodes.length} concepts · {links.length} links — drag background to pan · scroll to zoom ·
+          click to open
         </div>
       )}
 
@@ -420,7 +443,15 @@ export function GraphView({
         onWheel={onWheel}
       >
         <defs>
-          <marker id="path-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <marker
+            id="path-arrow"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="7"
+            markerHeight="7"
+            orient="auto-start-reverse"
+          >
             <path d="M 0 1 L 9 5 L 0 9 z" fill={pathColor} />
           </marker>
         </defs>
@@ -476,8 +507,22 @@ export function GraphView({
                 />
                 {complete && (
                   <>
-                    <circle cx={cx} cy={cy} r={9 / view.k} fill="#18181b" stroke={pathColor} strokeWidth={1.5 / view.k} />
-                    <text x={cx} y={cy + 3.5 / view.k} textAnchor="middle" fill={pathColor} fontSize={10 / view.k} fontWeight={700}>
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={9 / view.k}
+                      fill="#18181b"
+                      stroke={pathColor}
+                      strokeWidth={1.5 / view.k}
+                    />
+                    <text
+                      x={cx}
+                      y={cy + 3.5 / view.k}
+                      textAnchor="middle"
+                      fill={pathColor}
+                      fontSize={10 / view.k}
+                      fontWeight={700}
+                    >
                       {i + 1}
                     </text>
                   </>
@@ -510,17 +555,39 @@ export function GraphView({
                 onClick={() => onNavigate(n.path)}
               >
                 {n.links === 0 && (
-                  <circle r={r + 3} fill="none" stroke="#ef4444" strokeWidth={1.5 / view.k} opacity={0.8} />
+                  <circle
+                    r={r + 3}
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth={1.5 / view.k}
+                    opacity={0.8}
+                  />
                 )}
                 {reached && (
-                  <circle r={r + 5} fill="none" stroke={pathColor} strokeWidth={2 / view.k} opacity={0.9} />
+                  <circle
+                    r={r + 5}
+                    fill="none"
+                    stroke={pathColor}
+                    strokeWidth={2 / view.k}
+                    opacity={0.9}
+                  />
                 )}
                 {isSearchHit && (
-                  <circle r={r + 4} fill="none" stroke={pathColor} strokeWidth={1 / view.k} strokeDasharray={`${3 / view.k} ${3 / view.k}`} opacity={0.5} />
+                  <circle
+                    r={r + 4}
+                    fill="none"
+                    stroke={pathColor}
+                    strokeWidth={1 / view.k}
+                    strokeDasharray={`${3 / view.k} ${3 / view.k}`}
+                    opacity={0.5}
+                  />
                 )}
                 <circle r={r + 5} fill={color} opacity={hovered === n.path ? 0.25 : 0} />
                 <circle r={r} fill={color} stroke="#18181b" strokeWidth={1.5} />
-                {(showAllLabels || hovered === n.path || onPath || (neighbors?.has(n.path) ?? false)) && (
+                {(showAllLabels ||
+                  hovered === n.path ||
+                  onPath ||
+                  (neighbors?.has(n.path) ?? false)) && (
                   <text
                     y={r + 14 / view.k}
                     textAnchor="middle"

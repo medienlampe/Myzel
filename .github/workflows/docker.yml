@@ -21,7 +21,11 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install
+      # --frozen-lockfile: CI must fail on a lockfile that does not match
+      # package.json, not silently resolve a different dependency tree.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm -r build
       - run: pnpm test
 

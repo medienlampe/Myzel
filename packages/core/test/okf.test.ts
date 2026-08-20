@@ -9,7 +9,6 @@ import {
   parseDoc,
   replaceSection,
   validateBundle,
-  regenerateIndex,
   readLog,
   searchBundle,
   lintBundle,
@@ -31,7 +30,13 @@ describe("frontmatter round-trip", () => {
   it("writes and reads a concept preserving fields, stamping timestamp", async () => {
     const written = await kb.writeConcept(
       "/tables/customers.md",
-      { type: "BigQuery Table", title: "Customers", description: "Core customer table", tags: ["crm"], custom_key: 42 },
+      {
+        type: "BigQuery Table",
+        title: "Customers",
+        description: "Core customer table",
+        tags: ["crm"],
+        custom_key: 42,
+      },
       "# Schema\n\nid, name, email",
       "Added customers table concept."
     );
@@ -50,9 +55,9 @@ describe("frontmatter round-trip", () => {
   });
 
   it("rejects reserved filenames as concepts", async () => {
-    await expect(
-      kb.writeConcept("/index.md", { type: "T" }, "body", "log")
-    ).rejects.toMatchObject({ code: "RESERVED_NAME" });
+    await expect(kb.writeConcept("/index.md", { type: "T" }, "body", "log")).rejects.toMatchObject({
+      code: "RESERVED_NAME",
+    });
     await expect(
       kb.writeConcept("/sub/log.md", { type: "T" }, "body", "log")
     ).rejects.toMatchObject({ code: "RESERVED_NAME" });
@@ -213,7 +218,10 @@ describe("patch", () => {
     );
     const patched = await kb.patchConcept(
       "/doc.md",
-      { frontmatter: { tags: ["a", "b"] }, replaceSection: { heading: "Schema", content: "new schema" } },
+      {
+        frontmatter: { tags: ["a", "b"] },
+        replaceSection: { heading: "Schema", content: "new schema" },
+      },
       "Updated schema section."
     );
     expect(patched.frontmatter.tags).toEqual(["a", "b"]);
@@ -289,7 +297,12 @@ describe("lint (graph health)", () => {
     // hub is linked-to; spoke links out but nothing links back to it; lonely is isolated.
     await kb.writeConcept("/hub.md", { type: "T", title: "Hub" }, "The central concept.", "add");
     await kb.writeConcept("/spoke.md", { type: "T", title: "Spoke" }, "See [Hub](/hub.md).", "add");
-    await kb.writeConcept("/lonely.md", { type: "T", title: "Lonely" }, "Nothing here links out.", "add");
+    await kb.writeConcept(
+      "/lonely.md",
+      { type: "T", title: "Lonely" },
+      "Nothing here links out.",
+      "add"
+    );
 
     const report = await lintBundle(kb.bundle);
     const orphanPaths = report.orphans.map((o) => o.path).sort();
@@ -316,7 +329,12 @@ describe("lint (graph health)", () => {
 
 describe("graph export", () => {
   it("returns nodes with metadata/degree and deduped edges", async () => {
-    await kb.writeConcept("/a.md", { type: "T", title: "A", description: "alpha" }, "See [B](/b.md) and again [B](/b.md).", "add");
+    await kb.writeConcept(
+      "/a.md",
+      { type: "T", title: "A", description: "alpha" },
+      "See [B](/b.md) and again [B](/b.md).",
+      "add"
+    );
     await kb.writeConcept("/b.md", { type: "U", title: "B" }, "Back to [A](/a.md).", "add");
     await kb.writeConcept("/c.md", { type: "T", title: "C" }, "island", "add");
 

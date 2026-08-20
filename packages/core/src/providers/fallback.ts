@@ -123,8 +123,12 @@ function getDeepErrorCode(err: unknown): string | undefined {
 /** Undici/Node transport error codes. */
 function isTransportCode(code: string): boolean {
   const codes = [
-    "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND",
-    "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT",
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ETIMEDOUT",
+    "ENOTFOUND",
+    "UND_ERR_CONNECT_TIMEOUT",
+    "UND_ERR_HEADERS_TIMEOUT",
     "UND_ERR_SOCKET",
   ];
   return codes.includes(code);

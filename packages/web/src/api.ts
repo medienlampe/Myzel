@@ -97,7 +97,10 @@ export function authHeaders(): Record<string, string> {
 }
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(
+    public readonly status: number,
+    message: string
+  ) {
     super(message);
     this.name = "ApiError";
   }

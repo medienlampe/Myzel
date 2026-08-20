@@ -6,12 +6,31 @@ body {
   @apply bg-zinc-950 text-zinc-100 antialiased;
 }
 
-.markdown h1 { @apply text-xl font-bold mt-6 mb-2 text-cyan-300; }
-.markdown h2 { @apply text-lg font-semibold mt-5 mb-2; }
-.markdown p { @apply my-2 leading-relaxed; }
-.markdown ul, .markdown ol { @apply my-2 ml-5 list-disc space-y-1; }
-.markdown code { @apply bg-zinc-800 px-1 py-0.5 rounded text-sm text-amber-300; }
-.markdown pre { @apply bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto; }
-.markdown pre code { @apply bg-transparent p-0 text-zinc-200; }
-.markdown a { @apply text-cyan-400 hover:underline; }
-.markdown table { @apply my-3 text-sm; }
+.markdown h1 {
+  @apply text-xl font-bold mt-6 mb-2 text-cyan-300;
+}
+.markdown h2 {
+  @apply text-lg font-semibold mt-5 mb-2;
+}
+.markdown p {
+  @apply my-2 leading-relaxed;
+}
+.markdown ul,
+.markdown ol {
+  @apply my-2 ml-5 list-disc space-y-1;
+}
+.markdown code {
+  @apply bg-zinc-800 px-1 py-0.5 rounded text-sm text-amber-300;
+}
+.markdown pre {
+  @apply bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto;
+}
+.markdown pre code {
+  @apply bg-transparent p-0 text-zinc-200;
+}
+.markdown a {
+  @apply text-cyan-400 hover:underline;
+}
+.markdown table {
+  @apply my-3 text-sm;
+}

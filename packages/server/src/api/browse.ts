@@ -17,9 +17,9 @@ export function browseRouter(kb: KnowledgeBase): Router {
   });
 
   router.get("/concept", async (req, res) => {
-    const path = String(req.query.path ?? "");
+    const conceptPath = String(req.query.path ?? "");
     try {
-      res.json(await kb.readConcept(path));
+      res.json(await kb.readConcept(conceptPath));
     } catch (err) {
       if (err instanceof BundleError) {
         res.status(err.code === "NOT_FOUND" ? 404 : 400).json({ error: err.message });
