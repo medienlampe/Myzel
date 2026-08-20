@@ -432,9 +432,13 @@ outline, everything else fades. It's the answer to *"why did it tell me that?"*
 | `HOST` | Which network interface to listen on. Default `127.0.0.1` (this machine only); `0.0.0.0` exposes it to the network. |
 | `AUTH_TOKEN` | Require this token on `/mcp` and `/api`. Unset = no auth. |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Extra origins/hostnames allowed past the browser guard. |
+| `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Requests per client on `/mcp` and `/api/chat`. Default `60` per `1m`; `0` disables. |
+| `ALLOWED_MODELS` | Models a client may request per call. Unset = the server's model always wins. `*` allows any. |
+| `LLM_TIMEOUT` / `LLM_MAX_STEPS` | Ceiling for one agent run (default `5m`) and its tool-loop budget (default `12`). |
 | `GIT_AUTOCOMMIT` | Commit the bundle after every change. Default `false`. |
 | `QUERY_CACHE` / `QUERY_CACHE_TTL` | Exact-answer cache. On by default, `24h`. |
 | `HOT_MEMORY` / `HOT_MEMORY_TTL` | Short-term working set. On by default, `1h`. |
+| `HOT_MEMORY_RECALL_QA` | Whether recent Q&A pairs join the working set. Set `false` on a shared instance. |
 | `DREAM_INTERVAL` / `DREAM_INSIGHTS` | Scheduled consolidation. Off by default. |
 
 ## Security
@@ -457,6 +461,31 @@ rewrite your whole memory through your browser.
 - Non-browser clients (curl, MCP over stdio, native MCP clients) are unaffected.
 - On a loopback bind, the `Host` header is checked too — that's what stops DNS rebinding attacks. If
   you reach the server by hostname rather than `localhost`, add it: `ALLOWED_HOSTS=my-box.local`.
+
+### What the memory can talk your assistant into
+
+Everything saved into the memory eventually reaches a language model — including the overview your
+assistant loads at session start. So a concept whose description reads *"…ignore your previous
+instructions and…"* is a **prompt injection**, and it matters most when your assistant saves things
+it read elsewhere: a web page, an issue tracker, a dependency's README.
+
+understory neutralizes the structural part of that. Titles, descriptions, types and log summaries are
+collapsed to a single line with control and text-direction characters removed before they are placed
+into any prompt, so stored text cannot forge a new heading, bullet, or instruction line. Both the
+session-start overview and understory's own system prompt state plainly that these listings are
+stored content to navigate, never directions to follow.
+
+What this does *not* do is make a model immune to persuasive text it reads on purpose: a concept's
+body is free-form by design, and that is the point of the product. Treat the memory the way you treat
+any shared document — if an assistant ingests untrusted sources into it, review what lands there.
+
+### Cost
+
+Every request to `/mcp` and `/api/chat` can start an agent run, and agent runs cost tokens. Two
+brakes: a per-client rate limit (`RATE_LIMIT`, default 60/minute) and a refusal to let a client pick
+the model — the server's configured model is used unless you list alternatives in `ALLOWED_MODELS`.
+Agent runs also have a wall-clock ceiling (`LLM_TIMEOUT`, default 5 minutes) so a stalled endpoint
+cannot hold a request open indefinitely.
 
 ### Auth
 

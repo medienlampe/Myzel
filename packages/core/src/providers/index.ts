@@ -1,6 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
+import { parseDuration } from "../util/duration.js";
 
 type ResolvedLanguageModel = Extract<LanguageModel, { doGenerate: unknown }>;
 
@@ -150,7 +151,13 @@ export function resolveFallbackConfig(env: NodeJS.ProcessEnv = process.env): Mod
 // session that the user swapped which model (e.g. via llama-swap) has
 // loaded (a process-lifetime cache would never see that again).
 const DISCOVERY_TTL_MS = 60_000;
+const DEFAULT_DISCOVERY_TIMEOUT_MS = 10_000;
 const discoveryCache = new Map<string, { promise: Promise<string>; expiresAt: number }>();
+
+/** Discovery talks to a possibly-unreachable local endpoint — never hang on it. */
+function discoveryTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return parseDuration(env.LLM_DISCOVERY_TIMEOUT) ?? DEFAULT_DISCOVERY_TIMEOUT_MS;
+}
 
 /**
  * Auto-discover the model id from an OpenAI-compatible /v1/models endpoint.
@@ -165,7 +172,13 @@ export async function discoverLlamaCppModel(baseURL: string): Promise<string> {
     return cached.promise;
   }
   const promise = (async () => {
-    const res = await fetch(`${url}/models`);
+    let res: Response;
+    try {
+      res = await fetch(`${url}/models`, { signal: AbortSignal.timeout(discoveryTimeoutMs()) });
+    } catch (err) {
+      const reason = (err as Error).name === "TimeoutError" ? "timed out" : (err as Error).message;
+      throw new Error(`Model discovery failed: ${reason} at ${url}/models`);
+    }
     if (!res.ok) {
       throw new Error(`Model discovery failed: ${res.status} at ${url}/models`);
     }

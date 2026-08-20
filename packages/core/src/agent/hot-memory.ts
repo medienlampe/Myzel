@@ -25,39 +25,65 @@ const MAX_QAS = 10;
 const DEFAULT_TTL_MS = 3_600_000;
 const MAX_EXCERPT_CHARS = 1500;
 
-// Module-level: survives per-request McpServer instances (stateless HTTP).
-const hotConcepts = new Map<string, number>(); // path → touchedAt
-let hotQAs: HotQA[] = [];
+/**
+ * Module-level state, so it survives the per-request McpServer instances of the
+ * stateless HTTP transport — but partitioned by bundle root. Without that
+ * partition two KnowledgeBases in one process (tests, any future multi-bundle
+ * server) would collide on identical concept paths like "/notes.md" and read
+ * each other's content.
+ *
+ * Note what is still shared *within* one bundle: every caller of that bundle
+ * sees the same working set. Hot concepts are simply bundle content, which all
+ * callers may read anyway. Hot Q&A pairs are another caller's conversation, so
+ * on an instance serving several people set HOT_MEMORY_RECALL_QA=false.
+ */
+interface HotState {
+  concepts: Map<string, number>; // path → touchedAt
+  qas: HotQA[];
+}
+
+const states = new Map<string, HotState>();
+
+function stateFor(scope: string): HotState {
+  let state = states.get(scope);
+  if (!state) {
+    state = { concepts: new Map(), qas: [] };
+    states.set(scope, state);
+  }
+  return state;
+}
 
 /** Called by the write tools after any concept write/patch. */
-export function recordHotWrite(path: string): void {
-  hotConcepts.delete(path);
-  hotConcepts.set(path, Date.now());
-  while (hotConcepts.size > MAX_CONCEPTS) {
-    const oldest = hotConcepts.keys().next().value;
+export function recordHotWrite(scope: string, path: string): void {
+  const state = stateFor(scope);
+  state.concepts.delete(path);
+  state.concepts.set(path, Date.now());
+  while (state.concepts.size > MAX_CONCEPTS) {
+    const oldest = state.concepts.keys().next().value;
     if (oldest === undefined) break;
-    hotConcepts.delete(oldest);
+    state.concepts.delete(oldest);
   }
   // A write may contradict previous answers — drop them.
-  hotQAs = [];
+  state.qas = [];
 }
 
 /** Called on deletes: the concept leaves the hot set; answers may be stale. */
-export function recordHotDelete(path: string): void {
-  hotConcepts.delete(path);
-  hotQAs = [];
+export function recordHotDelete(scope: string, path: string): void {
+  const state = stateFor(scope);
+  state.concepts.delete(path);
+  state.qas = [];
 }
 
 /** Called after a deep query completes. */
-export function recordHotQuery(question: string, answer: string): void {
-  hotQAs.push({ question, answer, at: Date.now() });
-  if (hotQAs.length > MAX_QAS) hotQAs = hotQAs.slice(-MAX_QAS);
+export function recordHotQuery(scope: string, question: string, answer: string): void {
+  const state = stateFor(scope);
+  state.qas.push({ question, answer, at: Date.now() });
+  if (state.qas.length > MAX_QAS) state.qas = state.qas.slice(-MAX_QAS);
 }
 
-/** Test hook. */
+/** Test hook: drop every bundle's working set. */
 export function clearHotMemory(): void {
-  hotConcepts.clear();
-  hotQAs = [];
+  states.clear();
 }
 
 export type HotGenerate = (
@@ -82,9 +108,10 @@ export async function hotLookup(
   const ttl = parseDuration(process.env.HOT_MEMORY_TTL) ?? DEFAULT_TTL_MS;
   const cutoff = Date.now() - ttl;
 
+  const state = stateFor(kb.bundle.root);
   const sections: string[] = [];
 
-  for (const [path, touchedAt] of hotConcepts) {
+  for (const [path, touchedAt] of state.concepts) {
     if (touchedAt < cutoff) continue;
     try {
       const c = await kb.readConcept(path); // fresh read — never stale
@@ -94,12 +121,15 @@ export async function hotLookup(
           c.body.slice(0, MAX_EXCERPT_CHARS)
       );
     } catch {
-      hotConcepts.delete(path); // deleted behind our back
+      state.concepts.delete(path); // deleted behind our back
     }
   }
-  for (const qa of hotQAs) {
-    if (qa.at < cutoff) continue;
-    sections.push(`PREVIOUS Q&A\nQ: ${qa.question}\nA: ${qa.answer}`);
+  // Q&A pairs are another caller's conversation; a shared instance can opt out.
+  if (process.env.HOT_MEMORY_RECALL_QA !== "false") {
+    for (const qa of state.qas) {
+      if (qa.at < cutoff) continue;
+      sections.push(`PREVIOUS Q&A\nQ: ${qa.question}\nA: ${qa.answer}`);
+    }
   }
 
   if (sections.length === 0) return null;
@@ -112,7 +142,15 @@ export async function hotLookup(
     `answer confidently, reply with exactly: UNKNOWN`;
   const prompt = `RECENT MEMORY:\n\n${sections.join("\n\n---\n\n")}\n\nQUESTION: ${question}`;
 
-  const text = (await generate(system, prompt, options)).trim();
+  let text: string;
+  try {
+    text = (await generate(system, prompt, options)).trim();
+  } catch (err) {
+    // Hot memory is an optimization in front of deep memory. A failure here —
+    // including the timeout above — must degrade to a miss, never fail the query.
+    console.error(`[understory] hot memory lookup failed: ${(err as Error).message}`);
+    return null;
+  }
   if (!text || /^UNKNOWN\b/i.test(text)) return null;
   return text;
 }
@@ -133,6 +171,14 @@ const defaultGenerate: HotGenerate = async (system, prompt, options) => {
     model = await providers.createModel(options.model ? { ...cfg, model: options.model } : cfg);
   }
   const { generateText } = await import("ai");
-  const result = await generateText({ model, system, prompt, temperature: 0 });
+  const result = await generateText({
+    model,
+    system,
+    prompt,
+    temperature: 0,
+    // Hot memory sits in front of the deep agent: if it stalls, the query has
+    // gained nothing and lost everything. Cap it well below the full run.
+    abortSignal: AbortSignal.timeout(parseDuration(process.env.HOT_MEMORY_TIMEOUT) ?? 60_000),
+  });
   return result.text;
 };

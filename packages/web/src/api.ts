@@ -75,6 +75,8 @@ export interface AppConfig {
   model: string;
   format: "openai" | "anthropic" | string;
   fallbackConfigured: boolean;
+  /** False when the server refuses client-chosen models (ALLOWED_MODELS unset). */
+  modelOverride?: boolean;
 }
 
 const TOKEN_KEY = "understory-token";

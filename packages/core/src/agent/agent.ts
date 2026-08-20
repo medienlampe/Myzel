@@ -7,11 +7,31 @@ import {
   type ModelConfig,
 } from "../providers/index.js";
 import { withFallback } from "../providers/fallback.js";
+import { parseDuration } from "../util/duration.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { buildReadTools, buildWriteTools, formatTree } from "./tools.js";
 import { TraceRecorder, TraceStore } from "./trace.js";
 
-const MAX_STEPS = 12;
+const DEFAULT_MAX_STEPS = 12;
+const DEFAULT_RUN_TIMEOUT_MS = 300_000;
+
+/**
+ * Tool-loop budget. Local models often need more turns than hosted ones to
+ * land a mutation, so the ceiling is configurable rather than baked in.
+ */
+function maxSteps(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number(env.LLM_MAX_STEPS);
+  return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_MAX_STEPS;
+}
+
+/**
+ * Wall-clock ceiling for one agent run, covering the whole tool loop rather
+ * than a single request. Without it an unreachable or stalled endpoint pins a
+ * connection (and, over HTTP, a client) open indefinitely.
+ */
+function runTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return parseDuration(env.LLM_TIMEOUT) ?? DEFAULT_RUN_TIMEOUT_MS;
+}
 
 export interface AgentOptions {
   model?: string;
@@ -112,7 +132,8 @@ export async function runQuery(
       system: buildSystemPrompt(ctx),
       prompt: question,
       tools: buildReadTools(kb, recorder),
-      stopWhen: stepCountIs(MAX_STEPS),
+      stopWhen: stepCountIs(maxSteps()),
+      abortSignal: AbortSignal.timeout(runTimeoutMs()),
     });
     const trace = recorder.finalize("query", question, result.text, "success", modelChain);
     await traceStore(kb).save(trace);
@@ -142,7 +163,8 @@ export async function runMutation(
       system: buildSystemPrompt(ctx),
       prompt: instruction,
       tools: { ...buildReadTools(kb, recorder), ...buildWriteTools(kb, filesChanged, recorder) },
-      stopWhen: stepCountIs(MAX_STEPS),
+      stopWhen: stepCountIs(maxSteps()),
+      abortSignal: AbortSignal.timeout(runTimeoutMs()),
       temperature: 0.2,
     });
     const trace = recorder.finalize("mutation", instruction, result.text, "success", modelChain);
@@ -199,7 +221,8 @@ export async function streamChat(
       system: buildSystemPrompt(ctx),
       messages,
       tools: { ...buildReadTools(kb, recorder), ...buildWriteTools(kb, filesChanged, recorder) },
-      stopWhen: stepCountIs(MAX_STEPS),
+      stopWhen: stepCountIs(maxSteps()),
+      abortSignal: AbortSignal.timeout(runTimeoutMs()),
       onFinish: async ({ text }) => {
         // Persist only turns that actually touched the bundle.
         if (recorder.steps.length > 0) {

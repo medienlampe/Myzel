@@ -45,17 +45,20 @@ packages/core/          # zero-server, zero-express. Reusable library.
     lint.ts / graph.ts  #   orphans, broken links, link graph
     search.ts           #   naive keyword scan (fine into low thousands of concepts)
   src/agent/            # LLM layer
-    agent.ts            #   runQuery / runMutation / streamChat (AI SDK tool loop, MAX_STEPS=12)
+    agent.ts            #   runQuery / runMutation / streamChat (AI SDK tool loop, timed + step-capped)
     tools.ts            #   read tools + write tools handed to the model
     system-prompt.ts    #   OKF spec + operating rules + per-mode section
     query-cache.ts      #   layer 1: exact cache, fingerprint-invalidated
     hot-memory.ts       #   layer 2: recent writes + recent Q&A, one tool-free call
     dream.ts            #   autonomous consolidation pass (signals → agent instruction)
     trace.ts            #   traversal recording, persisted to <bundle>/.traces/
+    untrusted.ts        #   sanitizers for bundle content headed into a prompt
   src/providers/        # generic OpenAI-/Anthropic-compatible model config + fallback wrapper
 
 packages/server/        # Express 5 + MCP SDK
-  src/index.ts          # app wiring, CORS, auth, static web build, dreamer
+  src/index.ts          # app wiring, CORS, guards, auth, rate limit, static web build, dreamer
+  src/net-guard.ts      # Origin/Host validation + the CORS delegate
+  src/rate-limit.ts     # per-client brake on the token-spending routes
   src/mcp/server.ts     # the five MCP tools + seed memory refresh
   src/mcp/seed.ts       # session-start memory overview injected into the CLIENT model
   src/api/browse.ts     # deterministic REST browse API (never costs tokens)
@@ -126,11 +129,13 @@ if you dirtied it.
    `validate()` must stay conformant in their presence; `lint()` is where they are surfaced.
 6. **The deterministic layer (`src/okf/`) must not import from `src/agent/` or `src/providers/`.**
    The dependency arrow points one way: `okf ← agent ← server`.
-7. **Traces live in `<bundle>/.traces/`** — a dot-directory. Every bundle walker skips
+7. **Bundle content is untrusted input to every prompt.** Sanitize it at the interpolation site
+   (`sanitizeInline` / `sanitizePath`), never by trusting the writer.
+8. **Traces live in `<bundle>/.traces/`** — a dot-directory. Every bundle walker skips
    dot-entries, so traces never affect conformance, the graph, or search. Keep it that way.
-8. **stdout is the MCP protocol stream** in `mcp/stdio.ts`. All logging there goes to `stderr`.
+9. **stdout is the MCP protocol stream** in `mcp/stdio.ts`. All logging there goes to `stderr`.
    A stray `console.log` in any code path reachable from stdio corrupts the transport.
-9. **The mutation queue is per-process.** Two processes (e.g. an stdio MCP client and the HTTP
+10. **The mutation queue is per-process.** Two processes (e.g. an stdio MCP client and the HTTP
    server) pointed at the same bundle are *not* serialized against each other.
 
 ---
@@ -189,20 +194,26 @@ if you dirtied it.
   pointing outside it. Anything that reads or writes file *contents* additionally goes through
   `assertRealPathInside()`, which follows symlinks; a symlink planted in the bundle would otherwise
   turn write access into arbitrary host-file reads. Both are covered by tests in the `sandbox` suite.
-- **Prompt injection is in scope.** Bundle content flows into (a) the internal agent's system
-  prompt via `treeSummary`, (b) the MCP `instructions` field, and (c) the `memory_query` tool
-  description via `seed.ts` — i.e. straight into the *client's* context. Anything written through
-  `memory_add` is attacker-influenceable if the calling agent ingests untrusted text. Treat
-  concept titles/descriptions as untrusted data when rendering them into any prompt.
+- **Prompt injection is in scope, and there is a helper for it.** Bundle content flows into (a) the
+  internal agent's system prompt via `treeSummary`, (b) the MCP `instructions` field, and (c) the
+  `memory_query` tool description via `seed.ts` — i.e. straight into the *client's* context. Every
+  title, description, type, path and log summary on those paths goes through `sanitizeInline` /
+  `sanitizePath` from `agent/untrusted.ts` first, which collapses it to one line and strips control
+  and bidi characters so it cannot forge an instruction line. **If you interpolate bundle content
+  into any new prompt, sanitize it there too**, and keep `UNTRUSTED_CONTENT_NOTICE` next to it.
+  Concept *bodies* read via `read_concept` stay free-form by design — that is the product.
 - **`AUTH_TOKEN` is still unset by default**, but the server now binds `127.0.0.1` and `net-guard.ts`
   enforces same-origin (plus `ALLOWED_ORIGINS`) on `/mcp` and `/api`, with a `Host` check against DNS
   rebinding on loopback binds. Keep the invariant when touching `index.ts`: **the guard mounts before
   `bearerAuth`**, and CORS must never reflect an origin the guard would reject. `HOST=0.0.0.0` is the
   explicit opt-in for network exposure and warns when no token is set.
 - **Module-level caches**: `query-cache.ts` and `hot-memory.ts` hold process-global state so it
-  survives the per-request `McpServer` instances of the stateless HTTP transport. They are shared
-  across all callers — remember this when reasoning about isolation, and use `clearQueryCache()` /
-  `clearHotMemory()` in tests.
+  survives the per-request `McpServer` instances of the stateless HTTP transport. Both are
+  **partitioned by bundle root** — the query-cache key includes it, and hot memory keeps one
+  `HotState` per root — because two KnowledgeBases in one process would otherwise collide on
+  identical concept paths (and two empty bundles share a fingerprint). Within one bundle the state is
+  still shared by all callers; `HOT_MEMORY_RECALL_QA=false` keeps one caller's Q&A out of another's
+  prompt on a shared instance. Use `clearQueryCache()` / `clearHotMemory()` in tests.
 - **The query cache is invalidated by a bundle fingerprint** (path + mtime + size of every concept),
   not by write hooks. Out-of-band edits are picked up; sub-millisecond same-size edits are not.
 - **`graph.ts` stashes `_body` on nodes and deletes it** before returning — don't rely on node
@@ -228,6 +239,10 @@ worth knowing:
 | `LLM_FALLBACK_*` | Optional second model, used on retryable failures. `LLM_FALLBACK_ALLOW_FOR=query` restricts it to read-only ops. |
 | `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, … | **Deprecated** legacy path in `providers/index.ts`. Still supported; don't extend it. |
 | `AUTH_TOKEN` | Bearer token for `/mcp` + `/api`. Unset = open. |
+| `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Per-client brake on `/mcp` + `/api/chat` (default 60/1m, `0` disables). |
+| `ALLOWED_MODELS` | Models a client may request. Unset = client overrides refused; `*` allows any. |
+| `LLM_TIMEOUT` / `LLM_MAX_STEPS` / `LLM_DISCOVERY_TIMEOUT` / `HOT_MEMORY_TIMEOUT` | Run ceiling (5m), tool-loop budget (12), and the two shorter timeouts. |
+| `HOT_MEMORY_RECALL_QA` | `false` drops recent Q&A pairs from the hot working set. |
 | `HOST` | Bind address. Default `127.0.0.1`; `0.0.0.0` to expose on the network (the Docker image sets it). |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Additions to the same-origin/loopback defaults of the network guard. `*` opts out. |
 | `PORT` | Default 3800. |

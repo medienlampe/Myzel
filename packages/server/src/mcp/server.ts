@@ -1,6 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { KnowledgeBase, runMutation, runQueryCached, type MutationOutcome } from "@understory/core";
+import {
+  KnowledgeBase,
+  runMutation,
+  runQueryCached,
+  sanitizeInline,
+  sanitizePath,
+  UNTRUSTED_CONTENT_NOTICE,
+  type MutationOutcome,
+} from "@understory/core";
 import { buildSeedMemory, seedInstructions } from "./seed.js";
 
 /**
@@ -25,6 +33,7 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
   const queryDescription = (s: string) =>
     `Ask a natural-language question. An internal agent searches the OKF knowledge base, ` +
     `reads relevant concepts, and answers with cited bundle paths.\n\n` +
+    `${UNTRUSTED_CONTENT_NOTICE}\n\n` +
     `CURRENT MEMORY OVERVIEW:\n${s}`;
 
   const server = new McpServer(
@@ -202,12 +211,19 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
         };
       }
 
+      // Paths and titles are stored content going into an instruction — same
+      // rule as the seed: one line each, no forged directives.
       const orphanList =
-        before.orphans.map((o) => `- ${o.path}${o.title ? ` (${o.title})` : ""}`).join("\n") ||
-        "(none)";
+        before.orphans
+          .map((o) => {
+            const title = sanitizeInline(o.title, 120);
+            return `- ${sanitizePath(o.path)}${title ? ` (${title})` : ""}`;
+          })
+          .join("\n") || "(none)";
       const brokenList =
-        before.brokenLinks.map((b) => `- ${b.path} → ${b.target} (missing)`).join("\n") ||
-        "(none)";
+        before.brokenLinks
+          .map((b) => `- ${sanitizePath(b.path)} → ${sanitizePath(b.target)} (missing)`)
+          .join("\n") || "(none)";
       const instruction =
         `Repair the knowledge graph. This is a maintenance task — use the write tools.\n\n` +
         `ORPHANED CONCEPTS (no other concept links to them). For each, read it and the ` +

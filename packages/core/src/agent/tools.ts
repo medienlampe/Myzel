@@ -4,6 +4,7 @@ import type { KnowledgeBase } from "../okf/index.js";
 import type { TreeNode } from "../okf/types.js";
 import type { TraceRecorder } from "./trace.js";
 import { recordHotDelete, recordHotWrite } from "./hot-memory.js";
+import { sanitizeInline, sanitizePath } from "./untrusted.js";
 
 /** Bundle-relative concept path, e.g. "/tables/customers.md". */
 const conceptPath = z
@@ -96,7 +97,7 @@ export function buildWriteTools(kb: KnowledgeBase, filesChanged: Set<string>, tr
       execute: async ({ path, frontmatter, body, log_summary }) => {
         const c = await kb.writeConcept(path, frontmatter, body, log_summary);
         filesChanged.add(c.path);
-        recordHotWrite(c.path);
+        recordHotWrite(kb.bundle.root, c.path);
         trace?.record("write_concept", c.path, [c.path], true);
         return { written: c.path };
       },
@@ -138,7 +139,7 @@ export function buildWriteTools(kb: KnowledgeBase, filesChanged: Set<string>, tr
           log_summary
         );
         filesChanged.add(c.path);
-        recordHotWrite(c.path);
+        recordHotWrite(kb.bundle.root, c.path);
         trace?.record("patch_concept", c.path, [c.path], true);
         return { patched: c.path };
       },
@@ -153,7 +154,7 @@ export function buildWriteTools(kb: KnowledgeBase, filesChanged: Set<string>, tr
       execute: async ({ path, log_summary }) => {
         await kb.deleteConcept(path, log_summary);
         filesChanged.add(path);
-        recordHotDelete(path);
+        recordHotDelete(kb.bundle.root, path);
         trace?.record("delete_concept", path, [path], true);
         return { deleted: path };
       },
@@ -168,11 +169,14 @@ export function formatTree(node: TreeNode, depth = 0): string {
   for (const child of node.children ?? []) {
     const indent = "  ".repeat(depth + 1);
     if (child.kind === "directory") {
-      lines.push(`${indent}${child.name}/`);
+      lines.push(`${indent}${sanitizePath(child.name)}/`);
       lines.push(formatTree(child, depth + 1));
     } else if (child.kind === "concept") {
-      const meta = [child.type, child.description].filter(Boolean).join(" — ");
-      lines.push(`${indent}${child.name}${meta ? `  [${meta}]` : ""}`);
+      // Names, types and descriptions are stored content: one line each, always.
+      const meta = [sanitizeInline(child.type, 60), sanitizeInline(child.description, 160)]
+        .filter(Boolean)
+        .join(" — ");
+      lines.push(`${indent}${sanitizePath(child.name)}${meta ? `  [${meta}]` : ""}`);
     }
   }
   return lines.filter(Boolean).join("\n");

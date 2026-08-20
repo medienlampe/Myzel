@@ -1,0 +1,24 @@
+# Keep the build context small and free of anything secret. The Dockerfile
+# COPYs only what it needs, but the whole context is still shipped to the
+# daemon and cached — .env must never be part of that.
+.env
+.env.*
+!.env.example
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+coverage
+demo-bundle
+sample-bundle/.traces
+.DS_Store
+*.log
+
+# Docs and local tooling play no part in the image.
+README.md
+AGENT.md
+LICENSE
+docker-compose*.yml
+scripts

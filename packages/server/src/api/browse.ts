@@ -1,4 +1,5 @@
 import express, { type Router } from "express";
+import { parseAllowedModels } from "./chat.js";
 import {
   BundleError,
   TraceStore,
@@ -85,6 +86,8 @@ export function browseRouter(kb: KnowledgeBase): Router {
       model: config.model,
       format: config.format,
       fallbackConfigured: fallback !== null,
+      // Lets the UI hide its model picker when the server refuses overrides.
+      modelOverride: parseAllowedModels(process.env.ALLOWED_MODELS).length > 0,
     });
   });
 

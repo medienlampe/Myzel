@@ -1,6 +1,7 @@
 import type { KnowledgeBase } from "../okf/index.js";
 import type { GraphNode } from "../okf/graph.js";
 import { runMutation, type AgentOptions } from "./agent.js";
+import { sanitizeInline, sanitizePath } from "./untrusted.js";
 
 export interface DreamReport {
   ran: boolean;
@@ -44,13 +45,20 @@ export async function runDream(
     signals.push(
       `ORPHANED CONCEPTS (nothing links to them). Read each and wire it into genuinely ` +
         `related concepts; if it relates to nothing, leave it alone:\n` +
-        lint.orphans.map((o) => `- ${o.path}${o.title ? ` (${o.title})` : ""}`).join("\n")
+        lint.orphans
+          .map((o) => {
+            const title = sanitizeInline(o.title, 120);
+            return `- ${sanitizePath(o.path)}${title ? ` (${title})` : ""}`;
+          })
+          .join("\n")
     );
   }
   if (lint.brokenLinks.length > 0) {
     signals.push(
       `BROKEN LINKS (target missing). Fix the path if the target moved, remove the link if it is gone:\n` +
-        lint.brokenLinks.map((b) => `- ${b.path} → ${b.target}`).join("\n")
+        lint.brokenLinks
+          .map((b) => `- ${sanitizePath(b.path)} → ${sanitizePath(b.target)}`)
+          .join("\n")
     );
   }
   if (dupes.length > 0) {
@@ -59,7 +67,7 @@ export async function runDream(
         `same thing, merge the content into the better-placed concept, update anything that ` +
         `linked to the removed one, and delete the duplicate (deletion IS authorized for true ` +
         `duplicates after merging). If they are genuinely distinct, cross-link them instead:\n` +
-        dupes.map((d) => `- ${d.a} ↔ ${d.b}`).join("\n")
+        dupes.map((d) => `- ${sanitizePath(d.a)} ↔ ${sanitizePath(d.b)}`).join("\n")
     );
   }
   if (fat.length > 0) {
@@ -70,7 +78,7 @@ export async function runDream(
         `as a hub — a short summary that links to every extracted concept. NEVER delete or ` +
         `rename the original path; other concepts link to it. If the content is one ` +
         `indivisible topic, leave it alone:\n` +
-        fat.map((f) => `- ${f.path} (${f.chars} chars, ${f.sections} sections)`).join("\n")
+        fat.map((f) => `- ${sanitizePath(f.path)} (${f.chars} chars, ${f.sections} sections)`).join("\n")
     );
   }
   if (insightsEnabled && log.length >= 5) {
@@ -79,7 +87,10 @@ export async function runDream(
         `describe one theme that has no overview concept, create ONE overview concept that ` +
         `summarizes and links them (and back-link per the rules). If nothing meaningful ` +
         `emerges, skip this — do not force an insight.\n` +
-        log.slice(0, 10).map((e) => `- ${e.date} ${e.action}: ${e.summary}`).join("\n")
+        log
+          .slice(0, 10)
+          .map((e) => `- ${sanitizeInline(e.date, 20)} ${sanitizeInline(e.action, 20)}: ${sanitizeInline(e.summary, 200)}`)
+          .join("\n")
     );
   }
 

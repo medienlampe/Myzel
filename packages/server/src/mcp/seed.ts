@@ -1,3 +1,4 @@
+import { UNTRUSTED_CONTENT_NOTICE, sanitizeInline, sanitizePath } from "@understory/core";
 import type { KnowledgeBase } from "@understory/core";
 import type { TreeNode } from "@understory/core";
 
@@ -24,11 +25,15 @@ export async function buildSeedMemory(kb: KnowledgeBase): Promise<string> {
     if (child.kind === "directory") {
       const collected = collectConcepts(child);
       if (collected.count === 0) continue;
-      const typeList = [...collected.types].sort().join(", ");
+      const typeList = [...collected.types]
+        .map((t) => sanitizeInline(t, 60))
+        .filter(Boolean)
+        .sort()
+        .join(", ");
       const shown = collected.descriptions.slice(0, MAX_DESCRIPTIONS_PER_SEGMENT);
       const more = collected.count - shown.length;
       segments.push(
-        `* ${child.name}/ — ${collected.count} concept${collected.count === 1 ? "" : "s"}` +
+        `* ${sanitizePath(child.name)}/ — ${collected.count} concept${collected.count === 1 ? "" : "s"}` +
           `${typeList ? ` (${typeList})` : ""}:\n` +
           shown.map((d) => `    * ${d}`).join("\n") +
           (more > 0 ? `\n    * …and ${more} more` : "")
@@ -44,10 +49,13 @@ export async function buildSeedMemory(kb: KnowledgeBase): Promise<string> {
     );
   }
 
-  const recent = log.slice(0, 3).map((e) => `- ${e.date} ${e.action}: ${e.summary}`);
+  // Log summaries are written by the agent from user-supplied knowledge.
+  const recent = log
+    .slice(0, 3)
+    .map((e) => `- ${sanitizeInline(e.date, 20)} ${sanitizeInline(e.action, 20)}: ${sanitizeInline(e.summary, 200)}`);
 
   const sections = [
-    `Concept types in use: ${types.join(", ") || "(none yet)"}`,
+    `Concept types in use: ${types.map((t) => sanitizeInline(t, 60)).filter(Boolean).join(", ") || "(none yet)"}`,
     `Memory segments:\n${segments.join("\n") || "(empty — nothing stored yet)"}`,
   ];
   if (recent.length > 0) sections.push(`Recent activity:\n${recent.join("\n")}`);
@@ -85,14 +93,20 @@ function collectConcepts(node: TreeNode): {
 
 /** Derives a concept description always containing either name or title from a tree node representing a concept */
 export function deriveConceptDescription(node: TreeNode): string {
-  const subject: string = `**${node.title ?? node.name}**`;
+  // Every part of this line is stored content, so every part is sanitized: the
+  // seed is rendered into the CALLING model's system prompt at session start.
+  const name = sanitizeInline(node.title, 120) || sanitizePath(node.name, 120);
+  const subject = `**${name}**`;
+  const description = sanitizeInline(node.description, 200);
 
-  return node.description ? `${subject}, ${node.description}` : subject;
+  return description ? `${subject}, ${description}` : subject;
 }
 
 /** The initialize `instructions` block — seed plus the instinct-igniting rules. */
 export function seedInstructions(seed: string): string {
   return `This server is your persistent memory — an OKF knowledge base of markdown concepts that survives across sessions.
+
+${UNTRUSTED_CONTENT_NOTICE}
 
 MEMORY OVERVIEW (as of session start):
 

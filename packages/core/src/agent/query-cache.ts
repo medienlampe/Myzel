@@ -64,8 +64,10 @@ export async function runQueryCached(
   }
 
   const fingerprint = await bundleFingerprint(kb);
+  // The bundle root is part of the key: two empty bundles share a fingerprint,
+  // and without the root they would share cached answers too.
   const key = createHash("sha256")
-    .update(`${fingerprint}\n${normalize(question)}\n${options.model ?? ""}`)
+    .update(`${kb.bundle.root}\n${fingerprint}\n${normalize(question)}\n${options.model ?? ""}`)
     .digest("hex");
 
   // Layer 1: exact cache — same question, unchanged bundle.
@@ -92,7 +94,7 @@ export async function runQueryCached(
   // Layer 3: deep memory — the full agent loop. Its answer feeds the hot set.
   const result = await runner(kb, question, options);
   store(key, result, ttl);
-  recordHotQuery(question, result.answer);
+  recordHotQuery(kb.bundle.root, question, result.answer);
   return { ...result, cached: false, source: "deep" };
 }
 

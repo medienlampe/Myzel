@@ -3,12 +3,18 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
-import { KnowledgeBase, resolveFallbackConfig, resolveModelConfig } from "@understory/core";
+import {
+  KnowledgeBase,
+  parseDuration,
+  resolveFallbackConfig,
+  resolveModelConfig,
+} from "@understory/core";
 import { mcpRouter } from "./mcp/http.js";
 import { browseRouter } from "./api/browse.js";
 import { chatRouter } from "./api/chat.js";
 import { bearerAuth } from "./auth.js";
 import { corsDelegate, isLoopbackHost, netGuard, parseList } from "./net-guard.js";
+import { rateLimit } from "./rate-limit.js";
 import { startDreamer } from "./dreamer.js";
 
 const bundleRoot = process.env.BUNDLE_ROOT;
@@ -72,6 +78,23 @@ if (authToken) {
   console.log("[understory] auth: bearer token required for /mcp and /api");
 } else {
   console.log("[understory] auth: disabled (set AUTH_TOKEN to protect /mcp and /api)");
+}
+
+// Both routers below can start an agent run, which costs tokens — brake them.
+// A malformed RATE_LIMIT must not silently disable the brake — only an
+// explicit 0 does that.
+const rateLimitRaw = Number(process.env.RATE_LIMIT);
+const rateLimitOptions = {
+  limit: Number.isFinite(rateLimitRaw) && rateLimitRaw >= 0 ? rateLimitRaw : 60,
+  windowMs: parseDuration(process.env.RATE_LIMIT_WINDOW) ?? 60_000,
+};
+if (rateLimitOptions.limit > 0) {
+  app.use(["/mcp", "/api/chat"], rateLimit(rateLimitOptions));
+  console.log(
+    `[understory] rate limit: ${rateLimitOptions.limit} requests / ${Math.round(rateLimitOptions.windowMs / 1000)}s per client on /mcp and /api/chat`
+  );
+} else {
+  console.log("[understory] rate limit: disabled (RATE_LIMIT=0)");
 }
 
 app.use("/mcp", mcpRouter(kb));

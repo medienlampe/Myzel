@@ -42,12 +42,21 @@ export function ChatPanel({
             {config.fallbackConfigured && (
               <span title="Fallback model configured" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             )}
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder={config.model}
-              className="w-32 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-300 outline-none focus:border-cyan-600"
-            />
+            {config.modelOverride ? (
+              <input
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder={config.model}
+                className="w-32 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-300 outline-none focus:border-cyan-600"
+              />
+            ) : (
+              <span
+                title="The server decides the model. Set ALLOWED_MODELS to pick one here."
+                className="text-xs text-zinc-500"
+              >
+                {config.model || "auto"}
+              </span>
+            )}
           </div>
         )}
       </div>
