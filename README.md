@@ -10,12 +10,22 @@ A long-term memory for your AI assistants — stored as plain markdown files you
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-339933.svg)](package.json)
 [![Spec](https://img.shields.io/badge/spec-OKF%20v0.1-8b5cf6.svg)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20%2B%20HTTP-f59e0b.svg)](#connect-your-agent)
+[![Forked from thecodacus/understory](https://img.shields.io/badge/forked%20from-thecodacus%2Funderstory-8957e5.svg?logo=github)](https://github.com/thecodacus/understory)
 
 [Quick start](#quick-start) · [How it works](#how-it-works) · [Troubleshooting](#troubleshooting) · [Configuration](#configuration)
 
 </div>
 
 ---
+
+> [!NOTE]
+> **Origin.** This project started as a fork of
+> [**thecodacus/understory**](https://github.com/thecodacus/understory) by
+> [@thecodacus](https://github.com/thecodacus) — the idea and the original implementation come
+> from there.
+>
+> Development continues independently in this repository, which ships its own container image
+> (`ghcr.io/medienlampe/understory`). Expect the two to diverge.
 
 Your AI coding assistant forgets everything when the session ends. Tell it about your deploy process
 on Monday, and on Tuesday you explain it again.
@@ -556,9 +566,11 @@ layer — that's what keeps it testable and trustworthy.
 ## Tests
 
 ```bash
-pnpm test    # core:   58 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
-             #                    write concurrency, providers, cache, hot memory, dreaming
+pnpm test    # core:   69 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
+             #                    write concurrency, providers, cache, hot memory,
+             #                    dreaming, prompt-injection neutralization
              # server: 25 tests — auth, network guard, seed memory (plus a typecheck)
+             # web:    typecheck
 
 # End-to-end check of the MCP stdio transport (needs SMOKE_BUNDLE + an API key)
 pnpm --filter @understory/server exec tsx scripts/mcp-smoke.mts
@@ -567,6 +579,13 @@ pnpm --filter @understory/server exec tsx scripts/mcp-smoke.mts
 Tests build real bundles in temp directories — the filesystem is never mocked. Model calls are
 injected rather than stubbed globally, so no test ever hits a real provider.
 
-## License
+## Credits and license
 
-[Apache 2.0](LICENSE)
+Started as a fork of [thecodacus/understory](https://github.com/thecodacus/understory) by
+[@thecodacus](https://github.com/thecodacus) — the design and the original implementation come from
+there. Development continues independently here.
+
+The bundle format is the [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
+an open standard published by Google Cloud Platform.
+
+Licensed [Apache 2.0](LICENSE), the same licence it was forked under.

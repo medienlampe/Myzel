@@ -10,6 +10,12 @@ Read this before touching code. It encodes the invariants that are not obvious f
 understory is an **LLM-managed knowledge base** stored as plain markdown, conforming to the
 [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 
+This repository **started as a fork of [thecodacus/understory](https://github.com/thecodacus/understory)**
+and develops independently from it. History and design decisions predating the fork live upstream —
+worth a look before concluding something here is unexplained — but do not assume the two are in sync,
+and do not port changes across without being asked. This repository publishes its own image,
+`ghcr.io/medienlampe/understory`.
+
 A "bundle" is a directory of `.md` files with YAML frontmatter. Three entry points drive the same
 internal agent against that bundle:
 
