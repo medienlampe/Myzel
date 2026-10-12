@@ -137,7 +137,7 @@ ${seed}
 
 How to use your memory:
 - BEFORE answering anything related to the topics above, call memory_query — the answer may already be stored. Prefer stored knowledge over guessing.
-- When you learn a lasting fact, decision, preference, or piece of documentation, persist it with memory_add. If it isn't stored, it will be forgotten.
+- When you learn a lasting fact, decision, preference or piece of documentation, persist it with memory_add. If it isn't stored, it will be forgotten.
 - When existing knowledge turns out to be wrong or outdated, fix it with memory_update.
 - memory_status reports size and health of the memory.`;
 }

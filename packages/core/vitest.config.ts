@@ -11,7 +11,7 @@ export default defineConfig({
       // The agent smoke CLI only wires argv to runQuery/runMutation and needs a
       // live model; everything it calls is covered on its own.
       exclude: ["src/agent/cli.ts"],
-      reporter: ["text-summary", "text", "html"],
+      reporter: ["text-summary", "text", "html", "json-summary"],
       thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
     },
   },

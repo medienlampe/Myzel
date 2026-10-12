@@ -422,7 +422,7 @@ describe("single-memory mode", () => {
     await fs.mkdir(bundle);
   });
 
-  it("is open without AUTH_TOKEN, reports its mode, and has no /admin", async () => {
+  it("is open without AUTH_TOKEN, reports its mode and has no /admin", async () => {
     const base = await serve(singleMemoryHost(new KnowledgeBase(bundle), undefined));
     expect(await (await fetch(`${base}/api/profile`)).json()).toEqual({
       mode: "single",

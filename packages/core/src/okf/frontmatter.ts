@@ -22,7 +22,7 @@ const CLOSING_FENCE = /^---[ \t]*\r?$/m;
 
 /**
  * Permissive parse (spec §9: consumers must not reject unknown keys/types).
- * Throws only if the frontmatter itself is unusable: not YAML, not a mapping,
+ * Throws only if the frontmatter itself is unusable: not YAML, not a mapping
  * or never closed.
  */
 export function parseDoc(raw: string): ParsedDoc {

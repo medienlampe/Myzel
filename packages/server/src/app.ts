@@ -62,7 +62,7 @@ export function buildApp(host: MemoryHost, options: AppOptions): App {
   });
 
   // Liveness for container health checks. Outside /api and /mcp on purpose: it
-  // needs no token, touches no memory, and reveals nothing but "up".
+  // needs no token, touches no memory and reveals nothing but "up".
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok" });
   });

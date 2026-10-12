@@ -1,6 +1,6 @@
 # Maintenance
 
-How dependencies are kept current, which versions are pinned on purpose, and the traps to check
+How dependencies are kept current, which versions are pinned on purpose and the traps to check
 for when upgrading. Day-to-day commands are in [AGENTS.md](../AGENTS.md) §3.
 
 ## Versions and why they are pinned
@@ -35,7 +35,7 @@ The same steps as one command: `make check`.
 If the Dockerfile, pnpm or the production dependencies changed, also **build and run** the image.
 A green build alone is not enough; it has happened that the image built but could not start.
 `make image-check` does this: it builds the image, starts it with dummy model settings (the server
-only validates its configuration at startup), waits for the health check, and stops it, expecting
+only validates its configuration at startup), waits for the health check and stops it, expecting
 a clean exit.
 
 ## Known traps
@@ -67,7 +67,7 @@ These cost time once. Check them again when the package in question moves.
   - a small base layer keeps the v3 border colour and the button cursor, so remove it only on
     purpose.
 - **React Compiler lint rules** (`eslint-plugin-react-hooks` 7) reject `setState` directly in
-  effects, ref reads during render, and reassignment after render. Fix the pattern rather than
+  effects, ref reads during render and reassignment after render. Fix the pattern rather than
   disabling the rule.
 - **Zod 4:** use `z.looseObject(…)` instead of `.passthrough()`, and pass both a key and a value
   schema to `z.record()`.

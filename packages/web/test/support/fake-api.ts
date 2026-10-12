@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 /**
  * A fetch stand-in for the browse/chat API. Routes match on the request path
- * ("/api/tree"); a route returns a JSON body, a Response, or a function of
+ * ("/api/tree"); a route returns a JSON body, a Response or a function of
  * the URL. Unrouted paths answer 404. Every call is recorded.
  */
 export type Route = unknown | Response | ((url: URL, init?: RequestInit) => unknown);

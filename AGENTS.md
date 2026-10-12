@@ -4,8 +4,8 @@ Working notes for coding agents (Claude Code, Cursor, Copilot, …) on **Myzel**
 Read this before touching code. It encodes the invariants that are not obvious from the file tree.
 `CLAUDE.md` is a symlink to this file — edit `AGENTS.md`, never the link.
 
-Longer-form documentation lives in [`docs/`](docs/outline.md): architecture, security model,
-dependency maintenance.
+Longer-form documentation lives in [`docs/`](docs/outline.md): user guides (running,
+configuration, how it works) plus architecture, security model and dependency maintenance.
 
 ---
 
@@ -15,7 +15,7 @@ Myzel is an **LLM-managed knowledge base** stored as plain markdown, conforming 
 [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 
 This repository **started as a fork of [thecodacus/understory](https://github.com/thecodacus/understory)**
-by [@thecodacus](https://github.com/thecodacus), was renamed to Myzel, and develops independently
+by [@thecodacus](https://github.com/thecodacus), was renamed to Myzel and develops independently
 from it. History and
 design decisions predating the fork live upstream — worth a look before concluding something here is
 unexplained — but do not assume the two are in sync, and do not port changes across without being
@@ -97,7 +97,10 @@ packages/web/           # Vite 8 + React 19 + Tailwind 4
   src/layout.ts         #   pure layout model: panel order, visibility, widths (persisted in localStorage)
   src/components/Workspace.tsx  # drag & drop + resizable columns (react-resizable-panels v4)
 sample-bundle/          # a small conformant bundle used for dev + tests
-docs/                   # outline.md → architecture, security, maintenance
+scripts/coverage-badge.mjs  # CI: merges coverage summaries into the README badge
+.github/workflows/      # ci.yml + docker.yml, both run the checks in test.yml
+docs/                   # outline.md → user guides (running, configuration, how it works)
+                        #   and architecture, security, maintenance
 ```
 
 ---
@@ -149,7 +152,7 @@ pnpm build && pnpm --filter @myzel/server exec tsx scripts/mcp-smoke.mts   # nee
 ```
 
 **Never commit to `sample-bundle/` as a side effect.** Agent runs against it mutate real files
-(`index.md`, `log.md`, concepts, and `.traces/`). The `make` targets default to `demo-bundle/`
+(`index.md`, `log.md`, concepts and `.traces/`). The `make` targets default to `demo-bundle/`
 (gitignored, copied from the sample; `make reset-demo` starts it over); without make, point
 `BUNDLE_ROOT` there yourself, and `git checkout -- sample-bundle` if you dirtied it.
 `make up` (docker compose) does mount `sample-bundle/` — mind that when testing writes. The server boots without a reachable model (only the config is validated), so
@@ -161,13 +164,13 @@ dummy `LLM_*` values are enough to exercise the UI.
 
 1. **All bundle writes go through `KnowledgeBase`**, never `Bundle` directly and never `node:fs`.
    `KnowledgeBase` is the only place that serializes mutations (`enqueue`), regenerates the
-   `index.md` ancestor chain, appends to `log.md`, and optionally git-commits. A write that
+   `index.md` ancestor chain, appends to `log.md` and optionally git-commits. A write that
    bypasses it produces a non-conformant bundle.
 2. **All path handling goes through `Bundle.resolve()` / `Bundle.toBundlePath()`.** Public methods
    take and return *bundle-relative* paths starting with `/`. Nothing may read or write outside
    `bundle.root`. If you add a method taking a caller-supplied path, sandbox it there — see §8.
-3. **`index.md` and `log.md` are reserved** (`RESERVED_FILENAMES`). They are generated, never
-   authored, and are excluded from concept listings, the graph, and search.
+3. **`index.md` and `log.md` are reserved** (`RESERVED_FILENAMES`). They are generated (never
+   authored) and are excluded from concept listings, the graph and search.
 4. **`type` is the only required frontmatter field** (spec §5). Reading is permissive — unknown
    keys and types must round-trip untouched (spec §9). Writing enforces non-empty `type`.
 5. **Frontmatter is YAML only, parsed with the YAML 1.2 core schema** (`frontmatter.ts`, on the
@@ -186,7 +189,7 @@ dummy `LLM_*` values are enough to exercise the UI.
    symlink-resolved one — and reads require `.md`. `.git` and `.traces`
    are reached only by their own modules (`okf/git.ts`, `agent/trace.ts`).
 10. **Traces live in `<bundle>/.traces/`** — a dot-directory. Every bundle walker skips
-   dot-entries **and symlinks** (`isHiddenOrLink`), so traces never affect conformance, the graph,
+   dot-entries **and symlinks** (`isHiddenOrLink`), so traces never affect conformance, the graph
    or search, and links never pull host files in. Keep it that way in any new walker.
 11. **stdout is the MCP protocol stream** in `mcp/stdio.ts`. All logging there goes to `stderr`.
     A stray `console.log` in any code path reachable from stdio corrupts the transport.
@@ -290,7 +293,7 @@ dummy `LLM_*` values are enough to exercise the UI.
   regeneration (`resolveContained`), while walkers skip symlinks entirely. A new code path that
   touches the filesystem needs the same; see [docs/security.md](docs/security.md#bundle-files).
 - **Prompt injection is in scope, and there is a helper for it.** Bundle content flows into (a) the
-  internal agent's system prompt via `treeSummary`, (b) the MCP `instructions` field, and (c) the
+  internal agent's system prompt via `treeSummary`, (b) the MCP `instructions` field and (c) the
   `memory_query` tool description via `seed.ts` — i.e. straight into the *client's* context. Every
   title, description, type, path and log summary on those paths goes through `sanitizeInline` /
   `sanitizePath` from `agent/untrusted.ts` first. **If you interpolate bundle content into any new
@@ -363,7 +366,7 @@ worth knowing:
 | `RATE_LIMIT_BROWSE` | Separate brake on the `/api` browse routes (default 600 per window, `0` disables). |
 | `TRUST_PROXY` | Express `trust proxy` (hop count or addresses) so rate limits see real clients behind a proxy. |
 | `ALLOWED_MODELS` | Models a client may request. Unset = client overrides refused; `*` allows any. |
-| `LLM_TIMEOUT` / `LLM_MAX_STEPS` / `LLM_DISCOVERY_TIMEOUT` / `HOT_MEMORY_TIMEOUT` | Run ceiling (30m), tool-loop budget (12), and the two shorter timeouts. |
+| `LLM_TIMEOUT` / `LLM_MAX_STEPS` / `LLM_DISCOVERY_TIMEOUT` / `HOT_MEMORY_TIMEOUT` | Run ceiling (30m), tool-loop budget (12) and the two shorter timeouts. |
 | `HOT_MEMORY_RECALL_QA` | `false` drops recent Q&A pairs from the hot working set. |
 | `HOST` | Bind address. Default `127.0.0.1`; `0.0.0.0` to expose on the network (the Docker image sets it). |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Additions to the same-origin/loopback defaults of the network guard. `*` opts out. |
@@ -382,6 +385,8 @@ worth knowing:
 - Match the commit style of recent history (`git log --oneline`). Upstream-era commits use
   conventional subjects (`feat: …`, `fix: …`); commits in this fork use short sentence-case
   summaries ending in a period (`Fixes further security issues.`).
-- CI (`.github/workflows/docker.yml`) runs audit, lint, format:check, build and test on every PR, then
-  builds and publishes the container on `main`/tags. Green build + green tests are the bar.
-- Don't commit `.env`, `demo-bundle/`, or a dirtied `sample-bundle/`.
+- CI (`.github/workflows/ci.yml`) runs audit, lint, format:check, build and test with coverage
+  (`test.yml`) on every push and PR, and publishes the README's coverage badge to the `badges`
+  branch from `main`. `docker.yml` runs the same checks, then builds and publishes the container
+  on `main`/tags. Green build + green tests are the bar.
+- Don't commit `.env`, `demo-bundle/` or a dirtied `sample-bundle/`.

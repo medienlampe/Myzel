@@ -9,7 +9,7 @@ import { withFallback } from "../providers/fallback.js";
 
 /**
  * Which model (chain) an agent run uses: the configured primary, an optional
- * per-call override, and the fallback when it is allowed for this mode. Shared
+ * per-call override and the fallback when it is allowed for this mode. Shared
  * by the agent runs and hot memory, so both honour the same configuration.
  */
 

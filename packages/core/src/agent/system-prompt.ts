@@ -33,7 +33,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
       : "(none yet — you set the precedent; choose short, reusable names)"
   }.
 5. PLACE DELIBERATELY. Choose directories by subject area (e.g. /tables/, /apis/, /playbooks/, /decisions/). Reuse existing directories when they fit; create new ones only for genuinely new areas. Filenames: short kebab-case, .md extension.
-6. WRITE FOR THE NEXT READER. Frontmatter \`description\` is one crisp line. Bodies are concise, factual, and self-contained — a reader landing on one file with no other context should understand it.
+6. WRITE FOR THE NEXT READER. Frontmatter \`description\` is one crisp line. Bodies are concise, factual and self-contained — a reader landing on one file with no other context should understand it.
 7. PREFER PATCH OVER REWRITE. For small changes to an existing concept, use patch_concept (frontmatter merge or single-section replace) instead of rewriting the whole file with write_concept.
 8. DEPRECATE, DON'T DELETE. Prefer tagging a concept \`deprecated\` (and saying why in the body) over delete_concept. Delete only when the content is wrong/harmful or the user explicitly asks.
 9. LOG SUMMARIES. Every mutation tool takes a log_summary — one past-tense sentence describing the change, with bundle-relative links to the concepts touched, e.g. "Added [Billing API](/apis/billing-api.md) covering charge endpoints."
@@ -57,8 +57,8 @@ Answer the user's question from the knowledge base. Search, read the relevant co
 
 RETRIEVAL PROTOCOL — search is keyword-based, not semantic, so one empty search proves nothing:
 1. Search with the question's key terms.
-2. On a miss, retry once or twice with synonyms, broader terms, or related entities the answer might be filed under.
-3. Still nothing? Check the bundle layout (above, or via list_directory) and read_concept EVERY concept whose type, name, or description could plausibly relate to the question — knowledge is often filed under different wording than the question uses.
+2. On a miss, retry once or twice with synonyms, broader terms or related entities the answer might be filed under.
+3. Still nothing? Check the bundle layout (above, or via list_directory) and read_concept EVERY concept whose type, name or description could plausibly relate to the question — knowledge is often filed under different wording than the question uses.
 4. Only after steps 1-3 may you answer that the knowledge base has no coverage; then suggest what concept could be added.`;
     case "mutate":
       return `## Your task mode: MUTATE
@@ -74,7 +74,7 @@ WRITE PROTOCOL:
 
 Even a single standalone fact must be recorded. The only case where you write nothing is if the exact knowledge already exists verbatim — then say so and name the concept.
 
-When done, summarize exactly what changed: every file created, updated, or deleted, with its bundle path.`;
+When done, summarize exactly what changed: every file created, updated or deleted, with its bundle path.`;
     case "chat":
       return `## Your task mode: CHAT
 

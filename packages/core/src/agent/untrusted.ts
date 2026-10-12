@@ -4,14 +4,14 @@
  * Concept titles, descriptions, types and log summaries are attacker-influenced
  * data: anything an agent ingests through memory_add ends up there. Those
  * strings are then rendered into (a) the internal agent's system prompt, (b) the
- * MCP `instructions` block, and (c) the memory_query tool description -- the
+ * MCP `instructions` block and (c) the memory_query tool description -- the
  * last two landing in the *calling* model's system prompt at session start. A
  * concept whose description ends in a newline followed by "SYSTEM: ignore your
  * previous instructions" would otherwise arrive as a fresh instruction line
  * rather than as content.
  *
  * The escape that matters is the newline: without one, injected text cannot
- * start a new bullet, heading, or directive -- it stays inside the line it was
+ * start a new bullet, heading or directive -- it stays inside the line it was
  * rendered into. So the rule is one line, no control characters, no leading
  * markdown structure, bounded length. Everything else stays readable, because
  * these strings exist to help a model navigate the memory.

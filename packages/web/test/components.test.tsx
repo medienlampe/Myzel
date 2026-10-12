@@ -41,7 +41,7 @@ describe("LogView", () => {
 });
 
 describe("ConceptView", () => {
-  it("shows the frontmatter, survives odd values, and resolves relative links", async () => {
+  it("shows the frontmatter, survives odd values and resolves relative links", async () => {
     const onNavigate = vi.fn();
     render(<ConceptView concept={CONCEPT as unknown as Concept} onNavigate={onNavigate} />);
     expect(screen.getByRole("heading", { name: "Billing API" })).toBeInTheDocument();

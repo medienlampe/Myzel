@@ -8,7 +8,7 @@ import { hotGeneration, hotLookup, recordHotQuery, type HotGenerate } from "./ho
 export interface CachedQueryResult extends QueryResult {
   /** True when the answer came from the exact cache (no agent run, no trace). */
   cached: boolean;
-  /** Which memory layer answered: exact cache, hot working set, or the deep agent. */
+  /** Which memory layer answered: exact cache, hot working set or the deep agent. */
   source: "cache" | "hot" | "deep";
 }
 

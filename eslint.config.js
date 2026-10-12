@@ -48,7 +48,12 @@ export default defineConfig(
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ["packages/{core,server}/**/*.{ts,mts}", "packages/web/vite.config.ts", "*.js"],
+    files: [
+      "packages/{core,server}/**/*.{ts,mts}",
+      "packages/web/vite.config.ts",
+      "*.js",
+      "scripts/**/*.mjs",
+    ],
     languageOptions: { globals: globals.node },
   },
   prettier

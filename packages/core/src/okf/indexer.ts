@@ -153,7 +153,7 @@ function capitalize(s: string): string {
 
 /**
  * One-line deterministic summary of a directory's contents for index listings:
- * concept count, distinct types, and the first few titles — always derivable,
+ * concept count, distinct types and the first few titles — always derivable,
  * always current, no LLM.
  */
 async function summarizeDirectory(absDir: string): Promise<string> {

@@ -1,6 +1,6 @@
 # Security
 
-How Myzel defends the memory, how to deploy it without undoing that, and what is known to be
+How Myzel defends the memory, how to deploy it without undoing that and what is known to be
 left open. The rules that code changes must keep are in [AGENTS.md](../AGENTS.md) §4 and §8;
 this page explains the reasoning behind them.
 
@@ -101,7 +101,7 @@ Untrusted input arrives in five ways:
 - Titles, descriptions, types, paths and log lines are collapsed to one line and stripped of
   control and bidi characters before they reach any prompt (`agent/untrusted.ts`), so stored text
   cannot forge an instruction line. This covers the agent's system prompt, the session seed sent
-  to MCP clients, hot memory, and the maintenance and dreaming instructions.
+  to MCP clients, hot memory and the maintenance and dreaming instructions.
 - Every one of those prompts states that the listings are stored content, not instructions
   (`UNTRUSTED_CONTENT_NOTICE`).
 - `log.md` is re-rendered from a strict grammar on every append, so a summary cannot decide where

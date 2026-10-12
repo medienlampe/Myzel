@@ -23,7 +23,7 @@ flowchart LR
 | Package | Role |
 |---|---|
 | `packages/core` | Library with no server dependencies. `src/okf` is deterministic (no LLM); `src/agent` and `src/providers` hold the LLM layer. |
-| `packages/server` | Express 5 app that serves MCP over HTTP, the browse and chat APIs, and the built web UI. It also has a stdio MCP entry point. |
+| `packages/server` | Express 5 app that serves MCP over HTTP, the browse and chat APIs and the built web UI. It also has a stdio MCP entry point. |
 | `packages/web` | React 19 single-page app, built by Vite 8 and served by the server in production. |
 
 Imports point one way: `okf ← agent ← server`. The OKF layer never imports the agent, so the
@@ -36,7 +36,7 @@ correctness guarantees can be tested without a model or network.
   Content reads and writes also go through `assertRealPathInside()`, which follows symlinks.
 - **`KnowledgeBase`** is the only write path. It serializes mutations in a per-process queue. After
   each change it prunes folders left holding only their `index.md`, regenerates the chain of
-  `index.md` files up to the root, appends to `log.md`, and optionally git-commits.
+  `index.md` files up to the root, appends to `log.md` and optionally git-commits.
 - **`frontmatter.ts`** finds the `---` fence and parses its content with the `yaml` package
   (YAML 1.2 core schema), so values keep the type they were written with. Unknown keys are
   allowed (permissive), but only YAML is accepted. Output is written in a form that YAML 1.1
@@ -44,14 +44,14 @@ correctness guarantees can be tested without a model or network.
 - **`git.ts`** runs `GIT_AUTOCOMMIT` and treats the bundle's own `.git` as untrusted (see
   [Security](security.md#bundle-files)).
 - **`validate.ts`, `lint.ts`, `graph.ts`** produce the conformance report, the orphan and
-  broken-link lists, and the link graph. Broken links are warnings, never errors.
+  broken-link lists and the link graph. Broken links are warnings, never errors.
 - **`atomic.ts`** writes every file to a temp file and renames it into place, so a crash cannot
   leave a half-written file.
 
 ## 3. The agent layer (`packages/core/src/agent`)
 
 The agent is a tool loop built on the Vercel AI SDK v7 (`generateText` / `streamText`). It is
-capped at `LLM_MAX_STEPS` steps, bounded in time by `LLM_TIMEOUT`, and can be cancelled through
+capped at `LLM_MAX_STEPS` steps, bounded in time by `LLM_TIMEOUT` and can be cancelled through
 `AgentOptions.signal`.
 
 - **Tools** (`tools.ts`): `search_knowledge`, `read_concept` and listing tools for reads;
@@ -70,7 +70,7 @@ capped at `LLM_MAX_STEPS` steps, bounded in time by `LLM_TIMEOUT`, and can be ca
 
 `packages/core/src/providers` turns `LLM_*` environment variables into an OpenAI-compatible or
 Anthropic model, and `agent/model.ts` turns that into the chain each run uses: the primary, an
-optional per-call override, and the fallback. `withFallback` retries a retryable failure (timeout,
+optional per-call override and the fallback. `withFallback` retries a retryable failure (timeout,
 transport error, HTTP 408 or 5xx; 429 only with `LLM_FALLBACK_RETRY_429=true`) against the second
 model. Provider errors reach clients only as an HTTP
 status (`publicErrorMessage`).
@@ -121,7 +121,7 @@ It is sent both in the `instructions` field and in the `memory_query` tool descr
 ## 5. The web UI (`packages/web`)
 
 - `App.tsx` loads the tree, the conformance report, the log and the config, and supplies the
-  content of the three panels: **Explorer** (search and tree), **View** (concept, log or graph),
+  content of the three panels: **Explorer** (search and tree), **View** (concept, log or graph)
   and **Agent chat**. The chat's state (a `Chat` instance) is created in `App`, so it survives the
   panel remounts that layout changes cause.
 - `GraphView.tsx` draws the link graph with d3-force and replays recorded query paths.
@@ -133,7 +133,7 @@ It is sent both in the `instructions` field and in the `memory_query` tool descr
 ### The workspace layout
 
 The panels sit in resizable columns that users rearrange by drag and drop. How to use it is
-described in the [README](../README.md#quick-start); the implementation is split in two:
+described in the [README](../README.md#the-web-ui); the implementation is split in two:
 
 - **`src/layout.ts`** is the model. It is made of plain functions with no React in them
   (`movePanel`, `shiftPanel`, `togglePanel`, `visibleSizes`, `parseLayout`), and it is

@@ -27,7 +27,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Concept", level: 2 })).toBeInTheDocument();
   });
 
-  it("searches as you type, opens a hit, and says when nothing matches", async () => {
+  it("searches as you type, opens a hit and says when nothing matches", async () => {
     const fake = await renderApp();
     fireEvent.change(screen.getByLabelText("Search concepts"), { target: { value: "charges" } });
     expect(await screen.findByText("charges")).toBeInTheDocument();

@@ -33,7 +33,7 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
 
   const queryDescription = (s: string) =>
     `Ask a natural-language question. An internal agent searches the OKF knowledge base, ` +
-    `reads relevant concepts, and answers with cited bundle paths.\n\n` +
+    `reads relevant concepts and answers with cited bundle paths.\n\n` +
     `${UNTRUSTED_CONTENT_NOTICE}\n\n` +
     `CURRENT MEMORY OVERVIEW:\n${s}`;
 

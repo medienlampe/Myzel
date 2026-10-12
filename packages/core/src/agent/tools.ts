@@ -56,7 +56,7 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSe
         return {
           hits: [],
           notice:
-            "No keyword matches — but this search is literal, not semantic. The knowledge may exist under different wording. Before concluding it is absent: (1) retry with 1-2 synonyms or broader terms, (2) review the layout below and read_concept ANY concept whose type, name, or description could plausibly relate to the question.",
+            "No keyword matches — but this search is literal, not semantic. The knowledge may exist under different wording. Before concluding it is absent: (1) retry with 1-2 synonyms or broader terms, (2) review the layout below and read_concept ANY concept whose type, name or description could plausibly relate to the question.",
           bundle_layout: tree,
         };
       },

@@ -46,7 +46,7 @@ const traces = () => new TraceStore(root).list();
 const lastToolOutputs = () => JSON.stringify(llm.requests.at(-1)?.messages ?? []);
 
 describe("runQuery", () => {
-  it("searches, answers, and records the path with token usage", async () => {
+  it("searches, answers and records the path with token usage", async () => {
     llm.script([
       { toolCalls: [{ name: "search_knowledge", args: { query: "billing" } }] },
       { text: "Billing charges customers via POST /charges." },

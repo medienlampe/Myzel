@@ -14,7 +14,7 @@ export default defineConfig({
       // own; the entry points are exercised by `make image-check` and the stdio
       // smoke test.
       exclude: ["src/index.ts", "src/mcp/stdio.ts", "src/profiles-cli.ts"],
-      reporter: ["text-summary", "text", "html"],
+      reporter: ["text-summary", "text", "html", "json-summary"],
       thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
     },
   },

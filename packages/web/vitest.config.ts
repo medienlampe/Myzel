@@ -14,7 +14,7 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       // The entry point only mounts <App /> into #root.
       exclude: ["src/main.tsx"],
-      reporter: ["text-summary", "text", "html"],
+      reporter: ["text-summary", "text", "html", "json-summary"],
       thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
     },
   },

@@ -79,7 +79,7 @@ export async function runDream(
     signals.push(
       `LIKELY DUPLICATES (title/description similarity). Read each pair; if they cover the ` +
         `same thing, merge the content into the better-placed concept, update anything that ` +
-        `linked to the removed one, and delete the duplicate (deletion IS authorized for true ` +
+        `linked to the removed one and delete the duplicate (deletion IS authorized for true ` +
         `duplicates after merging). If they are genuinely distinct, cross-link them instead:\n` +
         dupes.map((d) => `- ${sanitizePath(d.a)} ↔ ${sanitizePath(d.b)}`).join("\n")
     );
