@@ -64,6 +64,8 @@ export interface TraceSummary {
   durationMs: number;
   notation: string;
   stepCount: number;
+  /** Tokens the run consumed, when the provider reported them. */
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 export interface QueryTrace extends TraceSummary {
@@ -144,8 +146,17 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Resolve an API path against the page URL, so calls stay under the prefix
+ * when the UI is served behind a path-prefixing reverse proxy
+ * (https://host/myzel/), where a root-absolute "/api/…" would escape it.
+ */
+export function apiUrl(path: string): string {
+  return new URL(path.replace(/^\//, ""), document.baseURI).toString();
+}
+
 async function get<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: authHeaders() });
+  const res = await fetch(apiUrl(url), { headers: authHeaders() });
   if (!res.ok) throw new ApiError(res.status, `${res.status} ${await res.text()}`);
   return res.json();
 }

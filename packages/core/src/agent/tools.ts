@@ -6,6 +6,9 @@ import type { TraceRecorder } from "./trace.js";
 import { recordHotDelete, recordHotWrite } from "./hot-memory.js";
 import { sanitizeInline, sanitizePath } from "./untrusted.js";
 
+/** Longest concept body handed to the model in one read_concept call. */
+const MAX_READ_CHARS = 20_000;
+
 /** Bundle-relative concept path, e.g. "/tables/customers.md". */
 const conceptPathSchema = z
   .string()
@@ -64,7 +67,13 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSe
       execute: async ({ path: conceptPath }) => {
         const c = await kb.readConcept(conceptPath);
         trace?.record("read_concept", c.path, [c.path]);
-        return { path: c.path, frontmatter: c.frontmatter, body: c.body };
+        // A synced bundle can hold huge files; every step re-sends tool output,
+        // so one of them would otherwise dominate the bill of the whole run.
+        const body =
+          c.body.length > MAX_READ_CHARS
+            ? `${c.body.slice(0, MAX_READ_CHARS)}\n\n[… truncated: ${c.body.length - MAX_READ_CHARS} more characters]`
+            : c.body;
+        return { path: c.path, frontmatter: c.frontmatter, body };
       },
     }),
     list_directory: tool({

@@ -4,13 +4,13 @@ import { publicErrorMessage } from "../providers/errors.js";
 import { parseDuration } from "../util/duration.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { buildReadTools, buildWriteTools, formatTree } from "./tools.js";
-import { TraceRecorder, TraceStore } from "./trace.js";
+import { sumUsage, TraceRecorder, TraceStore } from "./trace.js";
 import { resolveAgentModel, type AgentOptions } from "./model.js";
 
 export type { AgentOptions } from "./model.js";
 
 const DEFAULT_MAX_STEPS = 12;
-const DEFAULT_RUN_TIMEOUT_MS = 300_000;
+const DEFAULT_RUN_TIMEOUT_MS = 30 * 60_000;
 
 /**
  * Tool-loop budget. Local models often need more turns than hosted ones to
@@ -24,7 +24,9 @@ function maxSteps(env: NodeJS.ProcessEnv = process.env): number {
 /**
  * Wall-clock ceiling for one agent run, covering the whole tool loop rather
  * than a single request. Without it an unreachable or stalled endpoint pins a
- * connection (and, over HTTP, a client) open indefinitely.
+ * connection (and, over HTTP, a client) open indefinitely. The default is
+ * generous on purpose: healthy runs on local hardware were reported to take
+ * around seven minutes for a single memory_add.
  */
 function runTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   return parseDuration(env.LLM_TIMEOUT) ?? DEFAULT_RUN_TIMEOUT_MS;
@@ -92,7 +94,14 @@ export async function runQuery(
       stopWhen: stepCountIs(maxSteps()),
       abortSignal: runSignal(options),
     });
-    const trace = recorder.finalize("query", question, result.text, "success", modelChain);
+    const trace = recorder.finalize(
+      "query",
+      question,
+      result.text,
+      "success",
+      modelChain,
+      sumUsage(result.steps)
+    );
     await traceStore(kb).save(trace);
     return { answer: result.text, steps: result.steps.length, traceId: trace.id };
   } catch (err) {
@@ -125,7 +134,24 @@ export async function runMutation(
       abortSignal: runSignal(options),
       temperature: 0.2,
     });
-    const trace = recorder.finalize("mutation", instruction, result.text, "success", modelChain);
+    const usage = sumUsage(result.steps);
+    // Writing nothing while explaining why (already known, nothing to link) is
+    // a normal outcome; writing nothing AND saying nothing is a stalled model.
+    if (filesChanged.size === 0 && result.text.trim() === "") {
+      const message = "the model returned an empty response without changing any files";
+      await traceStore(kb).save(
+        recorder.finalize("mutation", instruction, message, "failed", modelChain, usage)
+      );
+      return { ok: false, status: "failed", error: message };
+    }
+    const trace = recorder.finalize(
+      "mutation",
+      instruction,
+      result.text,
+      "success",
+      modelChain,
+      usage
+    );
     await traceStore(kb).save(trace);
     return {
       ok: true,
@@ -167,6 +193,7 @@ export async function streamChat(
   const recorder = new TraceRecorder();
   const filesChanged = new Set<string>();
   let modelChain: string[] = [];
+  let failed = false;
   // The user turn that started this run, for the trace record.
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   const input =
@@ -187,11 +214,31 @@ export async function streamChat(
       tools: { ...buildReadTools(kb, recorder), ...buildWriteTools(kb, filesChanged, recorder) },
       stopWhen: stepCountIs(maxSteps()),
       abortSignal: runSignal(options),
-      onFinish: async ({ text }) => {
-        // Persist only turns that actually touched the bundle.
-        if (recorder.steps.length > 0) {
-          await traceStore(kb).save(recorder.finalize("chat", input, text, "success", modelChain));
+      onEnd: async ({ text, steps }) => {
+        // Persist only turns that actually touched the bundle — and not a
+        // second time when onError has already recorded the run as failed.
+        if (recorder.steps.length > 0 && !failed) {
+          await traceStore(kb).save(
+            recorder.finalize("chat", input, text, "success", modelChain, sumUsage(steps))
+          );
         }
+      },
+      // A run that errors or is aborted mid-way
+      // (client gone, timeout) may already have written files — record that too.
+      onError: async ({ error }) => {
+        failed = true;
+        // A custom onError replaces the SDK's console logging; keep the server log.
+        console.error("[myzel] chat run failed:", error);
+        if (recorder.steps.length === 0) return; // same rule as onEnd
+        const outcome = filesChanged.size > 0 ? "partial" : "failed";
+        await traceStore(kb).save(
+          recorder.finalize("chat", input, errorMessage(error), outcome, modelChain)
+        );
+      },
+      onAbort: async () => {
+        if (recorder.steps.length === 0) return;
+        const outcome = filesChanged.size > 0 ? "partial" : "failed";
+        await traceStore(kb).save(recorder.finalize("chat", input, "aborted", outcome, modelChain));
       },
     });
     return { result, filesChanged };

@@ -9,9 +9,15 @@ export class BundleError extends Error {
   constructor(
     message: string,
     public readonly code:
-      "OUTSIDE_BUNDLE" | "RESERVED_NAME" | "NOT_FOUND" | "INVALID_FRONTMATTER" | "NOT_MARKDOWN"
+      | "OUTSIDE_BUNDLE"
+      | "RESERVED_NAME"
+      | "NOT_FOUND"
+      | "INVALID_FRONTMATTER"
+      | "NOT_MARKDOWN"
+      | "HIDDEN_PATH",
+    options?: { cause?: unknown }
   ) {
-    super(message);
+    super(message, options);
     this.name = "BundleError";
   }
 }
@@ -68,18 +74,23 @@ export class Bundle {
    * host-file reads. Every path whose contents we are about to read or write
    * goes through here as well.
    */
-  private async assertRealPathInside(abs: string, bundlePath: string): Promise<void> {
+  private async assertRealPathInside(abs: string, bundlePath: string): Promise<string> {
     const realRoot = await this.realRoot();
     let real: string;
-    try {
-      real = await fs.realpath(abs);
-    } catch {
-      // Not on disk yet (a new concept): check the nearest existing ancestor
-      // instead, so a symlinked parent directory can't smuggle the write out.
+    // Not on disk yet (a new concept, a new directory): resolve the nearest
+    // existing ancestor instead, so a symlinked parent can't smuggle the write
+    // — or the mkdir before it — out of the bundle.
+    let existing = abs;
+    let rest = "";
+    for (;;) {
       try {
-        real = path.join(await fs.realpath(path.dirname(abs)), path.basename(abs));
+        real = path.join(await fs.realpath(existing), rest);
+        break;
       } catch {
-        return; // Nothing resolvable — the textual check already passed.
+        const parent = path.dirname(existing);
+        if (parent === existing) return abs; // Nothing resolvable — the textual check passed.
+        rest = path.join(path.basename(existing), rest);
+        existing = parent;
       }
     }
     if (!Bundle.contains(realRoot, real)) {
@@ -88,6 +99,17 @@ export class Bundle {
         "OUTSIDE_BUNDLE"
       );
     }
+    // The same rule as for typed paths: a link like notes/x.md -> ../.git/config
+    // must not reach a hidden file either.
+    if (
+      path
+        .relative(realRoot, real)
+        .split(path.sep)
+        .some((s) => s.startsWith("."))
+    ) {
+      throw new BundleError(`Path resolves into a hidden location: ${bundlePath}`, "HIDDEN_PATH");
+    }
+    return real;
   }
 
   /**
@@ -107,10 +129,29 @@ export class Bundle {
     return "/" + rel.split(path.sep).join("/");
   }
 
-  private assertConceptPath(bundlePath: string): void {
+  /**
+   * Dot-entries (.git, .traces, temp files) are not part of the knowledge base:
+   * the walkers never list them, and reading or writing them through the
+   * concept API would expose repository credentials or other callers' traces.
+   */
+  private assertVisiblePath(bundlePath: string): void {
+    if (bundlePath.split("/").some((segment) => segment.startsWith("."))) {
+      throw new BundleError(
+        `Hidden paths are not part of the bundle: ${bundlePath}`,
+        "HIDDEN_PATH"
+      );
+    }
+  }
+
+  private assertMarkdown(bundlePath: string): void {
+    this.assertVisiblePath(bundlePath);
     if (!bundlePath.endsWith(".md")) {
       throw new BundleError(`Concept paths must end in .md: ${bundlePath}`, "NOT_MARKDOWN");
     }
+  }
+
+  private assertConceptPath(bundlePath: string): void {
+    this.assertMarkdown(bundlePath);
     const base = path.posix.basename(bundlePath);
     if (RESERVED_FILENAMES.has(base)) {
       throw new BundleError(
@@ -131,19 +172,38 @@ export class Bundle {
 
   async readConcept(bundlePath: string): Promise<Concept> {
     const canonical = this.toBundlePath(bundlePath);
+    this.assertMarkdown(canonical);
     const abs = this.resolve(canonical);
-    await this.assertRealPathInside(abs, canonical);
+    const real = await this.assertRealPathInside(abs, canonical);
+    if (!real.endsWith(".md")) {
+      throw new BundleError(`Concept paths must end in .md: ${canonical}`, "NOT_MARKDOWN");
+    }
     let raw: string;
     try {
       raw = await fs.readFile(abs, "utf-8");
     } catch {
       throw new BundleError(`Concept not found: ${canonical}`, "NOT_FOUND");
     }
-    const { frontmatter, body } = parseDoc(raw);
-    return { path: canonical, frontmatter: frontmatter as ConceptFrontmatter, body, raw };
+    let parsed;
+    try {
+      parsed = parseDoc(raw);
+    } catch (err) {
+      throw new BundleError(
+        `Unreadable frontmatter in ${canonical}: ${(err as Error).message}`,
+        "INVALID_FRONTMATTER",
+        { cause: err }
+      );
+    }
+    return {
+      path: canonical,
+      frontmatter: parsed.frontmatter as ConceptFrontmatter,
+      body: parsed.body,
+      raw,
+    };
   }
 
   async readFileRaw(bundlePath: string): Promise<string> {
+    this.assertVisiblePath(this.toBundlePath(bundlePath));
     const abs = this.resolve(bundlePath);
     await this.assertRealPathInside(abs, bundlePath);
     try {
@@ -171,8 +231,8 @@ export class Bundle {
       timestamp: new Date().toISOString(),
     };
     const abs = this.resolve(canonical);
-    await fs.mkdir(path.dirname(abs), { recursive: true });
     await this.assertRealPathInside(abs, canonical);
+    await fs.mkdir(path.dirname(abs), { recursive: true });
     await writeFileAtomic(abs, serializeDoc(stamped, body));
     return { path: canonical, frontmatter: stamped, body, raw: serializeDoc(stamped, body) };
   }
@@ -319,9 +379,21 @@ export function isHiddenOrLink(entry: Dirent): boolean {
 export function replaceSection(body: string, heading: string, content: string): string {
   const normalized = heading.replace(/^#+\s*/, "");
   const lines = body.split("\n");
-  const isHeading = (line: string) => /^#\s+/.test(line);
+  // A "# comment" inside a fenced code block is code, not a heading.
+  const inFence: boolean[] = [];
+  let fence: string | null = null;
+  for (const line of lines) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    inFence.push(fence !== null || marker !== undefined);
+    if (!marker) continue;
+    if (fence === null) fence = marker;
+    // Only a fence of the same character and at least the opener's length
+    // closes it: a ``` line inside a ```` block is content.
+    else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
+  }
+  const isHeadingAt = (i: number) => !inFence[i] && /^#\s+/.test(lines[i]);
   const start = lines.findIndex(
-    (line) => isHeading(line) && line.replace(/^#\s+/, "").trim() === normalized
+    (line, i) => isHeadingAt(i) && line.replace(/^#\s+/, "").trim() === normalized
   );
   if (start === -1) {
     const suffix = body.trim().length > 0 ? "\n\n" : "";
@@ -329,7 +401,7 @@ export function replaceSection(body: string, heading: string, content: string): 
   }
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    if (isHeading(lines[i])) {
+    if (isHeadingAt(i)) {
       end = i;
       break;
     }

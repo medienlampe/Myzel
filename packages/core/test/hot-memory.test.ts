@@ -8,6 +8,7 @@ import {
   hotLookup,
   recordHotDelete,
   recordHotQuery,
+  hotGeneration,
   recordHotWrite,
 } from "../src/agent/hot-memory.js";
 import { clearQueryCache, runQueryCached } from "../src/agent/query-cache.js";
@@ -45,21 +46,32 @@ describe("hotLookup", () => {
     );
     recordHotWrite(root, "/facts/deploy.md");
 
-    const confident = vi.fn(async () => "We deploy on Fridays. (from /facts/deploy.md)");
+    const confident = vi.fn(
+      async (_system: string, _prompt: string) => "We deploy on Fridays. (from /facts/deploy.md)"
+    );
     const answer = await hotLookup(kb, "when do we deploy?", {}, confident);
     expect(answer).toContain("Fridays");
     const prompt = confident.mock.calls[0][1] as string;
     expect(prompt).toContain("/facts/deploy.md");
     expect(prompt).toContain("We deploy on Fridays.");
 
-    const unsure = vi.fn(async () => "UNKNOWN");
+    const unsure = vi.fn(async (_system: string, _prompt: string) => "UNKNOWN");
     expect(await hotLookup(kb, "what is the capital of France?", {}, unsure)).toBeNull();
   });
 
+  it("drops an answer computed across a write — it may already be stale", async () => {
+    const before = hotGeneration(root);
+    recordHotWrite(root, "/facts/x.md"); // lands while the deep query is still running
+    recordHotQuery(root, "who is on call?", "Dana (old answer)", before);
+    const generate = vi.fn(async (_system: string, _prompt: string) => "UNKNOWN");
+    await hotLookup(kb, "who is on call?", {}, generate);
+    expect(generate).not.toHaveBeenCalled(); // nothing hot: the stale Q&A never got in
+  });
+
   it("purges hot Q&As on writes and drops deleted concepts", async () => {
-    recordHotQuery(root, "q1", "a1");
+    recordHotQuery(root, "q1", "a1", hotGeneration(root));
     recordHotWrite(root, "/facts/x.md"); // any write invalidates prior answers
-    const generate = vi.fn(async () => "should not matter");
+    const generate = vi.fn(async (_system: string, _prompt: string) => "should not matter");
     // /facts/x.md doesn't exist on disk → dropped at read; Q&As purged → empty set → null.
     expect(await hotLookup(kb, "q1", {}, generate)).toBeNull();
     expect(generate).not.toHaveBeenCalled();
@@ -120,7 +132,7 @@ describe("runQueryCached layering", () => {
     await runQueryCached(kb, "meaning of life?", {}, deep, async () => null);
 
     // The recorded Q&A is now available to a real hot lookup.
-    const generate = vi.fn(async () => "42 (from previous answer)");
+    const generate = vi.fn(async (_system: string, _prompt: string) => "42 (from previous answer)");
     const answer = await hotLookup(kb, "what was the meaning of life again?", {}, generate);
     expect(answer).toContain("42");
     const prompt = generate.mock.calls[0][1] as string;
@@ -162,10 +174,10 @@ describe("hot memory isolation", () => {
   });
 
   it("HOT_MEMORY_RECALL_QA=false keeps another caller's Q&A out of the prompt", async () => {
-    recordHotQuery(root, "who is on call?", "Dana is on call.");
+    recordHotQuery(root, "who is on call?", "Dana is on call.", hotGeneration(root));
     await kb.writeConcept("/facts/rota.md", { type: "Fact" }, "Rota lives here.", "log");
     recordHotWrite(root, "/facts/rota.md"); // clears Q&As, so re-record after it
-    recordHotQuery(root, "who is on call?", "Dana is on call.");
+    recordHotQuery(root, "who is on call?", "Dana is on call.", hotGeneration(root));
 
     const seen: string[] = [];
     const capture = async (_s: string, prompt: string) => {

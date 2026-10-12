@@ -1,4 +1,30 @@
-import { redactUrl, resolveFallbackConfig, resolveModelConfig } from "@myzel/core";
+import {
+  redactUrl,
+  resolveFallbackConfig,
+  resolveModelConfig,
+  type KnowledgeBase,
+} from "@myzel/core";
+
+/**
+ * With GIT_AUTOCOMMIT, make sure commits can actually happen before serving —
+ * otherwise every mutation would report success while history silently stays
+ * empty. `log` is stderr for the stdio transport.
+ */
+export async function checkGitAutocommit(
+  kb: KnowledgeBase,
+  log: (line: string) => void
+): Promise<void> {
+  if (process.env.GIT_AUTOCOMMIT !== "true") return;
+  try {
+    await kb.ensureGitReady();
+  } catch (err) {
+    console.error(
+      `[myzel] GIT_AUTOCOMMIT=true, but autocommit cannot work: ${(err as Error).message}`
+    );
+    process.exit(1);
+  }
+  log("[myzel] git autocommit: enabled");
+}
 
 /**
  * Validate the LLM configuration at startup and log what will be used — fail

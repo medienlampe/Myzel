@@ -4,6 +4,8 @@ import type { LanguageModel } from "ai";
 import { parseDuration } from "../util/duration.js";
 import { redactUrl } from "../util/url.js";
 
+export { publicErrorMessage } from "./errors.js";
+
 type ResolvedLanguageModel = Extract<LanguageModel, { doGenerate: unknown }>;
 
 export type ApiFormat = "openai" | "anthropic";
@@ -121,7 +123,9 @@ function legacyConfig(env: NodeJS.ProcessEnv): ModelConfig | null {
   }
 
   throw new Error(
-    `Ambiguous legacy LLM configuration (${configured.join(", ")}). Set LLM_API_BASE_URL + LLM_API_KEY + LLM_API_FORMAT, or set LLM_PROVIDER explicitly.`
+    configured.length === 1
+      ? `Legacy ${configured[0]} needs LLM_PROVIDER to say which provider it is for. Better: set LLM_API_BASE_URL + LLM_API_KEY + LLM_API_FORMAT.`
+      : `Ambiguous legacy LLM configuration (${configured.join(", ")}). Set LLM_API_BASE_URL + LLM_API_KEY + LLM_API_FORMAT, or set LLM_PROVIDER explicitly.`
   );
 }
 
@@ -173,7 +177,7 @@ function discoveryTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
  * the first listed. Results are cached per URL with a 60s TTL so model
  * swaps are noticed within a session.
  */
-export async function discoverLlamaCppModel(baseURL: string): Promise<string> {
+export async function discoverModel(baseURL: string, apiKey?: string): Promise<string> {
   const url = normalizeV1(baseURL);
   const cached = discoveryCache.get(url);
   if (cached && cached.expiresAt > Date.now()) {
@@ -182,7 +186,11 @@ export async function discoverLlamaCppModel(baseURL: string): Promise<string> {
   const promise = (async () => {
     let res: Response;
     try {
-      res = await fetch(`${url}/models`, { signal: AbortSignal.timeout(discoveryTimeoutMs()) });
+      res = await fetch(`${url}/models`, {
+        // Hosted OpenAI-compatible APIs require the key here too.
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+        signal: AbortSignal.timeout(discoveryTimeoutMs()),
+      });
     } catch (err) {
       const reason = (err as Error).name === "TimeoutError" ? "timed out" : (err as Error).message;
       throw new Error(`Model discovery failed: ${reason} at ${redactUrl(url)}`, { cause: err });
@@ -195,7 +203,7 @@ export async function discoverLlamaCppModel(baseURL: string): Promise<string> {
     };
     const models = body.data ?? [];
     if (models.length === 0) {
-      throw new Error(`No models listed at ${url}/models`);
+      throw new Error(`No models listed at ${redactUrl(url)}`);
     }
     const loaded = models.find((m) => m.status?.value === "loaded");
     return (loaded ?? models[0]).id;
@@ -211,9 +219,12 @@ export async function createModel(cfg: ModelConfig): Promise<ResolvedLanguageMod
   if (!model) {
     if (cfg.format === "openai") {
       try {
-        model = await discoverLlamaCppModel(cfg.baseURL);
-      } catch {
-        throw new Error("LLM_MODEL is required for this endpoint.");
+        model = await discoverModel(cfg.baseURL, cfg.apiKey);
+      } catch (err) {
+        throw new Error(
+          `LLM_MODEL is not set and could not be discovered: ${(err as Error).message}`,
+          { cause: err }
+        );
       }
     } else {
       throw new Error("LLM_MODEL is required for this endpoint.");

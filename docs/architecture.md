@@ -35,8 +35,8 @@ correctness guarantees can be tested without a model or network.
   (`/tables/customers.md`). `resolve()` normalizes a path and rejects anything outside the root.
   Content reads and writes also go through `assertRealPathInside()`, which follows symlinks.
 - **`KnowledgeBase`** is the only write path. It serializes mutations in a per-process queue. After
-  each change it regenerates the chain of `index.md` files up to the root, appends to `log.md`,
-  and optionally git-commits.
+  each change it prunes folders left holding only their `index.md`, regenerates the chain of
+  `index.md` files up to the root, appends to `log.md`, and optionally git-commits.
 - **`frontmatter.ts`** finds the `---` fence and parses its content with the `yaml` package
   (YAML 1.2 core schema), so values keep the type they were written with. Unknown keys are
   allowed (permissive), but only YAML is accepted. Output is written in a form that YAML 1.1
@@ -63,14 +63,16 @@ capped at `LLM_MAX_STEPS` steps, bounded in time by `LLM_TIMEOUT`, and can be ca
   3. the full agent run.
 - **Dreaming** (`dream.ts`, scheduled by `server/src/dreamer.ts`) is opt-in consolidation. It runs
   only when deterministic signals (orphans, broken links, duplicates, …) say there is work to do.
-- **Traces** (`trace.ts`) are stored in `<bundle>/.traces/` and replayed in the graph view.
+- **Traces** (`trace.ts`) are stored in `<bundle>/.traces/` and replayed in the graph view, with
+  the run's token usage when the provider reports it.
 - **Untrusted content** (`untrusted.ts`): every title, description, type, path or log line that is
   placed into a prompt is collapsed to one line and stripped of control and bidi characters.
 
 `packages/core/src/providers` turns `LLM_*` environment variables into an OpenAI-compatible or
 Anthropic model, and `agent/model.ts` turns that into the chain each run uses: the primary, an
-optional per-call override, and the fallback. `withFallback` retries a retryable failure (5xx,
-timeout, transport error) against the second model. Provider errors reach clients only as an HTTP
+optional per-call override, and the fallback. `withFallback` retries a retryable failure (timeout,
+transport error, HTTP 408 or 5xx; 429 only with `LLM_FALLBACK_RETRY_429=true`) against the second
+model. Provider errors reach clients only as an HTTP
 status (`publicErrorMessage`).
 
 ## 4. The server (`packages/server`)
@@ -90,7 +92,7 @@ The middleware order in `src/index.ts` matters:
 8. routers: `/mcp` (a stateless MCP server per request, with the seed cached by bundle
    fingerprint), `/api` browse (no LLM), `/api/chat` (streaming, aborted when the client
    disconnects)
-9. the static web UI with SPA fallback
+9. the static web UI (`index.html` at `/` plus its assets; any other path is a 404)
 10. a final error handler that logs the error and returns `{ "error": "internal error" }` with no
     stack trace
 
@@ -104,7 +106,8 @@ It is sent both in the `instructions` field and in the `memory_query` tool descr
 
 - `App.tsx` loads the tree, the conformance report, the log and the config, and supplies the
   content of the three panels: **Explorer** (search and tree), **View** (concept, log or graph),
-  and **Agent chat**.
+  and **Agent chat**. The chat's state (a `Chat` instance) is created in `App`, so it survives the
+  panel remounts that layout changes cause.
 - `GraphView.tsx` draws the link graph with d3-force and replays recorded query paths.
 - `MarkdownRenderer.tsx` renders concept bodies with remark-gfm and rehype-sanitize, and
   highlights code with Shiki.

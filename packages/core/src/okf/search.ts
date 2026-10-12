@@ -32,7 +32,9 @@ export async function searchBundle(
     }
     const fm = concept.frontmatter;
 
-    if (options.type && fm.type?.toLowerCase() !== options.type.toLowerCase()) continue;
+    // Frontmatter is user data: `type: 123` parses as a number, not a string.
+    const type = typeof fm.type === "string" ? fm.type : undefined;
+    if (options.type && type?.toLowerCase() !== options.type.toLowerCase()) continue;
     if (options.tags?.length) {
       const conceptTags = (Array.isArray(fm.tags) ? fm.tags : []).map((t) =>
         String(t).toLowerCase()
@@ -65,7 +67,7 @@ export async function searchBundle(
 
     hits.push({
       path: conceptPath,
-      type: fm.type ?? "unknown",
+      type: type ?? "unknown",
       title: fm.title as string | undefined,
       description: fm.description as string | undefined,
       snippet:
@@ -90,7 +92,7 @@ export async function listTypes(bundle: Bundle): Promise<string[]> {
   for (const p of paths) {
     try {
       const { frontmatter } = await bundle.readConcept(p);
-      if (frontmatter.type) types.add(frontmatter.type);
+      if (typeof frontmatter.type === "string" && frontmatter.type) types.add(frontmatter.type);
     } catch {
       // skip
     }

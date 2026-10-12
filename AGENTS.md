@@ -108,8 +108,9 @@ pnpm build                 # tsc for core+server, tsc -b && vite build for web (
 pnpm test                  # vitest + typecheck in every package
 ```
 
-CI runs `pnpm install --frozen-lockfile`, then lint, format:check, build and test on Node 24. Run
-`pnpm lint && pnpm format:check && pnpm test` before pushing and you will not be surprised.
+CI runs `pnpm install --frozen-lockfile`, then `pnpm audit --prod --audit-level high`, lint,
+format:check, build and test on Node 24. Run `make check` before pushing and you will not be
+surprised.
 
 Run the server from source:
 
@@ -120,19 +121,21 @@ LLM_API_FORMAT=openai LLM_MODEL=deepseek-chat \
 node packages/server/dist/index.js       # → http://localhost:3800
 ```
 
-Dev mode (two terminals — server on :3800, Vite HMR on :5180 proxying `/api` and `/mcp`):
+Dev mode (server on :3800, Vite HMR on :5180 proxying `/api` and `/mcp`): `make dev`. Without
+make, run the two in separate terminals — with an **absolute** `BUNDLE_ROOT`, because
+`pnpm --filter` runs each script inside its package directory:
 
 ```bash
-BUNDLE_ROOT=./sample-bundle pnpm --filter @myzel/server dev
+BUNDLE_ROOT="$PWD/demo-bundle" pnpm --filter @myzel/server dev
 pnpm --filter @myzel/web dev
 ```
 
-Agent smoke entries (need a working `BUNDLE_ROOT` + LLM env):
+Agent smoke entries (need the LLM env, e.g. in `.env`):
 
 ```bash
-BUNDLE_ROOT=./sample-bundle pnpm agent:query  "What do we know about billing?"
-BUNDLE_ROOT=./sample-bundle pnpm agent:mutate "Record that we deploy on Fridays"
-pnpm --filter @myzel/server exec tsx scripts/mcp-smoke.mts   # needs SMOKE_BUNDLE
+make query  Q="What do we know about billing?"
+make mutate I="Record that we deploy on Fridays"
+pnpm build && pnpm --filter @myzel/server exec tsx scripts/mcp-smoke.mts   # needs SMOKE_BUNDLE
 ```
 
 **Never commit to `sample-bundle/` as a side effect.** Agent runs against it mutate real files
@@ -168,19 +171,23 @@ dummy `LLM_*` values are enough to exercise the UI.
 8. **Bundle content is untrusted input to every prompt.** Sanitize it at the interpolation site
    (`sanitizeInline` / `sanitizePath`, or `deriveConceptDescription` in `seed.ts`), never by
    trusting the writer.
-9. **Traces live in `<bundle>/.traces/`** — a dot-directory. Every bundle walker skips
+9. **The concept API never touches hidden paths.** `Bundle` refuses any path with a dot segment
+   (`HIDDEN_PATH`) for reads, writes and deletes — checked on the typed path and again on the
+   symlink-resolved one — and reads require `.md`. `.git` and `.traces`
+   are reached only by their own modules (`okf/git.ts`, `agent/trace.ts`).
+10. **Traces live in `<bundle>/.traces/`** — a dot-directory. Every bundle walker skips
    dot-entries **and symlinks** (`isHiddenOrLink`), so traces never affect conformance, the graph,
    or search, and links never pull host files in. Keep it that way in any new walker.
-10. **stdout is the MCP protocol stream** in `mcp/stdio.ts`. All logging there goes to `stderr`.
+11. **stdout is the MCP protocol stream** in `mcp/stdio.ts`. All logging there goes to `stderr`.
     A stray `console.log` in any code path reachable from stdio corrupts the transport.
-11. **The mutation queue is per-process.** Two processes (e.g. an stdio MCP client and the HTTP
+12. **The mutation queue is per-process.** Two processes (e.g. an stdio MCP client and the HTTP
     server) pointed at the same bundle are *not* serialized against each other.
-12. **The bundle's `.git` is untrusted.** Git runs only through `createBundleGit`/`autocommit`
+13. **The bundle's `.git` is untrusted.** Git runs only through `createBundleGit`/`autocommit`
     (`okf/git.ts`): fixed `-c` overrides, a refusal when repo config sets command-running keys,
     `.traces/` excluded. Never call `simpleGit()` on the bundle directly.
-13. **Every model-bound input is capped** (`server/src/limits.ts`). A new tool parameter or route
+14. **Every model-bound input is capped** (`server/src/limits.ts`). A new tool parameter or route
     that reaches a model gets a `max` from there.
-14. **The web UI must work under the server's CSP** (`script-src 'self'`, no inline scripts, no
+15. **The web UI must work under the server's CSP** (`script-src 'self'`, no inline scripts, no
     `eval`). Inline *styles* are allowed only because Shiki emits them.
 
 ---
@@ -226,7 +233,8 @@ dummy `LLM_*` values are enough to exercise the UI.
   each take an injectable runner/generate parameter for exactly this reason. Follow that pattern
   for any new LLM-touching function — do not add a test that hits a real provider. Fake models in
   tests use `specificationVersion: "v4"`; older specs get adapted by `wrapLanguageModel`.
-- `packages/server/test/` runs `tsc -p tsconfig.test.json` first (`typecheck:test`), then vitest.
+- `packages/core/test/` and `packages/server/test/` run `tsc -p tsconfig.test.json` first
+  (`typecheck:test`), then vitest — tests are typechecked like the sources.
   HTTP-level tests start a real Express app on an ephemeral port (`http.test.ts`,
   `rate-limit.test.ts`) — validation paths only, never a model call.
 - `packages/core/test/git.test.ts` needs a `git` binary and plants real attacks (fsmonitor,
@@ -285,9 +293,12 @@ dummy `LLM_*` values are enough to exercise the UI.
   unless unlocked. Expect both when changing git calls.
 - **Shutdown drains writes.** SIGTERM/SIGINT stop the HTTP server and await
   `KnowledgeBase.idle()` (8s cap); the image runs under `tini` so the signal arrives.
-- **Docker build:** production dependencies come from a clean `pnpm install --prod --offline`, not
-  `pnpm prune --prod` — prune leaves the workspace packages unlinked and the container won't start.
-  After touching the Dockerfile, build and *run* the image (`/healthz` must go healthy).
+- **Docker build:** the runtime image holds only `pnpm --filter @myzel/server deploy --prod` output
+  (at `/app/server`) plus the web build (at `/app/web/dist`, which the server finds as
+  `../../web/dist`). What a package ships is limited by its `files` field — a new runtime file
+  outside `dist` must be listed there. Don't go back to `pnpm prune --prod`: it leaves workspace
+  packages unlinked and the container won't start. After touching the Dockerfile, build and *run*
+  the image (`make image-check`).
 - **Agent runs are cancellable.** `AgentOptions.signal` is combined with the `LLM_TIMEOUT` ceiling;
   `/api/chat` aborts on client disconnect. Pass a signal from any new long-running entry point.
 - **Module-level caches**: `query-cache.ts` and `hot-memory.ts` hold process-global state so it
@@ -306,8 +317,11 @@ dummy `LLM_*` values are enough to exercise the UI.
 - **Web `MarkdownRenderer` uses `dangerouslySetInnerHTML`** for Shiki output. That is safe only
   because Shiki escapes its input; don't route any other HTML through that path. Its
   `rehype-sanitize` schema needs **flat** protocol lists — a nested array silently strips links.
-- **`useChat` keeps the first transport it gets.** Per-request values (the model override) go
-  through `sendMessage(..., { body })`, not through a transport rebuilt on render.
+- **The chat is owned by `App`, not by `ChatPanel`** (`createChat`, passed as `useChat({ chat })`).
+  Panels remount whenever the layout changes, and `useChat` stops the chats it creates itself on
+  unmount — that would wipe the history and abort a running agent. The post-run refresh is the
+  `Chat`'s own `onFinish` (it fires on success, error and abort), so it works with the panel closed. The transport is fixed at
+  creation, so per-request values (the model override) go through `sendMessage(..., { body })`.
 - **The workspace `Group` remounts when the column order changes** (`key` = visible order), and
   widths are reapplied from the persisted layout. During a panel drag, a transparent shield covers
   every other panel so inputs or the graph canvas cannot swallow the drop.
@@ -330,7 +344,7 @@ worth knowing:
 | `RATE_LIMIT_BROWSE` | Separate brake on the `/api` browse routes (default 600 per window, `0` disables). |
 | `TRUST_PROXY` | Express `trust proxy` (hop count or addresses) so rate limits see real clients behind a proxy. |
 | `ALLOWED_MODELS` | Models a client may request. Unset = client overrides refused; `*` allows any. |
-| `LLM_TIMEOUT` / `LLM_MAX_STEPS` / `LLM_DISCOVERY_TIMEOUT` / `HOT_MEMORY_TIMEOUT` | Run ceiling (5m), tool-loop budget (12), and the two shorter timeouts. |
+| `LLM_TIMEOUT` / `LLM_MAX_STEPS` / `LLM_DISCOVERY_TIMEOUT` / `HOT_MEMORY_TIMEOUT` | Run ceiling (30m), tool-loop budget (12), and the two shorter timeouts. |
 | `HOT_MEMORY_RECALL_QA` | `false` drops recent Q&A pairs from the hot working set. |
 | `HOST` | Bind address. Default `127.0.0.1`; `0.0.0.0` to expose on the network (the Docker image sets it). |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Additions to the same-origin/loopback defaults of the network guard. `*` opts out. |
@@ -349,6 +363,6 @@ worth knowing:
 - Match the commit style of recent history (`git log --oneline`). Upstream-era commits use
   conventional subjects (`feat: …`, `fix: …`); commits in this fork use short sentence-case
   summaries ending in a period (`Fixes further security issues.`).
-- CI (`.github/workflows/docker.yml`) runs lint, format:check, build and test on every PR, then
+- CI (`.github/workflows/docker.yml`) runs audit, lint, format:check, build and test on every PR, then
   builds and publishes the container on `main`/tags. Green build + green tests are the bar.
 - Don't commit `.env`, `demo-bundle/`, or a dirtied `sample-bundle/`.

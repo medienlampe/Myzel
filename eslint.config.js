@@ -15,8 +15,9 @@ export default defineConfig(
     ignores: [
       "**/dist/**",
       "**/node_modules/**",
+      "coverage/**",
       "sample-bundle/**",
-      "packages/web/vite.config.ts",
+      "demo-bundle/**",
     ],
   },
   js.configs.recommended,
@@ -47,7 +48,7 @@ export default defineConfig(
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ["packages/{core,server}/**/*.{ts,mts}", "*.js"],
+    files: ["packages/{core,server}/**/*.{ts,mts}", "packages/web/vite.config.ts", "*.js"],
     languageOptions: { globals: globals.node },
   },
   prettier

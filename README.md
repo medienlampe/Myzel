@@ -188,13 +188,15 @@ Myzel serving bundle /bundle on 0.0.0.0:3800 (web + /api + /mcp)
 
 If the container exited instead, the log says why — see [Troubleshooting](#troubleshooting).
 
-**→ Now open [http://localhost:3800](http://localhost:3800).** Three things to look at:
+**→ Now open [http://localhost:3800](http://localhost:3800).** Three panels side by side:
 
-- **Explorer** — your markdown files as a folder tree, with search; opened files render for reading.
-- **Graph** — every concept as a dot, every link as a line, arranged so related things cluster
-  together (like Obsidian's graph view). Drag it around, zoom, click a dot to open that file. Dots
-  ringed in red are *orphans*: nothing links to them yet.
-- **Chat** — talk to Myzel's own agent directly, without hooking up an assistant first. Each
+- **Explorer** — your markdown files as a folder tree, with search. Its **Log** and **Graph**
+  buttons switch what the View panel shows.
+- **View** — the open file, the update log, or the **graph**: every concept as a dot, every link as
+  a line, arranged so related things cluster together (like Obsidian's graph view). Drag it
+  around, zoom, click a dot to open that file. Dots ringed in red are *orphans*: nothing links to
+  them yet.
+- **Agent chat** — talk to Myzel's own agent directly, without hooking up an assistant first. Each
   step it takes (searching, reading, writing) appears as you watch.
 
 The three panels are columns you can arrange: **drag a panel's title bar** onto another panel to
@@ -258,8 +260,8 @@ claude mcp add myzel \
 (requires a [source checkout](#from-source)):
 
 ```bash
-BUNDLE_ROOT=./sample-bundle pnpm agent:query  "What do we know about billing?"
-BUNDLE_ROOT=./sample-bundle pnpm agent:mutate "Record that we deploy on Fridays"
+make query  Q="What do we know about billing?"
+make mutate I="Record that we deploy on Fridays"   # writes to demo-bundle/, see From source
 ```
 
 </details>
@@ -279,7 +281,7 @@ this needs.
 | **OpenAI** | `LLM_API_BASE_URL=https://api.openai.com/v1` `LLM_API_KEY=sk-...` `LLM_MODEL=gpt-4o` |
 | **Anthropic** | `LLM_API_BASE_URL=https://api.anthropic.com/v1` `LLM_API_KEY=sk-ant-...` `LLM_API_FORMAT=anthropic` `LLM_MODEL=claude-sonnet-5` |
 | **Groq** | `LLM_API_BASE_URL=https://api.groq.com/openai/v1` `LLM_API_KEY=gsk_...` `LLM_MODEL=llama-3.3-70b-versatile` |
-| **Local llama.cpp** | `LLM_API_BASE_URL=http://localhost:8080/v1` `LLM_MODEL=` *(discovered automatically)* |
+| **Local llama.cpp** | `LLM_API_BASE_URL=http://localhost:8080/v1` `LLM_MODEL=` *(discovered automatically)* — in Docker, use `http://host.docker.internal:8080/v1` |
 
 > [!IMPORTANT]
 > The model must support **tool calling** (sometimes called function calling). Myzel's agent
@@ -307,8 +309,10 @@ doesn't trigger a multi-minute model swap. Pin one explicitly with `LLM_MODEL=`.
 <summary><b>Fallback model</b> — e.g. a local model with a hosted backup</summary>
 
 Set the matching `LLM_FALLBACK_*` variables. The fallback takes over when the primary model fails
-with an error worth retrying (a timeout, or a 5xx). `LLM_FALLBACK_ALLOW_FOR=query` restricts it to
-read-only operations, so nothing gets written by the backup model.
+with an error worth retrying: a timeout, a network failure, HTTP 408 or a 5xx — and HTTP 429 only
+if you set `LLM_FALLBACK_RETRY_429=true`. `LLM_FALLBACK_ALLOW_FOR=query` restricts it to read-only
+operations, so nothing gets written by the backup model; the compose files set exactly that by
+default, while a native run allows the fallback for everything unless you set it.
 
 ```bash
 LLM_API_BASE_URL=http://localhost:8080/v1 LLM_MODEL= \
@@ -331,13 +335,13 @@ Start with `docker compose logs myzel`. Most failures print exactly what is miss
 | `BUNDLE_ROOT env var is required` | The `BUNDLE_ROOT` setting is missing from the `environment:` block. |
 | `LLM configuration error: No LLM configured.` | No model settings arrived. Usually the `.env` file isn't next to `docker-compose.yml`, or is named something else. Run `docker compose config` — it prints the values Compose actually resolved. |
 | `LLM_MODEL is required for this endpoint.` | Your provider doesn't support automatic model discovery. Set `LLM_MODEL` to a concrete model id. |
-| `Model discovery failed: 404` / `No models listed` | `LLM_API_BASE_URL` is probably wrong. It must include the API version path, e.g. `https://api.deepseek.com/v1`, not just the host. |
+| `Model discovery failed: HTTP 404 at …` / `No models listed at …` | `LLM_API_BASE_URL` is probably wrong. It must include the API version path, e.g. `https://api.deepseek.com/v1`, not just the host. |
 | `port is already allocated` | Something else uses port 3800. Change the **left** number: `"3900:3800"`, then open `localhost:3900`. |
 | Web UI loads but the graph is empty | Expected on a fresh memory — there's nothing in it yet. Teach it a fact in the chat first. |
 | Web UI asks for a token | `AUTH_TOKEN` is set; paste that value. See [Auth](#auth). |
 | Your assistant has the tools but never uses them | Restart the client after adding the server, so it receives the [seed overview](#seed-memory). Then ask it explicitly once — *"check your memory for what you know about X"*. |
 | The agent replies but writes nothing | The model likely doesn't do tool calling well. Try a stronger one — see the note [above](#choosing-a-model-provider). |
-| Errors mentioning ambiguous legacy configuration | Old and new variables are both set. Remove the legacy ones and keep `LLM_API_*`. |
+| Errors mentioning legacy configuration | Only the old variables (`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, …) are set, and Myzel can't tell which provider is meant. Switch to `LLM_API_BASE_URL` / `LLM_API_KEY` / `LLM_API_FORMAT` — when those are set, the old ones are ignored. |
 
 ## How it works
 
@@ -407,6 +411,9 @@ becomes **orphaned** (nothing links to it, so nothing will ever lead the agent t
 - **`memory_maintain`** — a plain-code check finds the orphans and broken links (they're also in
   `memory_status` under `graph`), then hands them to the agent to wire up and repair. Run it now and
   then; it does nothing when there's nothing wrong.
+- **Pruning** — when the agent moves or merges concepts, a folder can end up holding nothing but its
+  generated `index.md` (or nothing at all). Such folders are removed automatically after every change, so the tree and
+  the indexes don't fill up with empty sections.
 
 ### Dreaming
 
@@ -426,7 +433,8 @@ looking, the way a brain works during sleep. It is **off by default**; switch it
 Every agent run — query, write, or chat — records the path it took (what it searched, what it read,
 what it wrote) under `<bundle>/.traces/`. The graph view lists recent runs, and selecting one replays
 that path as numbered hops across the graph: concepts it visited get a ring, search hits a dotted
-outline, everything else fades. It's the answer to *"why did it tell me that?"*
+outline, everything else fades. It's the answer to *"why did it tell me that?"* Each run also shows
+the tokens it used (e.g. `6.2k→320 tok`), so you can see which questions are expensive to answer.
 
 > [!NOTE]
 > This design follows the pattern in Karpathy's
@@ -439,6 +447,11 @@ outline, everything else fades. It's the answer to *"why did it tell me that?"*
 ## Configuration
 
 `BUNDLE_ROOT` is the only required setting. The full annotated list lives in [.env.example](.env.example).
+
+With Docker Compose, a setting reaches the container only if the compose file passes it through.
+This repo's compose files pass the model settings, `AUTH_TOKEN`, `ALLOWED_*`, `TRUST_PROXY`, the rate
+limits, `LLM_TIMEOUT` / `LLM_MAX_STEPS`, `HOT_MEMORY_RECALL_QA`, `DREAM_INTERVAL` and `GIT_AUTOCOMMIT`;
+add a line under `environment:` for anything else you set.
 
 | Variable | Effect |
 |---|---|
@@ -454,8 +467,8 @@ outline, everything else fades. It's the answer to *"why did it tell me that?"*
 | `RATE_LIMIT_BROWSE` | Requests per client on the read-only `/api` routes. Default `600` per window; `0` disables. |
 | `TRUST_PROXY` | Set behind a reverse proxy (`1`, or the proxy's address) so rate limits apply per client. |
 | `ALLOWED_MODELS` | Models a client may request per call. Unset = the server's model always wins. `*` allows any. |
-| `LLM_TIMEOUT` / `LLM_MAX_STEPS` | Ceiling for one agent run (default `5m`) and its tool-loop budget (default `12`). |
-| `GIT_AUTOCOMMIT` | Commit the bundle after every change. Default `false`. |
+| `LLM_TIMEOUT` / `LLM_MAX_STEPS` | Ceiling for one agent run (default `30m` — local models can take minutes per run) and its tool-loop budget (default `12`). |
+| `GIT_AUTOCOMMIT` | Commit the bundle after every change. Default `false`. A bundle that isn't its own git repository yet is initialized at startup, and the server refuses to start if committing can't work. |
 | `QUERY_CACHE` / `QUERY_CACHE_TTL` | Exact-answer cache. On by default, `24h`. |
 | `HOT_MEMORY` / `HOT_MEMORY_TTL` | Short-term working set. On by default, `1h`. |
 | `HOT_MEMORY_RECALL_QA` | Whether recent Q&A pairs join the working set. Set `false` on a shared instance. |
@@ -509,7 +522,7 @@ any shared document — if an assistant ingests untrusted sources into it, revie
 Every request to `/mcp` and `/api/chat` can start an agent run, and agent runs cost tokens. Two
 brakes: a per-client rate limit (`RATE_LIMIT`, default 60/minute) and a refusal to let a client pick
 the model — the server's configured model is used unless you list alternatives in `ALLOWED_MODELS`.
-Agent runs also have a wall-clock ceiling (`LLM_TIMEOUT`, default 5 minutes) so a stalled endpoint
+Agent runs also have a wall-clock ceiling (`LLM_TIMEOUT`, default 30 minutes) so a stalled endpoint
 cannot hold a request open indefinitely, and inputs are capped (a question at 4,000 characters, a
 `memory_add` document at 100,000) so a single request cannot carry an unbounded prompt.
 
@@ -527,7 +540,8 @@ AUTH_TOKEN=$(openssl rand -hex 24)
 
 Then `/mcp` and `/api` require it as a bearer token. The web UI stays reachable and simply prompts you
 for the value; it keeps the token for the browser tab only, so a new tab asks again. Repeated wrong
-tokens lock a client out for 15 minutes (after 20 failures). Authenticated MCP clients need it as a
+tokens lock a client out: after 20 failures within a 15-minute window, it is refused until that
+window ends. Authenticated MCP clients need it as a
 header:
 
 ```bash
@@ -536,6 +550,25 @@ claude mcp add --transport http myzel http://host:3800/mcp \
 ```
 
 The stdio transport needs no token — there the client starts Myzel itself, as a local process.
+
+### Serving under a sub-path
+
+The web UI uses relative URLs, so it also works behind a reverse proxy that serves it under a path
+prefix and strips the prefix before forwarding — no configuration needed:
+
+```bash
+tailscale serve --bg --set-path=/myzel http://localhost:3800
+```
+
+```caddy
+handle_path /myzel/* {
+  reverse_proxy localhost:3800
+}
+```
+
+Open it with a trailing slash (`https://host/myzel/`): relative URLs resolve against the last path
+segment, so without the slash they escape the prefix. If you reach the server by a hostname, add it
+to `ALLOWED_HOSTS`, and set `TRUST_PROXY` (see [Cost](#cost)).
 
 ## From source
 
@@ -578,7 +611,8 @@ in this repo builds from source and mounts `./sample-bundle`.
 on `:5180`:
 
 ```bash
-BUNDLE_ROOT=./sample-bundle pnpm --filter @myzel/server dev
+cp -R sample-bundle demo-bundle   # once: a scratch copy the agent may write to
+BUNDLE_ROOT="$PWD/demo-bundle" pnpm --filter @myzel/server dev   # absolute: runs in packages/server
 pnpm --filter @myzel/web dev
 ```
 
@@ -601,14 +635,15 @@ layer — that's what keeps it testable and trustworthy.
 ## Tests
 
 ```bash
-pnpm test    # core:   87 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
-             #                    write concurrency, providers, cache, hot memory,
-             #                    dreaming, prompt-injection neutralization, git hardening
-             # server: 47 tests — auth, network guard, rate limits, seed memory, chat and
-             #                    MCP over HTTP (plus a typecheck)
-             # web:    15 tests — workspace layout model (plus a typecheck)
+pnpm test    # core:   129 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
+             #                     write concurrency, providers, cache, hot memory,
+             #                     dreaming, prompt-injection neutralization, git hardening
+             # server:  61 tests — auth, network guard, rate limits, seed memory, chat and
+             #                     MCP over HTTP
+             # web:     18 tests — workspace layout model
+             # (every package also typechecks its sources and tests)
 
-# End-to-end check of the MCP stdio transport (needs SMOKE_BUNDLE + an API key)
+# End-to-end check of the MCP stdio transport (after `pnpm build`; needs SMOKE_BUNDLE + an API key)
 pnpm --filter @myzel/server exec tsx scripts/mcp-smoke.mts
 ```
 

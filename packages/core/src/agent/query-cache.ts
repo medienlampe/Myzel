@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import type { KnowledgeBase } from "../okf/index.js";
 import { parseDuration } from "../util/duration.js";
 import { runQuery, type AgentOptions, type QueryResult } from "./agent.js";
-import { hotLookup, recordHotQuery, type HotGenerate } from "./hot-memory.js";
+import { hotGeneration, hotLookup, recordHotQuery, type HotGenerate } from "./hot-memory.js";
 
 export interface CachedQueryResult extends QueryResult {
   /** True when the answer came from the exact cache (no agent run, no trace). */
@@ -49,7 +49,7 @@ export async function bundleFingerprint(kb: KnowledgeBase): Promise<string> {
 }
 
 /**
- * runQuery with a fingerprint-invalidated LRU cache (issue-adjacent: repeated
+ * runQuery with a fingerprint-invalidated LRU cache (repeated
  * questions are common through MCP, and local models make every agent run
  * expensive). Disabled with QUERY_CACHE=false; TTL via QUERY_CACHE_TTL
  * (e.g. "1h", default 24h). Cache hits skip the agent entirely, so they
@@ -101,9 +101,10 @@ export async function runQueryCached(
   }
 
   // Layer 3: deep memory — the full agent loop. Its answer feeds the hot set.
+  const generation = hotGeneration(kb.bundle.root);
   const result = await runner(kb, question, options);
   store(key, result, ttl);
-  recordHotQuery(kb.bundle.root, question, result.answer);
+  recordHotQuery(kb.bundle.root, question, result.answer, generation);
   return { ...result, cached: false, source: "deep" };
 }
 

@@ -62,10 +62,13 @@ function DirNode({
     <div>
       <button
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
         className="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-medium text-zinc-400 hover:text-zinc-200"
         style={{ paddingLeft: `${depth * 14 + 8}px` }}
       >
-        <span className="text-xs">{open ? "▾" : "▸"}</span>
+        <span aria-hidden className="text-xs">
+          {open ? "▾" : "▸"}
+        </span>
         {node.name}/
       </button>
       {open && <Tree node={node} selected={selected} onSelect={onSelect} depth={depth + 1} />}

@@ -1,7 +1,7 @@
 import type { LanguageModel } from "ai";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  discoverLlamaCppModel,
+  discoverModel,
   resolveFallbackConfig,
   resolveModelConfig,
 } from "../src/providers/index.js";
@@ -28,7 +28,7 @@ afterEach(() => {
 
 // ── Model discovery (PR #4: 60s TTL on discovery cache) ──────────
 
-describe("discoverLlamaCppModel", () => {
+describe("discoverModel", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn());
@@ -48,14 +48,14 @@ describe("discoverLlamaCppModel", () => {
         ],
       })
     );
-    await expect(discoverLlamaCppModel(freshBaseURL())).resolves.toBe("model-b");
+    await expect(discoverModel(freshBaseURL())).resolves.toBe("model-b");
   });
 
   it("does not re-fetch within the TTL window", async () => {
     const url = freshBaseURL();
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ data: [{ id: "model-a" }] }));
-    await discoverLlamaCppModel(url);
-    await discoverLlamaCppModel(url);
+    await discoverModel(url);
+    await discoverModel(url);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -65,9 +65,9 @@ describe("discoverLlamaCppModel", () => {
       .mockResolvedValueOnce(jsonResponse({ data: [{ id: "model-a" }] }))
       .mockResolvedValueOnce(jsonResponse({ data: [{ id: "model-b" }] }));
 
-    await expect(discoverLlamaCppModel(url)).resolves.toBe("model-a");
+    await expect(discoverModel(url)).resolves.toBe("model-a");
     vi.advanceTimersByTime(61_000);
-    await expect(discoverLlamaCppModel(url)).resolves.toBe("model-b");
+    await expect(discoverModel(url)).resolves.toBe("model-b");
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -77,8 +77,8 @@ describe("discoverLlamaCppModel", () => {
       .mockResolvedValueOnce(new Response("boom", { status: 500 }))
       .mockResolvedValueOnce(jsonResponse({ data: [{ id: "model-a" }] }));
 
-    await expect(discoverLlamaCppModel(url)).rejects.toThrow();
-    await expect(discoverLlamaCppModel(url)).resolves.toBe("model-a");
+    await expect(discoverModel(url)).rejects.toThrow();
+    await expect(discoverModel(url)).resolves.toBe("model-a");
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

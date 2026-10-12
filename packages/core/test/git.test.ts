@@ -71,6 +71,16 @@ describe("git autocommit", () => {
     expect(commitCount()).toBe(0);
   });
 
+  it("refuses filters hidden in .git/config.worktree", async () => {
+    git("config", "extensions.worktreeConfig", "true");
+    git("config", "--worktree", "filter.evil.clean", await plantScript("clean.sh"));
+    await fs.writeFile(path.join(root, ".gitattributes"), "*.md filter=evil\n");
+    const kb = new KnowledgeBase(root, { gitAutocommit: true });
+    await kb.writeConcept("/a.md", { type: "T" }, "body", "Added a.");
+    await expect(fs.access(marker)).rejects.toThrow();
+    expect(commitCount()).toBe(0);
+  });
+
   it("never runs repository hooks", async () => {
     await fs.mkdir(path.join(root, ".git", "hooks"), { recursive: true });
     await fs.writeFile(
@@ -95,6 +105,8 @@ describe("git autocommit", () => {
       ["include.path", "/tmp/x"],
       ["alias.st", "!x"],
       ["core.editor", "x"],
+      ["core.worktree", "/home"],
+      ["filter.a b.clean", "x"],
       ["user.signingkey", "harmless"],
     ]) {
       git("config", key, value);
@@ -103,10 +115,68 @@ describe("git autocommit", () => {
       "alias.st",
       "core.editor",
       "core.sshcommand",
+      "core.worktree",
       "diff.evil.textconv",
+      "filter.a b.clean",
       "gpg.program",
       "gpg.ssh.program",
       "include.path",
     ]);
+  });
+});
+
+describe("ensureGitReady", () => {
+  let plain: string;
+
+  beforeEach(async () => {
+    plain = await fs.mkdtemp(path.join(os.tmpdir(), "okf-plain-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(plain, { recursive: true, force: true });
+  });
+
+  const gitIn = (dir: string, ...args: string[]) =>
+    execFileSync("git", args, { cwd: dir, encoding: "utf-8" }).trim();
+
+  it("initializes a bundle that is not a repository, with a first commit", async () => {
+    await new KnowledgeBase(plain, { gitAutocommit: true }).ensureGitReady();
+    expect(gitIn(plain, "log", "--format=%s")).toBe("chore: initialize memory history");
+  });
+
+  it("gives a bundle nested in another repository its own one", async () => {
+    // `root` (from the outer beforeEach) is a repository; nest a bundle inside it.
+    const nested = path.join(root, "memory");
+    await fs.mkdir(nested);
+    await new KnowledgeBase(nested, { gitAutocommit: true }).ensureGitReady();
+    expect(gitIn(nested, "rev-parse", "--show-toplevel")).toBe(await fs.realpath(nested));
+    expect(commitCount()).toBe(0); // the outer repository got no commit
+  });
+
+  it("refuses at startup when the repository config can run programs", async () => {
+    git("config", "core.fsmonitor", "/tmp/whatever");
+    await expect(new KnowledgeBase(root, { gitAutocommit: true }).ensureGitReady()).rejects.toThrow(
+      /core\.fsmonitor/
+    );
+  });
+
+  it("initializes only once — later startups add no commits", async () => {
+    const kb = new KnowledgeBase(plain, { gitAutocommit: true });
+    await kb.ensureGitReady();
+    await kb.ensureGitReady();
+    expect(gitIn(plain, "rev-list", "--count", "HEAD")).toBe("1");
+  });
+
+  it("treats a git worktree as the bundle's own repository", async () => {
+    git("commit", "--allow-empty", "-q", "-m", "base");
+    const worktree = path.join(plain, "wt");
+    git("worktree", "add", "-q", worktree);
+    await new KnowledgeBase(worktree, { gitAutocommit: true }).ensureGitReady();
+    expect(gitIn(worktree, "log", "--format=%s")).toBe("base"); // no "initialize" commit
+  });
+
+  it("is a no-op without gitAutocommit", async () => {
+    await new KnowledgeBase(plain).ensureGitReady();
+    await expect(fs.access(path.join(plain, ".git"))).rejects.toThrow();
   });
 });

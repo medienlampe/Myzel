@@ -18,7 +18,7 @@ export function withFallback(
   primary: LanguageModel,
   fallback: LanguageModel,
   opts: FallbackOptions = {}
-): LanguageModel {
+): ResolvedLanguageModel {
   // Wrapping without middleware normalizes the fallback to the current model
   // spec version, so it accepts the call options the primary was given.
   const fallbackModel = wrapLanguageModel({

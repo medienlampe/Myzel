@@ -1,9 +1,23 @@
 import { useState } from "react";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { Chat, useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import { MarkdownRenderer } from "../components/MarkdownRenderer";
-import { authHeaders } from "../api";
+import { apiUrl, authHeaders } from "../api";
 import type { AppConfig } from "../api";
+
+/**
+ * The conversation lives outside the panel: moving or closing a panel remounts
+ * it, and a chat owned by the panel would lose its history and abort a running
+ * agent (useChat stops the chats it creates when it unmounts).
+ */
+export function createChat(onRunEnd: () => void): Chat<UIMessage> {
+  return new Chat({
+    transport: new DefaultChatTransport({ api: apiUrl("/api/chat"), headers: () => authHeaders() }),
+    // Fires when a run ends — finished, failed or aborted — even while the
+    // chat panel is closed. The agent may have written files: refresh views.
+    onFinish: () => onRunEnd(),
+  });
+}
 
 const WRITE_TOOLS = new Set(["write_concept", "patch_concept", "delete_concept"]);
 
@@ -12,27 +26,28 @@ const WRITE_TOOLS = new Set(["write_concept", "patch_concept", "delete_concept"]
  * watching which tools fire on which files is how we test the agent.
  */
 export function ChatPanel({
+  chat,
   config,
-  onMutation,
   onOpenConcept,
 }: {
+  chat: Chat<UIMessage>;
   config: AppConfig | null;
-  onMutation: () => void;
   onOpenConcept: (path: string) => void;
 }) {
   const [input, setInput] = useState("");
   const [model, setModel] = useState("");
-  // useChat keeps the transport it was first given, so per-request values (the
-  // model choice) travel with each sendMessage call instead of in the transport.
-  const [transport] = useState(
-    () => new DefaultChatTransport({ api: "/api/chat", headers: () => authHeaders() })
-  );
-  const { messages, sendMessage, status, error } = useChat({
-    transport,
-    onFinish: () => onMutation(), // refresh browse pane; agent may have written files
-  });
-
+  // The transport is fixed when the chat is created, so per-request values
+  // (the model choice) travel with each sendMessage call.
+  const { messages, sendMessage, status, error } = useChat({ chat });
   const busy = status === "submitted" || status === "streaming";
+  // A run that times out or is cancelled ends with an "abort", not an error:
+  // without this the chat would just stop, with no answer and no explanation.
+  const last = messages[messages.length - 1];
+  const unanswered =
+    !busy &&
+    !error &&
+    last !== undefined &&
+    (last.role === "user" || !last.parts.some((p) => p.type === "text"));
 
   return (
     <div className="flex h-full flex-col">
@@ -96,10 +111,18 @@ export function ChatPanel({
             })}
           </div>
         ))}
-        {busy && <div className="animate-pulse text-xs text-zinc-500">agent working…</div>}
+        <div aria-live="polite" className="text-xs text-zinc-500">
+          {busy && <span className="animate-pulse">agent working…</span>}
+        </div>
         {error && !busy && (
           <p role="alert" className="text-xs text-red-400">
             {error.message || "The request failed."}
+          </p>
+        )}
+        {unanswered && (
+          <p role="alert" className="text-xs text-amber-400">
+            No answer — the run was stopped, timed out (LLM_TIMEOUT) or used up its step budget
+            (LLM_MAX_STEPS).
           </p>
         )}
       </div>
@@ -113,13 +136,22 @@ export function ChatPanel({
         }}
         className="border-t border-zinc-800 p-3"
       >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask or teach the knowledge base…"
-          aria-label="Message the agent"
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-hidden focus:border-cyan-600"
-        />
+        <div className="flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask or teach the knowledge base…"
+            aria-label="Message the agent"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-hidden focus:border-cyan-600"
+          />
+          <button
+            type="submit"
+            disabled={busy || !input.trim()}
+            className="rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-600 disabled:opacity-40"
+          >
+            Send
+          </button>
+        </div>
         {config && (
           <div className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-500">
             <span>model</span>

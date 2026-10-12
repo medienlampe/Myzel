@@ -42,6 +42,8 @@ const MAX_EXCERPT_CHARS = 1500;
 interface HotState {
   concepts: Map<string, number>; // path → touchedAt
   qas: HotQA[];
+  /** Bumped on every write, so an answer computed across a write can be dropped. */
+  generation: number;
 }
 
 const states = new Map<string, HotState>();
@@ -49,7 +51,7 @@ const states = new Map<string, HotState>();
 function stateFor(scope: string): HotState {
   let state = states.get(scope);
   if (!state) {
-    state = { concepts: new Map(), qas: [] };
+    state = { concepts: new Map(), qas: [], generation: 0 };
     states.set(scope, state);
   }
   return state;
@@ -58,6 +60,7 @@ function stateFor(scope: string): HotState {
 /** Called by the write tools after any concept write/patch. */
 export function recordHotWrite(scope: string, path: string): void {
   const state = stateFor(scope);
+  state.generation++;
   state.concepts.delete(path);
   state.concepts.set(path, Date.now());
   while (state.concepts.size > MAX_CONCEPTS) {
@@ -72,13 +75,26 @@ export function recordHotWrite(scope: string, path: string): void {
 /** Called on deletes: the concept leaves the hot set; answers may be stale. */
 export function recordHotDelete(scope: string, path: string): void {
   const state = stateFor(scope);
+  state.generation++;
   state.concepts.delete(path);
   state.qas = [];
 }
 
+/** Current write generation; pass it back to recordHotQuery. */
+export function hotGeneration(scope: string): number {
+  return stateFor(scope).generation;
+}
+
 /** Called after a deep query completes. */
-export function recordHotQuery(scope: string, question: string, answer: string): void {
+export function recordHotQuery(
+  scope: string,
+  question: string,
+  answer: string,
+  /** hotGeneration() from before the query ran: a write since then may have made the answer stale. */
+  generation: number
+): void {
   const state = stateFor(scope);
+  if (state.generation !== generation) return;
   state.qas.push({ question, answer, at: Date.now() });
   if (state.qas.length > MAX_QAS) state.qas = state.qas.slice(-MAX_QAS);
 }
@@ -161,17 +177,22 @@ export async function hotLookup(
   return text;
 }
 
+const DEFAULT_LOOKUP_TIMEOUT_MS = 60_000;
+
 /** One tool-free generation, through the same model chain (and fallback) as queries. */
 const defaultGenerate: HotGenerate = async (system, prompt, options) => {
+  // Hot memory sits in front of the deep agent: if it stalls, the query has
+  // gained nothing and lost everything. Cap it well below the full run.
+  const timeout = AbortSignal.timeout(
+    parseDuration(process.env.HOT_MEMORY_TIMEOUT) ?? DEFAULT_LOOKUP_TIMEOUT_MS
+  );
   const { model } = await resolveAgentModel(options, "query");
   const result = await generateText({
     model,
     system,
     prompt,
     temperature: 0,
-    // Hot memory sits in front of the deep agent: if it stalls, the query has
-    // gained nothing and lost everything. Cap it well below the full run.
-    abortSignal: AbortSignal.timeout(parseDuration(process.env.HOT_MEMORY_TIMEOUT) ?? 60_000),
+    abortSignal: options.signal ? AbortSignal.any([timeout, options.signal]) : timeout,
   });
   return result.text;
 };

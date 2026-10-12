@@ -67,6 +67,68 @@ describe("runDream", () => {
     expect(runner).not.toHaveBeenCalled();
   });
 
+  it("dreams about new activity once, not again while nothing new is logged", async () => {
+    for (let i = 0; i < 3; i++) {
+      // Linked pairs: plenty of log entries, no orphans or broken links.
+      await kb.writeConcept(
+        `/a${i}.md`,
+        { type: "T", title: `A${i} alpha` },
+        `[b](/b${i}.md)`,
+        `add a${i}`
+      );
+      await kb.writeConcept(
+        `/b${i}.md`,
+        { type: "T", title: `B${i} beta` },
+        `[a](/a${i}.md)`,
+        `add b${i}`
+      );
+    }
+    const runner = vi.fn(async (_kb: unknown, _instruction: string) => ({
+      ok: true as const,
+      result: { summary: "nothing to merge", filesChanged: [], steps: 1, traceId: "t" },
+    }));
+    expect((await runDream(kb, {}, runner as never)).ran).toBe(true);
+    expect(runner.mock.calls[0][1]).toContain("CONSOLIDATION");
+
+    const again = await runDream(kb, {}, runner as never);
+    expect(again.ran).toBe(false);
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a failed dream on the next interval", async () => {
+    await kb.writeConcept(
+      "/stray.md",
+      { type: "T", title: "Stray note" },
+      "unrelated",
+      "add stray"
+    );
+    const failing = vi.fn(async (_kb: unknown, _instruction: string) => ({
+      ok: false as const,
+      status: "failed" as const,
+      error: "provider down",
+    }));
+    await runDream(kb, {}, failing as never);
+    await runDream(kb, {}, failing as never);
+    expect(failing).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not dream again about the same leftover signals", async () => {
+    await kb.writeConcept(
+      "/stray.md",
+      { type: "T", title: "Stray note" },
+      "unrelated",
+      "add stray"
+    );
+    const runner = vi.fn(async (_kb: unknown, _instruction: string) => ({
+      ok: true as const,
+      result: { summary: "left the orphan alone", filesChanged: [], steps: 1, traceId: "t" },
+    }));
+    expect((await runDream(kb, {}, runner as never)).ran).toBe(true);
+    const again = await runDream(kb, {}, runner as never);
+    expect(again).toMatchObject({ ran: false, reason: "nothing new since the last dream" });
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
   it("dreams when there are orphans, feeding them into the instruction", async () => {
     await kb.writeConcept(
       "/hub.md",
@@ -80,7 +142,7 @@ describe("runDream", () => {
       "alone",
       "add"
     );
-    const runner = vi.fn(async () => ({
+    const runner = vi.fn(async (_kb: unknown, _instruction: string) => ({
       ok: true as const,
       result: {
         summary: "wired stray into hub",
@@ -104,7 +166,7 @@ describe("runDream", () => {
       "x",
       "add"
     );
-    const runner = vi.fn(async () => ({
+    const runner = vi.fn(async (_kb: unknown, _instruction: string) => ({
       ok: false as const,
       status: "failed" as const,
       error: "model unreachable",
@@ -122,7 +184,7 @@ describe("runDream", () => {
       "x",
       "add"
     );
-    const runner = vi.fn(async () => ({
+    const runner = vi.fn(async (_kb: unknown, _instruction: string) => ({
       ok: false as const,
       status: "partial" as const,
       filesChanged: ["/only.md"],
@@ -183,7 +245,7 @@ describe("oversizedConcepts", () => {
       "add"
     );
 
-    const runner = vi.fn(async () => ({
+    const runner = vi.fn(async (_kb: unknown, _instruction: string) => ({
       ok: true as const,
       result: { summary: "split", filesChanged: ["/people/fat.md"], steps: 4, traceId: "t" },
     }));

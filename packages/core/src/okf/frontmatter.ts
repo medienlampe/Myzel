@@ -61,7 +61,11 @@ export function parseDoc(raw: string): ParsedDoc {
  */
 export function serializeDoc(frontmatter: ConceptFrontmatter, body: string): string {
   const yaml = stringify(frontmatter, { version: "1.1", singleQuote: true });
-  return `---\n${yaml}---\n${body.endsWith("\n") ? body : body + "\n"}`;
+  // parseDoc drops one blank line after the fence as formatting; a body that
+  // really starts with a blank line gets one extra so it survives the round trip.
+  const content = body.endsWith("\n") ? body : body + "\n";
+  const keepBlank = content.trim() !== "" && /^\r?\n/.test(content);
+  return `---\n${yaml}---\n${keepBlank ? "\n" : ""}${content}`;
 }
 
 export function hasNonEmptyType(frontmatter: Record<string, unknown>): boolean {

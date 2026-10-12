@@ -2,6 +2,10 @@
   "name": "@myzel/server",
   "version": "0.1.0",
   "type": "module",
+  "files": [
+    "dist",
+    "bin"
+  ],
   "main": "./dist/index.js",
   "bin": {
     "myzel": "./bin/myzel"

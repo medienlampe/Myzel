@@ -3,14 +3,17 @@ import express, { type Request } from "express";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { clientKey, parseTrustProxy, rateLimit, type RateLimiter } from "../src/rate-limit.js";
+import { bearerAuth, type BearerAuth } from "../src/auth.js";
 
 let server: Server | undefined;
 let limiter: RateLimiter | undefined;
+let auth: BearerAuth | undefined;
 
 afterEach(() => {
   server?.close();
   limiter?.stop();
-  server = limiter = undefined;
+  auth?.stop();
+  server = limiter = auth = undefined;
 });
 
 async function serve(build: (app: express.Express) => void): Promise<string> {
@@ -36,26 +39,48 @@ describe("rateLimit", () => {
     expect(res.headers.get("retry-after")).toMatch(/^\d+$/);
   });
 
-  it("with countIf, counts only matching responses — throttling failed logins", async () => {
-    limiter = rateLimit({ limit: 2, windowMs: 60_000, countIf: (res) => res.statusCode === 401 });
-    const base = await serve((app) =>
-      app.get("/", limiter!, (req, res) => {
-        res.status(req.headers.authorization === "good" ? 200 : 401).end();
-      })
-    );
-    // Successful requests never use up the budget…
-    expect(await statuses(base, 5, { headers: { authorization: "good" } })).toEqual([
-      200, 200, 200, 200, 200,
-    ]);
-    // …failures do, and once spent even a correct token waits out the window.
-    expect(await statuses(base, 3)).toEqual([401, 401, 429]);
-    expect(await statuses(base, 1, { headers: { authorization: "good" } })).toEqual([429]);
-  });
-
   it("does nothing at limit 0", async () => {
     limiter = rateLimit({ limit: 0, windowMs: 60_000 });
     const base = await serve((app) => app.get("/", limiter!, (_req, res) => res.send("ok")));
     expect(await statuses(base, 3)).toEqual([200, 200, 200]);
+  });
+});
+
+describe("bearerAuth failure throttle", () => {
+  const good = { headers: { authorization: "Bearer right" } };
+
+  it("refuses a client after too many failures, even with the right token", async () => {
+    auth = bearerAuth("right", { limit: 2, windowMs: 60_000 });
+    const base = await serve((app) => app.get("/", auth!, (_req, res) => res.send("ok")));
+    expect(await statuses(base, 5, good)).toEqual([200, 200, 200, 200, 200]); // never counted
+    expect(await statuses(base, 3)).toEqual([401, 401, 429]);
+    expect(await statuses(base, 1, good)).toEqual([429]);
+  });
+
+  it("caps a burst of parallel wrong guesses", async () => {
+    auth = bearerAuth("right", { limit: 3, windowMs: 60_000 });
+    const base = await serve((app) => app.get("/", auth!, (_req, res) => res.send("ok")));
+    const results = await Promise.all(Array.from({ length: 10 }, () => fetch(base)));
+    expect(results.filter((r) => r.status === 401)).toHaveLength(3);
+    expect(results.filter((r) => r.status === 429)).toHaveLength(7);
+  });
+
+  it("does not lock out valid clients whose requests are still running", async () => {
+    auth = bearerAuth("right", { limit: 3, windowMs: 60_000 });
+    const pending: Array<() => void> = [];
+    const base = await serve((app) =>
+      app.get("/", auth!, (_req, res) => {
+        pending.push(() => res.send("done")); // held open, like a long agent run
+      })
+    );
+    const slow = Array.from({ length: 5 }, () => fetch(base, good));
+    while (pending.length < 5) await new Promise((r) => setTimeout(r, 10));
+    const another = fetch(base, good);
+    while (pending.length < 6) await new Promise((r) => setTimeout(r, 10));
+    pending.forEach((done) => done());
+    expect((await Promise.all([...slow, another])).map((r) => r.status)).toEqual(
+      Array(6).fill(200)
+    );
   });
 });
 

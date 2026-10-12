@@ -6,6 +6,11 @@ services:
       # other machines set MYZEL_BIND=0.0.0.0 (or one interface's address)
       # AND set AUTH_TOKEN — anyone who can reach the port can rewrite the memory.
       - "${MYZEL_BIND:-127.0.0.1}:3800:3800"
+    # Lets the container reach a model server on the Docker host (e.g. llama.cpp
+    # at http://host.docker.internal:8080/v1) — inside the container,
+    # "localhost" is the container itself. (Ported from upstream understory.)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./sample-bundle:/bundle
     environment:
@@ -34,4 +39,16 @@ services:
       LOCAL_BASE_URL: ${LOCAL_BASE_URL:-}
       LOCAL_API_KEY: ${LOCAL_API_KEY:-}
       GIT_AUTOCOMMIT: ${GIT_AUTOCOMMIT:-false}
+      # Optional settings (see .env.example). Unset ones arrive empty, which
+      # the server treats as "use the default".
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      ALLOWED_MODELS: ${ALLOWED_MODELS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      RATE_LIMIT: ${RATE_LIMIT:-}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-}
+      RATE_LIMIT_BROWSE: ${RATE_LIMIT_BROWSE:-}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-}
+      LLM_MAX_STEPS: ${LLM_MAX_STEPS:-}
+      HOT_MEMORY_RECALL_QA: ${HOT_MEMORY_RECALL_QA:-}
+      DREAM_INTERVAL: ${DREAM_INTERVAL:-}
     restart: unless-stopped

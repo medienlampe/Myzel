@@ -8,7 +8,8 @@ import type { NextFunction, Request, Response } from "express";
  * and an agent run spends tokens. On an instance without AUTH_TOKEN that is a
  * direct cost lever for anyone who can reach the port; even with a token it
  * bounds the damage of a leaked one and of a client stuck in a retry loop. The
- * same machinery brakes the browse API (whole-bundle reads) and failed logins.
+ * same machinery brakes the browse API (whole-bundle reads) and, through
+ * bearerAuth, failed logins.
  *
  * Deliberately coarse: one process, one counter per client, whole windows. It
  * is a brake, not an accounting system.
@@ -17,12 +18,6 @@ export interface RateLimitOptions {
   /** Requests allowed per window. 0 disables the limiter entirely. */
   limit: number;
   windowMs: number;
-  /**
-   * Count only the requests whose finished response matches — e.g. 401s, to
-   * throttle token guessing without limiting legitimate traffic. Requests are
-   * still refused once the count is exhausted.
-   */
-  countIf?: (res: Response) => boolean;
   /** Shown in the 429 body: how to adjust this particular limit. */
   hint?: string;
 }
@@ -60,64 +55,76 @@ function expandIPv6(ip: string): string[] {
   return [...left, ...fill, ...right].map((group) => group.padStart(4, "0"));
 }
 
-export function rateLimit(options: RateLimitOptions): RateLimiter {
-  const windows = new Map<string, Window>();
+/**
+ * Per-client counters in fixed windows. Expired windows are dropped on a timer
+ * rather than scanned per request, so a flood of distinct clients costs memory
+ * for one window, not CPU per call.
+ */
+export class FixedWindows {
+  private readonly windows = new Map<string, Window>();
+  private readonly sweep: ReturnType<typeof setInterval>;
 
-  // Expired windows are dropped on a timer rather than scanned per request, so
-  // a flood of distinct clients costs memory for one window, not CPU per call.
-  const sweep = setInterval(
-    () => {
-      const now = Date.now();
-      for (const [key, window] of windows) if (window.resetAt <= now) windows.delete(key);
-    },
-    Math.max(options.windowMs, 1_000)
-  );
-  sweep.unref();
+  constructor(private readonly windowMs: number) {
+    this.sweep = setInterval(
+      () => {
+        const now = Date.now();
+        for (const [key, w] of this.windows) if (w.resetAt <= now) this.windows.delete(key);
+      },
+      Math.max(windowMs, 1_000)
+    );
+    this.sweep.unref();
+  }
+
+  /** The client's current window (a fresh one if it expired). */
+  current(key: string): Window {
+    const now = Date.now();
+    let window = this.windows.get(key);
+    if (!window || window.resetAt <= now) {
+      window = { count: 0, resetAt: now + this.windowMs };
+      this.windows.set(key, window);
+    }
+    return window;
+  }
+
+  stop(): void {
+    clearInterval(this.sweep);
+  }
+}
+
+/** Seconds until the window resets, for Retry-After / RateLimit-Reset. */
+export function secondsLeft(window: Window): string {
+  return String(Math.max(0, Math.ceil((window.resetAt - Date.now()) / 1000)));
+}
+
+export function rateLimit(options: RateLimitOptions): RateLimiter {
+  const windows = new FixedWindows(options.windowMs);
 
   const middleware = ((req: Request, res: Response, next: NextFunction): void => {
     if (options.limit <= 0) {
       next();
       return;
     }
-    const now = Date.now();
-    const key = clientKey(req);
-
-    let window = windows.get(key);
-    if (!window || window.resetAt <= now) {
-      window = { count: 0, resetAt: now + options.windowMs };
-      windows.set(key, window);
-    }
-    const current = window;
-    const resetSeconds = String(Math.ceil((current.resetAt - now) / 1000));
-
-    if (options.countIf) {
-      // Count after the fact; refuse only once the budget is already spent.
-      if (current.count >= options.limit) {
-        refuse(res, options, resetSeconds);
-        return;
-      }
-      res.on("finish", () => {
-        if (options.countIf!(res)) current.count++;
-      });
-      next();
-      return;
-    }
-
-    current.count++;
+    const window = windows.current(clientKey(req));
+    window.count++;
+    const reset = secondsLeft(window);
     res.setHeader("RateLimit-Limit", String(options.limit));
-    res.setHeader("RateLimit-Remaining", String(Math.max(0, options.limit - current.count)));
-    res.setHeader("RateLimit-Reset", resetSeconds);
-    if (current.count > options.limit) {
-      refuse(res, options, resetSeconds);
+    res.setHeader("RateLimit-Remaining", String(Math.max(0, options.limit - window.count)));
+    res.setHeader("RateLimit-Reset", reset);
+    if (window.count > options.limit) {
+      refuse(res, options, reset);
       return;
     }
     next();
   }) as RateLimiter;
-  middleware.stop = () => clearInterval(sweep);
+  middleware.stop = () => windows.stop();
   return middleware;
 }
 
-function refuse(res: Response, options: RateLimitOptions, resetSeconds: string): void {
+export function refuse(
+  res: Response,
+  options: Pick<RateLimitOptions, "limit" | "windowMs" | "hint">,
+  resetSeconds: string
+): void {
   res.setHeader("Retry-After", resetSeconds);
   res.status(429).json({
     error:

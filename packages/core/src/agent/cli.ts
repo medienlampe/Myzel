@@ -1,8 +1,10 @@
 #!/usr/bin/env tsx
 /**
  * Agent smoke CLI.
- *   BUNDLE_ROOT=../sample-bundle pnpm agent:query  "What do we know about billing?"
- *   BUNDLE_ROOT=../sample-bundle pnpm agent:mutate "Add a concept about the users table"
+ *   make query Q="What do we know about billing?"      (from the repository root)
+ *   make mutate I="Add a concept about the users table"
+ * or directly, with an absolute bundle path (the script runs in packages/core):
+ *   BUNDLE_ROOT=/abs/path/to/bundle pnpm agent:query "…"
  */
 import { KnowledgeBase } from "../okf/index.js";
 import { runQuery, runMutation } from "./agent.js";

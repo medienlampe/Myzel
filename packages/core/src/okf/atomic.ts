@@ -1,7 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-
-let counter = 0;
 
 /**
  * Write a file atomically: same-directory temp file, then rename.
@@ -14,13 +13,15 @@ let counter = 0;
  * or the new one.
  *
  * The temp name starts with a dot, which every bundle walker skips, so a
- * concurrent read never sees it as a concept.
+ * concurrent read never sees it as a concept. It is random and created with
+ * O_EXCL ("wx"): a predictable name could be pre-planted in a synced bundle as a
+ * symlink, and writeFile would follow it to any file the server can write.
  */
 export async function writeFileAtomic(filePath: string, content: string): Promise<void> {
   const dir = path.dirname(filePath);
-  const tmp = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${counter++}.tmp`);
+  const tmp = path.join(dir, `.${path.basename(filePath)}.${randomBytes(8).toString("hex")}.tmp`);
   try {
-    await fs.writeFile(tmp, content, "utf-8");
+    await fs.writeFile(tmp, content, { encoding: "utf-8", flag: "wx" });
     await fs.rename(tmp, filePath);
   } catch (err) {
     await fs.rm(tmp, { force: true }).catch(() => {});

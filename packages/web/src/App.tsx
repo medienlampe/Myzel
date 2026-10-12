@@ -13,7 +13,7 @@ import {
 import { Tree } from "./components/Tree";
 import { ConceptView } from "./components/ConceptView";
 import { LogView } from "./components/LogView";
-import { ChatPanel } from "./components/ChatPanel";
+import { ChatPanel, createChat } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
 import { Workspace, type PanelSpec } from "./components/Workspace";
 import {
@@ -77,12 +77,16 @@ export default function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (view.kind === "concept") {
-      api
-        .concept(view.path)
-        .then(setConcept)
-        .catch((e) => setError(String(e)));
-    }
+    if (view.kind !== "concept") return;
+    // A slower answer for a concept clicked earlier must not replace this one.
+    let current = true;
+    api
+      .concept(view.path)
+      .then((c) => current && setConcept(c))
+      .catch((e) => current && setError(String(e)));
+    return () => {
+      current = false;
+    };
   }, [view]);
 
   // Re-load the open concept (and graph) after chat mutations.
@@ -93,21 +97,33 @@ export default function App() {
     setView((v) => ({ ...v }));
   }, [refresh]);
 
+  // Created once, after onMutation (stable: its only dependency never changes).
+  const [chat] = useState(() => createChat(onMutation));
+
   // Results for a cleared query are simply not shown, rather than reset from
   // inside the effect (which would cost an extra render per keystroke).
   const shownHits = query.trim() ? hits : null;
   useEffect(() => {
     if (!query.trim()) return;
+    let current = true;
     const t = setTimeout(
       () =>
         api
           .search(query)
-          .then(setHits)
+          .then((h) => current && setHits(h))
           .catch(() => {}),
       200
     );
-    return () => clearTimeout(t);
+    return () => {
+      current = false;
+      clearTimeout(t);
+    };
   }, [query]);
+
+  const showView = useCallback((next: View) => {
+    setView(next);
+    setError(null);
+  }, []);
 
   const openConcept = useCallback((path: string) => {
     if (path === "/log.md") {
@@ -208,13 +224,13 @@ export default function App() {
 
       <div className="flex border-t border-zinc-800 text-xs">
         <button
-          onClick={() => setView({ kind: "log" })}
+          onClick={() => showView({ kind: "log" })}
           className={`flex-1 px-3 py-2 hover:bg-zinc-800 ${view.kind === "log" ? "text-cyan-300" : "text-zinc-400"}`}
         >
           Log
         </button>
         <button
-          onClick={() => setView({ kind: "graph" })}
+          onClick={() => showView({ kind: "graph" })}
           className={`flex-1 border-l border-zinc-800 px-3 py-2 hover:bg-zinc-800 ${view.kind === "graph" ? "text-cyan-300" : "text-zinc-400"}`}
         >
           Graph
@@ -249,7 +265,7 @@ export default function App() {
     chat: {
       title: "Agent chat",
       minWidth: 280,
-      content: <ChatPanel config={config} onMutation={onMutation} onOpenConcept={openConcept} />,
+      content: <ChatPanel chat={chat} config={config} onOpenConcept={openConcept} />,
     },
   };
 

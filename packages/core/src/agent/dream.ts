@@ -23,12 +23,28 @@ export interface DuplicateCandidate {
 }
 
 /**
+ * Log length (per bundle) when the last dream finished. The log only grows, so
+ * "is there new activity?" has to be measured against the previous dream —
+ * otherwise five entries, ever, would trigger a paid run on every interval.
+ * In-process only: after a restart the first dream may look at the whole log.
+ */
+const logLengthAtLastDream = new Map<string, number>();
+/**
+ * The signals the last dream acted on, per bundle. The prompt tells the agent
+ * to leave a genuinely unrelated orphan or two distinct look-alikes alone, so
+ * such signals can outlive a dream; unchanged signals mean nothing new to do.
+ */
+const signalsAtLastDream = new Map<string, string>();
+const MIN_NEW_ENTRIES_FOR_INSIGHTS = 5;
+
+/**
  * Dreaming: an autonomous consolidation pass over the memory — what a brain
  * does during sleep. Deterministic signals decide whether there is anything
  * to dream about (orphans, broken links, likely duplicates, recent activity
  * worth abstracting); the agent then consolidates. No signals → no run, no
  * tokens.
  */
+
 export async function runDream(
   kb: KnowledgeBase,
   options: AgentOptions = {},
@@ -81,18 +97,23 @@ export async function runDream(
           .join("\n")
     );
   }
-  if (insightsEnabled && log.length >= 5) {
+  const newEntries = log.length - (logLengthAtLastDream.get(kb.bundle.root) ?? 0);
+  if (insightsEnabled && newEntries >= MIN_NEW_ENTRIES_FOR_INSIGHTS) {
     signals.push(
       `CONSOLIDATION (optional). Review the recent activity below. If several concepts now ` +
         `describe one theme that has no overview concept, create ONE overview concept that ` +
         `summarizes and links them (and back-link per the rules). If nothing meaningful ` +
         `emerges, skip this — do not force an insight.\n` +
-        log.slice(0, 10).map(formatLogLine).join("\n")
+        log.slice(0, Math.min(newEntries, 10)).map(formatLogLine).join("\n")
     );
   }
 
   if (signals.length === 0) {
     return { ran: false, reason: "memory healthy — nothing to consolidate" };
+  }
+  const fingerprint = signals.join("\n\n");
+  if (signalsAtLastDream.get(kb.bundle.root) === fingerprint) {
+    return { ran: false, reason: "nothing new since the last dream" };
   }
 
   const instruction =
@@ -102,6 +123,13 @@ export async function runDream(
     `justified edits over sweeping rewrites. Summarize exactly what changed.`;
 
   const outcome = await runner(kb, instruction, options);
+  // Only a dream that did its work counts: a failed one (provider down,
+  // timeout) must be retried on the next interval, not skipped as "seen".
+  // The dream's own log entries count as seen, or it would trigger the next one.
+  if (outcome.ok || outcome.status === "partial") {
+    logLengthAtLastDream.set(kb.bundle.root, (await kb.readLog()).length);
+    signalsAtLastDream.set(kb.bundle.root, fingerprint);
+  }
   if (outcome.ok) {
     return {
       ran: true,

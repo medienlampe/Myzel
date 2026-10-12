@@ -18,7 +18,9 @@ sample-bundle/.traces
 
 # Docs and local tooling play no part in the image.
 README.md
-AGENT.md
+AGENTS.md
+CLAUDE.md
+docs
+Makefile
 LICENSE
 docker-compose*.yml
-scripts

@@ -2,6 +2,7 @@ import express, { type Router } from "express";
 import { z } from "zod";
 import { convertToModelMessages, type UIMessage } from "ai";
 import { streamChat, type KnowledgeBase } from "@myzel/core";
+import { parseAllowedModels } from "../env.js";
 import { LIMITS } from "../limits.js";
 
 /**
@@ -11,17 +12,16 @@ import { LIMITS } from "../limits.js";
  * client-chosen `model` out of the provider call.
  */
 const chatBodySchema = z.object({
+  // The UI only ever sends user and assistant turns; a client-supplied
+  // "system" message would sit next to the real system prompt.
   messages: z
-    .array(z.looseObject({ role: z.string() }))
+    .array(z.looseObject({ role: z.enum(["user", "assistant"]) }))
     .min(1)
     .max(LIMITS.chatMessages),
   model: z.string().min(1).max(200).optional(),
 });
 
-/**
- * Characters of text in the newest user turn. Earlier turns were accepted when
- * they were new; the newest one is what this request adds to the bill.
- */
+/** Characters of text in the newest user turn — capped on its own for a clear error. */
 export function newestUserTurnLength(messages: Array<{ role: string; parts?: unknown }>): number {
   const turn = [...messages].reverse().find((m) => m.role === "user");
   if (!turn || !Array.isArray(turn.parts)) return 0;
@@ -29,18 +29,6 @@ export function newestUserTurnLength(messages: Array<{ role: string; parts?: unk
     const text = (part as { type?: unknown; text?: unknown }).text;
     return typeof text === "string" ? sum + text.length : sum;
   }, 0);
-}
-
-/**
- * Which models a client may request. Unset means none: the server's configured
- * model is used and a client-supplied override is refused, so a request cannot
- * redirect spend onto a different (pricier) model. "*" restores free choice.
- */
-export function parseAllowedModels(raw: string | undefined): string[] {
-  return (raw ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 /**
@@ -60,6 +48,12 @@ export function chatRouter(kb: KnowledgeBase): Router {
     const { messages, model } = parsed.data;
     if (newestUserTurnLength(messages) > LIMITS.chatTurn) {
       res.status(413).json({ error: `message too long (max ${LIMITS.chatTurn} characters)` });
+      return;
+    }
+    // The server is stateless: every request re-sends the whole conversation,
+    // tool results included, and all of it goes to the model.
+    if (JSON.stringify(messages).length > LIMITS.chatConversation) {
+      res.status(413).json({ error: "conversation too long — start a new chat" });
       return;
     }
 

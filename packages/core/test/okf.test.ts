@@ -7,12 +7,14 @@ import {
   BundleError,
   KnowledgeBase,
   parseDoc,
+  serializeDoc,
   replaceSection,
   validateBundle,
   readLog,
   searchBundle,
   lintBundle,
   regenerateIndex,
+  pruneEmptyDirs,
 } from "../src/okf/index.js";
 
 let root: string;
@@ -88,6 +90,23 @@ describe("frontmatter round-trip", () => {
   it("rejects frontmatter that is not a mapping or never closed", () => {
     expect(() => parseDoc("---\n- a\n- b\n---\nbody")).toThrow(/mapping/);
     expect(() => parseDoc("---\ntype: T\nbody without a closing fence")).toThrow(/never closed/);
+  });
+
+  it("round-trips an empty body without adding blank lines", () => {
+    const { body } = parseDoc(serializeDoc({ type: "T" }, ""));
+    expect(body).toBe("");
+    expect(serializeDoc({ type: "T" }, "")).toBe("---\ntype: T\n---\n\n");
+  });
+
+  it("keeps a body's leading blank line across rewrites", async () => {
+    await kb.writeConcept("/b.md", { type: "T" }, "\nfirst paragraph", "Added b.");
+    await kb.patchConcept("/b.md", { frontmatter: { title: "B" } }, "Titled b.");
+    expect((await kb.readConcept("/b.md")).body).toBe("\nfirst paragraph\n");
+  });
+
+  it("reports unreadable frontmatter as a BundleError, not a crash", async () => {
+    await fs.writeFile(path.join(root, "bad.md"), "---\ntype: T\ntype: again\n---\nbody\n");
+    await expect(kb.readConcept("/bad.md")).rejects.toMatchObject({ code: "INVALID_FRONTMATTER" });
   });
 
   it("never evaluates JavaScript frontmatter", () => {
@@ -220,6 +239,66 @@ describe("sandbox", () => {
     }
   });
 
+  it("never writes through a pre-planted temp-file symlink", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
+    try {
+      const victim = path.join(outside, "victim");
+      await fs.writeFile(victim, "original");
+      // Old temp names were predictable (.<name>.<pid>.<counter>.tmp).
+      for (let i = 0; i < 20; i++) {
+        await fs.symlink(victim, path.join(root, `.index.md.${process.pid}.${i}.tmp`));
+      }
+      await kb.writeConcept("/a.md", { type: "T" }, "x", "Added a.");
+      expect(await fs.readFile(victim, "utf-8")).toBe("original");
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("creates no directories outside the bundle before refusing a write", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
+    try {
+      await fs.symlink(outside, path.join(root, "escape"), "dir");
+      await expect(
+        kb.writeConcept("/escape/new/deep/x.md", { type: "T" }, "body", "log")
+      ).rejects.toMatchObject({ code: "OUTSIDE_BUNDLE" });
+      expect(await fs.readdir(outside)).toEqual([]);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses hidden paths and non-markdown files through the concept API", async () => {
+    await fs.mkdir(path.join(root, ".git"));
+    await fs.writeFile(path.join(root, ".git", "config"), "url = https://token@host/x");
+    await fs.writeFile(path.join(root, "notes.txt"), "plain");
+    await expect(kb.readConcept("/.git/config")).rejects.toMatchObject({ code: "HIDDEN_PATH" });
+    await expect(kb.readConcept("/notes.txt")).rejects.toMatchObject({ code: "NOT_MARKDOWN" });
+    await expect(
+      kb.writeConcept("/.hidden/x.md", { type: "T" }, "body", "log")
+    ).rejects.toMatchObject({ code: "HIDDEN_PATH" });
+  });
+
+  it("refuses a concept symlink that resolves into a hidden location", async () => {
+    await fs.mkdir(path.join(root, ".git"));
+    await fs.writeFile(path.join(root, ".git", "config"), "url = https://user:SECRET@host/x");
+    await fs.mkdir(path.join(root, "notes"));
+    await fs.symlink("../.git/config", path.join(root, "notes", "leak.md"));
+    await expect(kb.readConcept("/notes/leak.md")).rejects.toMatchObject({ code: "HIDDEN_PATH" });
+  });
+
+  it("does not follow a symlinked log.md out of the bundle", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
+    try {
+      await fs.writeFile(path.join(outside, "victim.md"), "original");
+      await fs.symlink(path.join(outside, "victim.md"), path.join(root, "log.md"));
+      await expect(kb.readLog()).rejects.toMatchObject({ code: "OUTSIDE_BUNDLE" });
+      expect(await fs.readFile(path.join(outside, "victim.md"), "utf-8")).toBe("original");
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it("refuses to delete through a symlinked directory that points outside the bundle", async () => {
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
     try {
@@ -248,6 +327,20 @@ describe("sandbox", () => {
 });
 
 describe("index regeneration (spec §6)", () => {
+  it("keeps each index entry on one line with a valid link", async () => {
+    await kb.writeConcept(
+      "/my notes.md",
+      { type: "T", title: "A [draft] title", description: "line one\nline two" },
+      "body",
+      "Added notes."
+    );
+    const index = await fs.readFile(path.join(root, "index.md"), "utf-8");
+    expect(index).toContain("* [A \\[draft\\] title](my%20notes.md) - line one line two\n");
+    await kb.writeConcept("/C#(1).md", { type: "T", title: "Ends in \\" }, "b", "Added C#.");
+    const again = await fs.readFile(path.join(root, "index.md"), "utf-8");
+    expect(again).toContain("* [Ends in \\\\](C%23%281%29.md)\n");
+  });
+
   it("generates bullet lists with titles and descriptions, root gets okf_version", async () => {
     await kb.writeConcept(
       "/tables/customers.md",
@@ -275,6 +368,49 @@ describe("index regeneration (spec §6)", () => {
   });
 });
 
+describe("pruning husk directories", () => {
+  it("removes a directory left holding only index.md, and its emptied parents", async () => {
+    await kb.writeConcept("/a/b/c.md", { type: "T", title: "C" }, "body", "Added c.");
+    await kb.writeConcept("/keep.md", { type: "T", title: "Keep" }, "body", "Added keep.");
+    await kb.deleteConcept("/a/b/c.md", "Removed c.");
+    await expect(fs.access(path.join(root, "a"))).rejects.toThrow();
+    const rootIndex = await fs.readFile(path.join(root, "index.md"), "utf-8");
+    expect(rootIndex).not.toContain("(a/)");
+    expect(rootIndex).toContain("(keep.md)");
+  });
+
+  it("heals husks left by earlier changes on the next mutation", async () => {
+    await fs.mkdir(path.join(root, "husk"));
+    await fs.writeFile(path.join(root, "husk", "index.md"), "# Husk\n");
+    await kb.writeConcept("/fresh.md", { type: "T" }, "body", "Added fresh.");
+    await expect(fs.access(path.join(root, "husk"))).rejects.toThrow();
+  });
+
+  it("never fails a mutation over a folder it cannot read or clean up", async () => {
+    await fs.mkdir(path.join(root, "locked"));
+    await fs.chmod(path.join(root, "locked"), 0o000);
+    await fs.mkdir(path.join(root, "odd", "index.md"), { recursive: true });
+    await fs.writeFile(path.join(root, "odd", "index.md", "x.txt"), "a directory named index.md");
+    try {
+      await kb.writeConcept("/ok.md", { type: "T" }, "body", "Added ok.");
+      expect(await kb.readLog()).toHaveLength(1); // index, log (and commit) still happened
+      await expect(fs.access(path.join(root, "odd", "index.md", "x.txt"))).resolves.toBeUndefined();
+    } finally {
+      await fs.chmod(path.join(root, "locked"), 0o755);
+    }
+  });
+
+  it("keeps directories with any other content, hidden directories and the root", async () => {
+    await fs.mkdir(path.join(root, "notes"));
+    await fs.writeFile(path.join(root, "notes", "index.md"), "# Notes\n");
+    await fs.writeFile(path.join(root, "notes", ".keep"), "");
+    await fs.mkdir(path.join(root, ".traces"));
+    expect(await pruneEmptyDirs(kb.bundle)).toEqual([]);
+    await expect(fs.access(path.join(root, "notes", "index.md"))).resolves.toBeUndefined();
+    await expect(fs.access(path.join(root, ".traces"))).resolves.toBeUndefined();
+  });
+});
+
 describe("log (spec §7)", () => {
   it("appends newest-first with action bullets under ISO date headings", async () => {
     await kb.writeConcept("/one.md", { type: "T", title: "One" }, "x", "Created one.");
@@ -292,6 +428,17 @@ describe("log (spec §7)", () => {
 });
 
 describe("patch", () => {
+  it("treats a short fence inside a longer one as content", () => {
+    const body = "# A\n\n````md\n```\n# B\n```\n````\n\n# C\n\nc\n";
+    expect(replaceSection(body, "A", "new a")).toBe("# A\n\nnew a\n\n# C\n\nc\n");
+  });
+
+  it("does not mistake a # comment inside a code block for a heading", () => {
+    const body = "# Setup\n\n```bash\n# install deps\nnpm ci\n```\n\n# Usage\n\nrun it\n";
+    const out = replaceSection(body, "Setup", "new setup");
+    expect(out).toBe("# Setup\n\nnew setup\n\n# Usage\n\nrun it\n");
+  });
+
   it("merges frontmatter and replaces a named section only", async () => {
     await kb.writeConcept(
       "/doc.md",
@@ -323,6 +470,13 @@ describe("patch", () => {
 });
 
 describe("search", () => {
+  it("tolerates a non-string type when filtering by type", async () => {
+    await fs.writeFile(path.join(root, "odd.md"), "---\ntype: 123\n---\nbody\n");
+    await kb.writeConcept("/ok.md", { type: "Note" }, "body", "Added ok.");
+    const hits = await kb.search("", { type: "note" });
+    expect(hits.map((h) => h.path)).toEqual(["/ok.md"]);
+  });
+
   beforeEach(async () => {
     await kb.writeConcept(
       "/tables/customers.md",

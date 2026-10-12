@@ -45,6 +45,13 @@ const KIND_COLOR: Record<TraceSummary["kind"], string> = {
 
 const radius = (n: SimNode) => 5 + Math.sqrt(n.links) * 3.5;
 
+/** "6.2k→320 tok": which query pathways are context-heavy, at a glance. */
+function usageLabel(usage?: TraceSummary["usage"]): string | null {
+  if (!usage) return null;
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+  return `${fmt(usage.inputTokens)}→${fmt(usage.outputTokens)} tok`;
+}
+
 /** The traversal chain: concept visits in step order (reads + writes), deduped consecutively. */
 function traceVisits(trace: QueryTrace): { path: string; seq: number; write: boolean }[] {
   const visits: { path: string; seq: number; write: boolean }[] = [];
@@ -108,38 +115,44 @@ export function GraphView({
   // Build / rebuild the simulation when data changes.
   useEffect(() => {
     let cancelled = false;
-    api.graph().then((graph: GraphData) => {
-      if (cancelled) return;
-      const width = containerRef.current?.clientWidth ?? 800;
-      const height = containerRef.current?.clientHeight ?? 600;
-      const simNodes: SimNode[] = graph.nodes.map((n, i) => ({
-        path: n.path,
-        title: n.title,
-        type: n.type,
-        links: n.links,
-        x: width / 2 + 120 * Math.cos((2 * Math.PI * i) / Math.max(1, graph.nodes.length)),
-        y: height / 2 + 120 * Math.sin((2 * Math.PI * i) / Math.max(1, graph.nodes.length)),
-      }));
-      const byPath = new Map(simNodes.map((n) => [n.path, n]));
-      const simLinks: SimLink[] = graph.edges
-        .filter((e) => byPath.has(e.source) && byPath.has(e.target))
-        .map((e) => ({ source: byPath.get(e.source)!, target: byPath.get(e.target)! }));
+    api
+      .graph()
+      .then((graph: GraphData) => {
+        if (cancelled) return;
+        const width = containerRef.current?.clientWidth ?? 800;
+        const height = containerRef.current?.clientHeight ?? 600;
+        const simNodes: SimNode[] = graph.nodes.map((n, i) => ({
+          path: n.path,
+          title: n.title,
+          type: n.type,
+          links: n.links,
+          x: width / 2 + 120 * Math.cos((2 * Math.PI * i) / Math.max(1, graph.nodes.length)),
+          y: height / 2 + 120 * Math.sin((2 * Math.PI * i) / Math.max(1, graph.nodes.length)),
+        }));
+        const byPath = new Map(simNodes.map((n) => [n.path, n]));
+        const simLinks: SimLink[] = graph.edges
+          .filter((e) => byPath.has(e.source) && byPath.has(e.target))
+          .map((e) => ({ source: byPath.get(e.source)!, target: byPath.get(e.target)! }));
 
-      simRef.current?.stop();
-      const sim = forceSimulation<SimNode>(simNodes)
-        .force("charge", forceManyBody().strength(-220))
-        .force("link", forceLink<SimNode, SimLink>(simLinks).distance(90).strength(0.6))
-        .force("center", forceCenter(width / 2, height / 2))
-        .force(
-          "collide",
-          forceCollide<SimNode>((n) => radius(n) + 6)
-        )
-        .on("tick", () => setTick((t) => t + 1));
-      simRef.current = sim;
-      setNodes(simNodes);
-      setLinks(simLinks);
-      setView({ x: 0, y: 0, k: 1 });
-    });
+        simRef.current?.stop();
+        const sim = forceSimulation<SimNode>(simNodes)
+          .force("charge", forceManyBody().strength(-220))
+          .force("link", forceLink<SimNode, SimLink>(simLinks).distance(90).strength(0.6))
+          .force("center", forceCenter(width / 2, height / 2))
+          .force(
+            "collide",
+            forceCollide<SimNode>((n) => radius(n) + 6)
+          )
+          .on("tick", () => setTick((t) => t + 1));
+        simRef.current = sim;
+        setNodes(simNodes);
+        setLinks(simLinks);
+        setView({ x: 0, y: 0, k: 1 });
+      })
+      .catch((err) => {
+        // The graph just stays empty; the tree and log surface API problems.
+        console.error("graph load failed:", err);
+      });
     api
       .traces()
       .then(setTraces)
@@ -185,7 +198,12 @@ export function GraphView({
   }, [activeTrace]);
 
   const selectTrace = async (id: string) => {
-    const full = await api.trace(id);
+    let full: QueryTrace;
+    try {
+      full = await api.trace(id);
+    } catch {
+      return; // pruned since the list was loaded — nothing to replay
+    }
     setActiveTrace(full);
     setProgress(0);
     setPlaying(true); // sweep the path in on selection
@@ -339,8 +357,11 @@ export function GraphView({
                   />
                   <span className="truncate text-zinc-200">{t.input}</span>
                 </div>
-                <div className="mt-0.5 truncate font-mono text-[10px] text-zinc-500">
-                  {t.notation}
+                <div className="mt-0.5 flex items-baseline gap-2 font-mono text-[10px]">
+                  <span className="truncate text-zinc-500">{t.notation}</span>
+                  {usageLabel(t.usage) && (
+                    <span className="ml-auto shrink-0 text-zinc-600">{usageLabel(t.usage)}</span>
+                  )}
                 </div>
               </button>
             ))}
@@ -359,6 +380,11 @@ export function GraphView({
               {activeTrace.kind}
             </span>
             <span className="truncate text-zinc-200">{activeTrace.input}</span>
+            {usageLabel(activeTrace.usage) && (
+              <span className="shrink-0 rounded-sm bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+                {usageLabel(activeTrace.usage)}
+              </span>
+            )}
             <button
               onClick={closeTrace}
               className="ml-auto shrink-0 rounded-sm px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"

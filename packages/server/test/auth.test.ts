@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { bearerAuth } from "../src/auth.js";
 
 function call(middleware: ReturnType<typeof bearerAuth>, authorization?: string) {
-  const req = { headers: authorization ? { authorization } : {} } as Request;
+  const req = { ip: "127.0.0.1", headers: authorization ? { authorization } : {} } as Request;
   const set = vi.fn().mockReturnThis();
   const json = vi.fn().mockReturnThis();
   const status = vi.fn().mockReturnValue({ set, json } as unknown as Response);
@@ -22,6 +22,12 @@ describe("bearerAuth", () => {
     const { next, status } = call(middleware, "Bearer s3cret-token");
     expect(next).toHaveBeenCalledOnce();
     expect(status).not.toHaveBeenCalled();
+  });
+
+  it("accepts the scheme name in any case (RFC 7235), but not a different-case token", () => {
+    expect(call(middleware, "bearer s3cret-token").next).toHaveBeenCalledOnce();
+    expect(call(middleware, "BEARER s3cret-token").next).toHaveBeenCalledOnce();
+    expect(call(middleware, "Bearer S3CRET-TOKEN").next).not.toHaveBeenCalled();
   });
 
   it("rejects missing, malformed, and wrong tokens with 401", () => {

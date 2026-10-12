@@ -1,5 +1,4 @@
 import { promises as fs } from "node:fs";
-import path from "node:path";
 import { writeFileAtomic } from "./atomic.js";
 import type { Bundle } from "./bundle.js";
 import type { LogAction, LogEntry } from "./types.js";
@@ -26,7 +25,7 @@ interface LogSection {
  * part of the log and is dropped.
  */
 export async function appendLog(bundle: Bundle, action: LogAction, summary: string): Promise<void> {
-  const logPath = path.join(bundle.root, "log.md");
+  const logPath = await bundle.resolveContained("/log.md");
   const today = new Date().toISOString().slice(0, 10);
 
   const sections = parseSections(await readRaw(logPath));
@@ -44,7 +43,7 @@ export async function appendLog(bundle: Bundle, action: LogAction, summary: stri
 
 /** Parse the root log.md into structured entries (best-effort, permissive). */
 export async function readLog(bundle: Bundle): Promise<LogEntry[]> {
-  const sections = parseSections(await readRaw(path.join(bundle.root, "log.md")));
+  const sections = parseSections(await readRaw(await bundle.resolveContained("/log.md")));
   return sections.flatMap((section) =>
     section.entries.map((entry) => ({
       date: section.date,

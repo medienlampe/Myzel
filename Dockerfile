@@ -7,12 +7,12 @@ COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
 RUN pnpm install --frozen-lockfile
 COPY packages packages
-# Build, then reinstall production dependencies only, from the store the first
-# install already filled (--offline: no network). A fresh install rather than
-# `pnpm prune --prod`, which leaves the workspace packages without their links.
+# Build, then let pnpm assemble a self-contained production copy of the server
+# (its dist, package.json and only the production dependencies, @myzel/core
+# included). Smaller than copying the workspace's node_modules, and it avoids
+# `pnpm prune --prod`, which leaves workspace packages without their links.
 RUN pnpm -r build \
-  && rm -rf node_modules packages/*/node_modules \
-  && pnpm install --prod --frozen-lockfile --offline
+  && pnpm --filter @myzel/server deploy --prod --legacy /deploy/server
 
 FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
 # tini: a real PID 1 that forwards SIGTERM to Node and reaps zombies, so
@@ -20,14 +20,9 @@ FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b533
 # git: needed for GIT_AUTOCOMMIT.
 RUN apk add --no-cache tini git
 WORKDIR /app
-COPY --from=build /app/node_modules node_modules
-COPY --from=build /app/packages/core/dist packages/core/dist
-COPY --from=build /app/packages/core/package.json packages/core/
-COPY --from=build /app/packages/core/node_modules packages/core/node_modules
-COPY --from=build /app/packages/server/dist packages/server/dist
-COPY --from=build /app/packages/server/package.json packages/server/
-COPY --from=build /app/packages/server/node_modules packages/server/node_modules
-COPY --from=build /app/packages/web/dist packages/web/dist
+# The server finds the UI at ../../web/dist relative to its dist/index.js.
+COPY --from=build /deploy/server server
+COPY --from=build /app/packages/web/dist web/dist
 
 # Run unprivileged. The bundle directory is created and handed to the `node`
 # user (uid 1000, present in the base image) BEFORE the VOLUME declaration, so
@@ -48,4 +43,4 @@ VOLUME /bundle
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3800)+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "packages/server/dist/index.js"]
+CMD ["node", "server/dist/index.js"]

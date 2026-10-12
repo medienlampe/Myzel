@@ -42,9 +42,11 @@ a clean exit.
 
 These cost time once. Check them again when the package in question moves.
 
-- **pnpm in Docker.** `pnpm prune --prod` asks for confirmation without a TTY, and with the
-  prompt disabled it leaves the workspace packages unlinked. The Dockerfile therefore does a clean
-  `pnpm install --prod --frozen-lockfile --offline` instead.
+- **pnpm in Docker.** The image is assembled with `pnpm --filter @myzel/server deploy --prod
+  --legacy`, which copies only what each package's `files` field lists plus production
+  dependencies. Don't use `pnpm prune --prod` there: it asks for confirmation without a TTY, and
+  with the prompt disabled it leaves the workspace packages unlinked, so the image builds but
+  cannot start.
 - **simple-git 4:**
   - it drops ambient `GIT_*` environment variables unless they are listed in `allowEnvironment`;
   - it refuses some `-c` keys (`core.hooksPath`, `core.fsmonitor`) unless they are unlocked.
@@ -57,8 +59,9 @@ These cost time once. Check them again when the package in question moves.
 - **AI SDK:**
   - models follow a specification version (currently `v4`), and test fakes must declare the
     current one, or `wrapLanguageModel` adapts their calls;
-  - `useChat` keeps the first transport it receives, so per-request values go through
-    `sendMessage(…, { body })`.
+  - the web UI creates its `Chat` in `App` and hands it to `useChat({ chat })`: `useChat` stops the
+    chats it creates itself when it unmounts, which a panel remount would trigger. The transport is
+    fixed at creation, so per-request values go through `sendMessage(…, { body })`.
 - **Tailwind 4:**
   - there is no config file; everything is in `src/index.css`;
   - a small base layer keeps the v3 border colour and the button cursor, so remove it only on

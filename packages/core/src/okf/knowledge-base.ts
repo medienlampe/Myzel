@@ -1,8 +1,8 @@
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
-import { autocommit, createBundleGit } from "./git.js";
+import { autocommit, createBundleGit, prepareRepo } from "./git.js";
 import { Bundle } from "./bundle.js";
-import { regenerateIndexChain } from "./indexer.js";
+import { pruneEmptyDirs, regenerateIndexChain } from "./indexer.js";
 import { appendLog, readLog } from "./logger.js";
 import { searchBundle, listTypes, type SearchOptions } from "./search.js";
 import { validateBundle } from "./validate.js";
@@ -39,6 +39,15 @@ export class KnowledgeBase {
   ) {
     this.bundle = new Bundle(bundleRoot);
     this.git = options.gitAutocommit ? createBundleGit(this.bundle.root) : null;
+  }
+
+  /**
+   * With gitAutocommit, check (and if needed initialize) the bundle's
+   * repository. Throws with the reason when autocommit cannot work; call at
+   * startup. A no-op without gitAutocommit.
+   */
+  async ensureGitReady(): Promise<void> {
+    if (this.git) await prepareRepo(this.git, this.bundle.root);
   }
 
   // ── Reads (no queue) ────────────────────────────────────────────────
@@ -136,6 +145,11 @@ export class KnowledgeBase {
     action: LogAction,
     logSummary: string
   ): Promise<void> {
+    // Prune before indexing, so parent indexes drop the dead subdirectory links.
+    // Housekeeping only: a failure must not fail the mutation that just landed.
+    await pruneEmptyDirs(this.bundle).catch((err) =>
+      console.error(`[myzel] pruning empty folders failed: ${(err as Error).message}`)
+    );
     await regenerateIndexChain(this.bundle, path.posix.dirname(conceptPath));
     const linked = `[${conceptPath.split("/").pop()}](${conceptPath})`;
     await appendLog(this.bundle, action, logSummary || `${action} of ${linked}.`);

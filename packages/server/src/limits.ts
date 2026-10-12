@@ -14,8 +14,10 @@ export const LIMITS = {
   instruction: 20_000,
   /** memory_add suggested_path. */
   path: 300,
-  /** Newest user turn in /api/chat (earlier turns were already accepted). */
+  /** Newest user turn in /api/chat. */
   chatTurn: 20_000,
+  /** Whole /api/chat conversation as sent (JSON characters, tool results included). */
+  chatConversation: 200_000,
   /** Messages per /api/chat request. */
   chatMessages: 200,
   /** JSON request bodies (/mcp, /api). Fits `content` even in worst-case UTF-8. */

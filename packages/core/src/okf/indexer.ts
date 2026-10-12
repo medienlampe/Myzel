@@ -22,7 +22,9 @@ export async function regenerateIndex(bundle: Bundle, dir = "/"): Promise<string
     if (isHiddenOrLink(entry)) continue;
     if (entry.isDirectory()) {
       const summary = await summarizeDirectory(path.join(absDir, entry.name));
-      dirLines.push(`* [${entry.name}](${entry.name}/) - ${summary}`);
+      dirLines.push(
+        `* [${linkText(entry.name)}](${linkTarget(entry.name)}/) - ${oneLine(summary)}`
+      );
       continue;
     }
     if (!entry.name.endsWith(".md") || RESERVED_FILENAMES.has(entry.name)) continue;
@@ -35,7 +37,10 @@ export async function regenerateIndex(bundle: Bundle, dir = "/"): Promise<string
     } catch {
       // Permissive: index unparseable files by filename.
     }
-    conceptLines.push(`* [${title}](${entry.name})${description ? ` - ${description}` : ""}`);
+    const desc = oneLine(description);
+    conceptLines.push(
+      `* [${linkText(title)}](${linkTarget(entry.name)})${desc ? ` - ${desc}` : ""}`
+    );
   }
 
   const dirName = isRoot ? "Knowledge Base" : path.basename(absDir);
@@ -58,11 +63,88 @@ export async function regenerateIndexChain(bundle: Bundle, dir: string): Promise
   let current = bundle.resolve(dir);
   // If given a file path, start from its directory.
   if (current.endsWith(".md")) current = path.dirname(current);
+  // The directory may have been pruned away — start from the nearest ancestor
+  // that still exists (the root always does), or it would be recreated.
+  while (current !== bundle.root) {
+    try {
+      await fs.access(current);
+      break;
+    } catch {
+      current = path.dirname(current);
+    }
+  }
   while (true) {
     await regenerateIndex(bundle, bundle.toBundlePath(current));
     if (current === bundle.root) break;
     current = path.dirname(current);
   }
+}
+
+/**
+ * index.md is a bullet list (spec §6): one entry per line. Frontmatter values
+ * can span lines (`description: |`) or contain "]", either of which would
+ * break the list or the link, so both are normalized here.
+ */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function linkText(text: string): string {
+  return oneLine(text).replace(/[\\[\]]/g, "\\$&");
+}
+
+/** A file name as a link target: spaces, "#", "?" and parentheses would break the link. */
+function linkTarget(name: string): string {
+  return encodeURIComponent(name).replace(
+    /[()]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+
+/**
+ * Remove directories left holding nothing but their generated index.md (or
+ * nothing at all).
+ * Agents that move or merge concepts leave such husks behind, and delete_concept
+ * cannot remove them (index.md is reserved), so the cleanup is deterministic:
+ * bottom-up over the bundle, so a parent emptied by pruning its children goes
+ * too. Never touches the root, hidden directories or symlinks, and removes only
+ * index.md itself — a directory holding anything else (even a dot-file) stays.
+ * Returns the removed bundle paths. (Ported from upstream understory.)
+ */
+export async function pruneEmptyDirs(bundle: Bundle): Promise<string[]> {
+  const removed: string[] = [];
+
+  // Best-effort per directory: one unreadable or busy folder (lost+found on a
+  // volume root, a mount point) must not stop the rest of the sweep.
+  const visit = async (absDir: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await fs.readdir(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && !isHiddenOrLink(entry)) await visit(path.join(absDir, entry.name));
+    }
+    if (absDir === bundle.root) return;
+    try {
+      // Re-read: children may have been pruned during the recursion above.
+      const remaining = await fs.readdir(absDir, { withFileTypes: true });
+      if (remaining.length > 1) return;
+      if (remaining.length === 1) {
+        const [only] = remaining;
+        if (only.name !== "index.md" || only.isDirectory()) return;
+        await fs.rm(path.join(absDir, "index.md"));
+      }
+      await fs.rmdir(absDir);
+      removed.push(bundle.toBundlePath(absDir));
+    } catch {
+      // Raced with a writer, or not removable here — leave it for next time.
+    }
+  };
+
+  await visit(bundle.root);
+  return removed;
 }
 
 function capitalize(s: string): string {
