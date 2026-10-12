@@ -387,6 +387,8 @@ export function GraphView({
             )}
             <button
               onClick={closeTrace}
+              aria-label="Close path replay"
+              title="Close path replay"
               className="ml-auto shrink-0 rounded-sm px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
             >
               ✕

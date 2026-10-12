@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
 import { autocommit, createBundleGit, prepareRepo } from "./git.js";
-import { Bundle } from "./bundle.js";
+import { Bundle, BundleError } from "./bundle.js";
 import { pruneEmptyDirs, regenerateIndexChain } from "./indexer.js";
 import { appendLog, readLog } from "./logger.js";
 import { searchBundle, listTypes, type SearchOptions } from "./search.js";
@@ -32,6 +32,7 @@ export class KnowledgeBase {
   readonly bundle: Bundle;
   private readonly git: SimpleGit | null;
   private mutationQueue: Promise<unknown> = Promise.resolve();
+  private closed = false;
 
   constructor(
     bundleRoot: string,
@@ -134,7 +135,19 @@ export class KnowledgeBase {
     } while (tail !== this.mutationQueue);
   }
 
+  /**
+   * Refuse further writes (queued ones still finish — await idle() for them).
+   * Used when a profile is removed: a request still holding this instance
+   * must not keep writing into a memory that is being revoked or deleted.
+   */
+  close(): void {
+    this.closed = true;
+  }
+
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.closed) {
+      return Promise.reject(new BundleError("this memory has been closed", "CLOSED"));
+    }
     const next = this.mutationQueue.then(fn, fn);
     this.mutationQueue = next.catch(() => {});
     return next;

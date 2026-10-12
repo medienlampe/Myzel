@@ -63,7 +63,7 @@ function hostname(authority: string): string {
 const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1)$/;
 
 /** Is this authority an IP literal (v4, or v6 with or without brackets)? */
-export function isIpLiteralHost(authority: string): boolean {
+function isIpLiteralHost(authority: string): boolean {
   return isIP(hostname(authority).replace(/^\[(.*)\]$/, "$1")) !== 0;
 }
 

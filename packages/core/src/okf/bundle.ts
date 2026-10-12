@@ -14,7 +14,8 @@ export class BundleError extends Error {
       | "NOT_FOUND"
       | "INVALID_FRONTMATTER"
       | "NOT_MARKDOWN"
-      | "HIDDEN_PATH",
+      | "HIDDEN_PATH"
+      | "CLOSED",
     options?: { cause?: unknown }
   ) {
     super(message, options);

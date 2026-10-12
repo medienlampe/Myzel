@@ -1,27 +1,26 @@
 import { afterEach, describe, expect, it } from "vitest";
 import express, { type Request } from "express";
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import { clientKey, parseTrustProxy, rateLimit, type RateLimiter } from "../src/rate-limit.js";
 import { bearerAuth, type BearerAuth } from "../src/auth.js";
+import { listen } from "./support/serve.js";
 
-let server: Server | undefined;
+let closeServer: (() => void) | undefined;
 let limiter: RateLimiter | undefined;
 let auth: BearerAuth | undefined;
 
 afterEach(() => {
-  server?.close();
+  closeServer?.();
   limiter?.stop();
   auth?.stop();
-  server = limiter = auth = undefined;
+  closeServer = limiter = auth = undefined;
 });
 
 async function serve(build: (app: express.Express) => void): Promise<string> {
   const app = express();
   build(app);
-  server = app.listen(0, "127.0.0.1");
-  await new Promise((resolve) => server!.once("listening", resolve));
-  return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+  const { base, close } = await listen(app);
+  closeServer = close;
+  return base;
 }
 
 const statuses = async (url: string, n: number, init?: RequestInit) => {
@@ -48,19 +47,20 @@ describe("rateLimit", () => {
 
 describe("bearerAuth failure throttle", () => {
   const good = { headers: { authorization: "Bearer right" } };
+  const bad = { headers: { authorization: "Bearer wrong" } };
 
   it("refuses a client after too many failures, even with the right token", async () => {
     auth = bearerAuth("right", { limit: 2, windowMs: 60_000 });
     const base = await serve((app) => app.get("/", auth!, (_req, res) => res.send("ok")));
     expect(await statuses(base, 5, good)).toEqual([200, 200, 200, 200, 200]); // never counted
-    expect(await statuses(base, 3)).toEqual([401, 401, 429]);
+    expect(await statuses(base, 3, bad)).toEqual([401, 401, 429]);
     expect(await statuses(base, 1, good)).toEqual([429]);
   });
 
   it("caps a burst of parallel wrong guesses", async () => {
     auth = bearerAuth("right", { limit: 3, windowMs: 60_000 });
     const base = await serve((app) => app.get("/", auth!, (_req, res) => res.send("ok")));
-    const results = await Promise.all(Array.from({ length: 10 }, () => fetch(base)));
+    const results = await Promise.all(Array.from({ length: 10 }, () => fetch(base, bad)));
     expect(results.filter((r) => r.status === 401)).toHaveLength(3);
     expect(results.filter((r) => r.status === 429)).toHaveLength(7);
   });

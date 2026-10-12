@@ -28,7 +28,7 @@ COPY --from=build /app/packages/web/dist web/dist
 # user (uid 1000, present in the base image) BEFORE the VOLUME declaration, so
 # a fresh named volume inherits that ownership. A bind-mounted host directory
 # keeps its own ownership — make it writable by uid 1000 if you use one.
-RUN mkdir -p /bundle && chown -R node:node /bundle
+RUN mkdir -p /bundle /profiles && chown -R node:node /bundle /profiles
 USER node
 
 # A container must bind all interfaces for its published port to work; that is

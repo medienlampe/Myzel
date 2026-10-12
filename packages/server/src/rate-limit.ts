@@ -9,7 +9,8 @@ import type { NextFunction, Request, Response } from "express";
  * direct cost lever for anyone who can reach the port; even with a token it
  * bounds the damage of a leaked one and of a client stuck in a retry loop. The
  * same machinery brakes the browse API (whole-bundle reads) and, through
- * bearerAuth, failed logins.
+ * FailureThrottle (auth.ts), failed attempts with AUTH_TOKEN, profile keys and
+ * ADMIN_TOKEN.
  *
  * Deliberately coarse: one process, one counter per client, whole windows. It
  * is a brake, not an accounting system.

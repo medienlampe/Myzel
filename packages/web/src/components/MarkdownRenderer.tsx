@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -80,131 +80,152 @@ export interface MarkdownRendererProps {
  * Uses createHighlighterCore with the JavaScript regex engine (no WASM)
  * per Shiki best practices for web applications.
  */
+type Highlighter = Awaited<typeof highlighterPromise>;
+
+/**
+ * What the custom renderers need from the current render. Passed by context
+ * so the renderers themselves can be stable module-level components: a new
+ * component function on every render would make React remount every link and
+ * code block of the document each time the parent re-renders.
+ */
+const RenderContext = createContext<{
+  highlighter: Highlighter | null;
+  onNavigate?: (href: string) => string | null;
+  onNavigateClick?: (path: string) => void;
+}>({ highlighter: null });
+
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function highlightCode(highlighter: Highlighter, code: string, language: string): string {
+  try {
+    if (highlighter.getLoadedLanguages().includes(language)) {
+      return highlighter.codeToHtml(code, { lang: language, theme: "github-dark-dimmed" });
+    }
+  } catch {
+    // Fall back to unhighlighted code
+  }
+  return `<pre class="shiki shiki-themes github-dark-dimmed code-block" tabindex="0"><code>${escapeHtml(code)}</code></pre>`;
+}
+
+const LINK_CLASS = "text-cyan-400 hover:underline";
+
+function Link({ href, children }: React.ComponentProps<"a">) {
+  const { onNavigate, onNavigateClick } = useContext(RenderContext);
+  const resolved = href && onNavigate ? onNavigate(href) : null;
+  if (resolved !== null) {
+    return (
+      <a
+        href={resolved}
+        onClick={(e) => {
+          e.preventDefault();
+          onNavigateClick?.(resolved);
+        }}
+        className={LINK_CLASS}
+      >
+        {children}
+      </a>
+    );
+  }
+  // An in-page anchor stays in the page; anything else leaves the app.
+  if (href?.startsWith("#")) {
+    return (
+      <a href={href} className={LINK_CLASS}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+      {children}
+    </a>
+  );
+}
+
+function Code({
+  className,
+  children,
+  node: _node,
+  ...props
+}: React.ComponentProps<"code"> & { node?: unknown }) {
+  const { highlighter } = useContext(RenderContext);
+  const language = /language-(\w+)/.exec(className || "")?.[1];
+  if (language && highlighter) {
+    // Block code — Shiki escapes its input, so its HTML is safe to inject.
+    const html = highlightCode(highlighter, String(children), language);
+    return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+  // Inline code — no highlighting
+  return (
+    <code
+      className="bg-zinc-800 px-1 py-0.5 rounded-sm text-sm text-amber-300 font-mono"
+      {...props}
+    >
+      {children}
+    </code>
+  );
+}
+
+const COMPONENTS: Parameters<typeof ReactMarkdown>[0]["components"] = {
+  a: Link,
+  code: Code,
+  table: ({ node: _node, ...props }) => (
+    <div className="overflow-x-auto my-4 rounded-lg border border-zinc-700">
+      <table className="min-w-full border-collapse" {...props} />
+    </div>
+  ),
+  thead: ({ node: _node, ...props }) => <thead className="bg-zinc-800" {...props} />,
+  th: ({ node: _node, ...props }) => (
+    <th
+      className="border border-zinc-700 px-3 py-2 text-left font-semibold text-zinc-200 bg-zinc-800/50"
+      {...props}
+    />
+  ),
+  td: ({ node: _node, ...props }) => (
+    <td className="border border-zinc-700 px-3 py-2 text-sm text-zinc-300" {...props} />
+  ),
+  pre: ({ children }) => (
+    <pre className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto">
+      {children}
+    </pre>
+  ),
+};
+
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS: Parameters<typeof ReactMarkdown>[0]["rehypePlugins"] = [
+  [rehypeSanitize, sanitizeSchema],
+];
+
 export function MarkdownRenderer({
   children,
   className,
   onNavigate,
   onNavigateClick,
 }: MarkdownRendererProps) {
-  const [highlighter, setHighlighter] = useState<Awaited<typeof highlighterPromise> | null>(null);
+  const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
 
   useEffect(() => {
-    highlighterPromise.then(setHighlighter);
+    let current = true;
+    highlighterPromise.then((h) => current && setHighlighter(h));
+    return () => {
+      current = false;
+    };
   }, []);
 
-  const highlightCode = (code: string, language: string): string => {
-    if (!highlighter) return code;
-    try {
-      const langs: string[] = highlighter.getLoadedLanguages();
-      if (langs.includes(language)) {
-        const highlighted = highlighter.codeToHtml(code, {
-          lang: language,
-          theme: "github-dark-dimmed",
-        });
-        return highlighted;
-      }
-    } catch {
-      // Fall back to unhighlighted code
-    }
-    return `<pre class="shiki shiki-themes github-dark-dimmed code-block" tabindex="0"><code>${escapeHtml(code)}</code></pre>`;
-  };
-
-  const escapeHtml = (text: string): string => {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
-  };
-
-  const components: Parameters<typeof ReactMarkdown>[0]["components"] = {
-    a: ({ href, children: nodeChildren }) => {
-      if (href && onNavigate) {
-        const resolved = onNavigate(href);
-        if (resolved !== null) {
-          return (
-            <a
-              href={resolved}
-              onClick={(e) => {
-                e.preventDefault();
-                onNavigateClick?.(resolved);
-              }}
-              className="text-cyan-400 hover:underline"
-            >
-              {nodeChildren}
-            </a>
-          );
-        }
-      }
-      return (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-cyan-400 hover:underline"
-        >
-          {nodeChildren}
-        </a>
-      );
-    },
-    table: ({ node, ...props }) => (
-      <div className="overflow-x-auto my-4 rounded-lg border border-zinc-700">
-        <table className="min-w-full border-collapse" {...props} />
-      </div>
-    ),
-    thead: ({ node, ...props }) => (
-      <thead className="bg-zinc-800" {...props}>
-        {props.children}
-      </thead>
-    ),
-    th: ({ node, ...props }) => (
-      <th
-        className="border border-zinc-700 px-3 py-2 text-left font-semibold text-zinc-200 bg-zinc-800/50"
-        {...props}
-      >
-        {props.children}
-      </th>
-    ),
-    td: ({ node, ...props }) => (
-      <td className="border border-zinc-700 px-3 py-2 text-sm text-zinc-300" {...props}>
-        {props.children}
-      </td>
-    ),
-    code: ({ className, children: nodeChildren, ...props }) => {
-      const match = /language-(\w+)/.exec(className || "");
-      const language = match?.[1];
-      const codeText = String(nodeChildren);
-
-      if (language && highlighter) {
-        // Block code — highlight with Shiki
-        const highlighted = highlightCode(codeText, language);
-        return <div dangerouslySetInnerHTML={{ __html: highlighted }} />;
-      }
-
-      // Inline code — no highlighting
-      return (
-        <code
-          className="bg-zinc-800 px-1 py-0.5 rounded-sm text-sm text-amber-300 font-mono"
-          {...props}
-        >
-          {nodeChildren}
-        </code>
-      );
-    },
-    pre: ({ children }) => (
-      <pre className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto">
-        {children}
-      </pre>
-    ),
-  };
-
   return (
-    <div className={className}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
-        components={components}
-      >
-        {children}
-      </ReactMarkdown>
-    </div>
+    <RenderContext.Provider value={{ highlighter, onNavigate, onNavigateClick }}>
+      <div className={className}>
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          rehypePlugins={REHYPE_PLUGINS}
+          components={COMPONENTS}
+        >
+          {children}
+        </ReactMarkdown>
+      </div>
+    </RenderContext.Provider>
   );
 }

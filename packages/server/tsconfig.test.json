@@ -1,8 +1,10 @@
 {
+  // rootDir ".." because the tests share the scripted fake model with core
+  // (../core/test/support). noEmit: nothing is written, so this has no output effect.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "."
+    "rootDir": ".."
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "../core/test/support"]
 }

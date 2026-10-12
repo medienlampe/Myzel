@@ -9,24 +9,34 @@ SHELL := /bin/bash
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ENV_FILE := $(ROOT)/.env
-NODE_ENV_FILE := --env-file-if-exists=$(ENV_FILE)
+# Only when it exists: Node otherwise prints a notice on every run.
+NODE_ENV_FILE := $(if $(wildcard $(ENV_FILE)),--env-file=$(ENV_FILE))
 
 # Bundle the dev and agent targets work on. Unless BUNDLE_ROOT is set (in the
 # environment or .env), that is demo-bundle/: a gitignored copy of
 # sample-bundle/, so agent runs never dirty the tracked sample. Relative paths
 # are taken from the repository root, wherever the target runs.
 ENV_BUNDLE_ROOT := $(shell node $(NODE_ENV_FILE) -p 'process.env.BUNDLE_ROOT || ""' 2>/dev/null)
+ENV_PROFILES_ROOT := $(shell node $(NODE_ENV_FILE) -p 'process.env.PROFILES_ROOT || ""' 2>/dev/null)
 BUNDLE_ROOT ?= $(or $(ENV_BUNDLE_ROOT),demo-bundle)
 # A leading ~/ is expanded here: zsh leaves `make BUNDLE_ROOT=~/x` unexpanded.
 BUNDLE_HOME := $(patsubst ~/%,$(HOME)/%,$(BUNDLE_ROOT))
 BUNDLE_PATH := $(abspath $(if $(filter /%,$(BUNDLE_HOME)),$(BUNDLE_HOME),$(ROOT)/$(BUNDLE_HOME)))
 DEMO_BUNDLE := $(ROOT)/demo-bundle
 
+# Profile mode (one memory per API key) when PROFILES_ROOT is set; resolved
+# like BUNDLE_ROOT. Passed explicitly so a relative value still works from the
+# package directories the targets run in.
+PROFILES_ROOT ?= $(ENV_PROFILES_ROOT)
+PROFILES_HOME := $(patsubst ~/%,$(HOME)/%,$(PROFILES_ROOT))
+PROFILES_PATH := $(if $(PROFILES_HOME),$(abspath $(if $(filter /%,$(PROFILES_HOME)),$(PROFILES_HOME),$(ROOT)/$(PROFILES_HOME))))
+PROFILES_ENV := $(if $(PROFILES_PATH),PROFILES_ROOT="$(PROFILES_PATH)")
+
 IMAGE ?= myzel:local
 IMAGE_CHECK_PORT ?= 3899
 
-.PHONY: help install build dev start mcp-stdio query mutate bundle reset-demo \
-	check test lint lint-fix format format-check audit \
+.PHONY: help install build dev start mcp-stdio profiles query mutate bundle reset-demo \
+	check test coverage lint lint-fix format format-check audit \
 	up down logs image image-check clean distclean \
 	_dev-core _dev-server _dev-web
 
@@ -36,7 +46,8 @@ help: ## Show this help
 	@awk 'BEGIN { FS = ":.*## " } \
 		/^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } \
 		/^[a-zA-Z_-]+:.*## / { printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
-	@printf '\nBundle: %s\n' "$(BUNDLE_PATH)"
+	@if [ -n "$(PROFILES_PATH)" ]; then printf '\nProfiles: %s (profile mode)\n' "$(PROFILES_PATH)"; \
+	else printf '\nBundle: %s\n' "$(BUNDLE_PATH)"; fi
 	@printf 'Examples: make dev · make query Q="What do we know about billing?" · make check\n'
 
 install: node_modules ## Install dependencies exactly as locked (like CI)
@@ -52,21 +63,25 @@ build: node_modules ## Build all packages (core, server, web)
 
 dev: node_modules bundle ## Run everything with live reload: server :3800, web UI :5180
 	@pnpm --filter @myzel/core build >/dev/null
-	@echo "Dev mode on $(BUNDLE_PATH) — web UI at http://localhost:5180 (Ctrl-C stops all)" >&2
+	@echo "Dev mode on $(or $(PROFILES_PATH),$(BUNDLE_PATH)) — web UI at http://localhost:5180 (Ctrl-C stops all)" >&2
 	@$(MAKE) --no-print-directory -j3 _dev-core _dev-server _dev-web
 
 _dev-core:
 	@pnpm --filter @myzel/core dev
 _dev-server:
-	@cd packages/server && BUNDLE_ROOT="$(BUNDLE_PATH)" node_modules/.bin/tsx watch $(NODE_ENV_FILE) src/index.ts
+	@cd packages/server && BUNDLE_ROOT="$(BUNDLE_PATH)" $(PROFILES_ENV) node_modules/.bin/tsx watch $(NODE_ENV_FILE) src/index.ts
 _dev-web:
 	@pnpm --filter @myzel/web dev
 
 start: build bundle ## Build, then serve the web UI, /api and /mcp on :3800
-	@BUNDLE_ROOT="$(BUNDLE_PATH)" node $(NODE_ENV_FILE) packages/server/dist/index.js
+	@BUNDLE_ROOT="$(BUNDLE_PATH)" $(PROFILES_ENV) node $(NODE_ENV_FILE) packages/server/dist/index.js
 
 mcp-stdio: bundle ## Serve MCP over stdio (run `make build` first; for MCP client configs)
 	@BUNDLE_ROOT="$(BUNDLE_PATH)" exec node $(NODE_ENV_FILE) packages/server/dist/mcp/stdio.js
+
+profiles: node_modules ## Manage profiles (PROFILES_ROOT): make profiles ARGS="create work"
+	@[ -n "$(PROFILES_PATH)" ] || { echo "Set PROFILES_ROOT (environment, .env or make PROFILES_ROOT=…)" >&2; exit 2; }
+	@cd packages/server && $(PROFILES_ENV) node_modules/.bin/tsx $(NODE_ENV_FILE) src/profiles-cli.ts $(ARGS)
 
 query: node_modules bundle ## Ask the memory a question: make query Q="…"
 	@[ -n "$$Q" ] || { echo 'Usage: make query Q="your question"' >&2; exit 2; }
@@ -77,11 +92,12 @@ mutate: node_modules bundle ## Teach or change the memory: make mutate I="…"
 	@cd packages/core && BUNDLE_ROOT="$(BUNDLE_PATH)" node_modules/.bin/tsx $(NODE_ENV_FILE) src/agent/cli.ts mutate "$$I"
 
 bundle: ## Create demo-bundle/ from sample-bundle/ if it is the bundle in use and missing
-	@if [ "$(BUNDLE_PATH)" = "$(DEMO_BUNDLE)" ] && [ ! -d "$(DEMO_BUNDLE)" ]; then \
+	@[ -z "$(PROFILES_PATH)" ] || exit 0; \
+	if [ "$(BUNDLE_PATH)" = "$(DEMO_BUNDLE)" ] && [ ! -d "$(DEMO_BUNDLE)" ]; then \
 		cp -R "$(ROOT)/sample-bundle" "$(DEMO_BUNDLE)"; \
 		echo "Created demo-bundle/ from sample-bundle/ (gitignored — safe to mutate)" >&2; \
 	fi
-	@[ -d "$(BUNDLE_PATH)" ] || { echo "Bundle directory not found: $(BUNDLE_PATH)" >&2; exit 1; }
+	@[ -n "$(PROFILES_PATH)" ] || [ -d "$(BUNDLE_PATH)" ] || { echo "Bundle directory not found: $(BUNDLE_PATH)" >&2; exit 1; }
 
 reset-demo: ## Throw away demo-bundle/ and copy sample-bundle/ again
 	rm -rf "$(DEMO_BUNDLE)"
@@ -89,10 +105,13 @@ reset-demo: ## Throw away demo-bundle/ and copy sample-bundle/ again
 
 ##@ Quality
 
-check: install audit lint format-check build test ## Everything CI runs, in CI's order
+check: install audit lint format-check coverage ## Everything CI runs, in CI's order
 
-test: node_modules ## Run all tests and typechecks
+test: build ## Run all tests and typechecks
 	pnpm test
+
+coverage: build ## Tests with coverage; fails below 80% (reports in packages/*/coverage/)
+	pnpm test:coverage
 
 lint: node_modules ## Lint with ESLint
 	pnpm lint
@@ -148,8 +167,8 @@ image-check: image ## Build, start and health-check the image, then stop it clea
 
 ##@ Cleaning
 
-clean: ## Remove build output
-	rm -rf packages/*/dist packages/*/*.tsbuildinfo
+clean: ## Remove build output and coverage reports
+	rm -rf packages/*/dist packages/*/*.tsbuildinfo packages/*/coverage
 
 distclean: clean ## Also remove node_modules and demo-bundle/
 	rm -rf node_modules packages/*/node_modules "$(DEMO_BUNDLE)"

@@ -18,6 +18,8 @@ const DEFAULT_TTL_MS = 24 * 3_600_000;
 interface CacheEntry {
   expiresAt: number;
   result: QueryResult;
+  /** Bundle root the answer came from, so one bundle's entries can be dropped. */
+  scope: string;
 }
 
 // Module-level so the cache survives the per-request McpServer instances of
@@ -96,20 +98,20 @@ export async function runQueryCached(
   const hotAnswer = await hot(kb, question, options);
   if (hotAnswer !== null) {
     const result: QueryResult = { answer: hotAnswer, steps: 0, traceId: "" };
-    store(key, result, ttl);
+    store(key, result, ttl, kb.bundle.root);
     return { ...result, cached: false, source: "hot" };
   }
 
   // Layer 3: deep memory — the full agent loop. Its answer feeds the hot set.
   const generation = hotGeneration(kb.bundle.root);
   const result = await runner(kb, question, options);
-  store(key, result, ttl);
+  store(key, result, ttl, kb.bundle.root);
   recordHotQuery(kb.bundle.root, question, result.answer, generation);
   return { ...result, cached: false, source: "deep" };
 }
 
-function store(key: string, result: QueryResult, ttl: number): void {
-  cache.set(key, { expiresAt: Date.now() + ttl, result });
+function store(key: string, result: QueryResult, ttl: number, scope: string): void {
+  cache.set(key, { expiresAt: Date.now() + ttl, result, scope });
   while (cache.size > MAX_ENTRIES) {
     const oldest = cache.keys().next().value;
     if (oldest === undefined) break;
@@ -117,9 +119,13 @@ function store(key: string, result: QueryResult, ttl: number): void {
   }
 }
 
-/** Test hook: reset module-level cache state. */
-export function clearQueryCache(): void {
-  cache.clear();
+/** Drop cached answers — for one bundle (a removed profile) or, without a scope, all. */
+export function clearQueryCache(scope?: string): void {
+  if (scope === undefined) {
+    cache.clear();
+    return;
+  }
+  for (const [key, entry] of cache) if (entry.scope === scope) cache.delete(key);
 }
 
 function normalize(question: string): string {

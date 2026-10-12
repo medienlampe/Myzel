@@ -20,7 +20,8 @@
     "agent:query": "tsx src/agent/cli.ts query",
     "agent:mutate": "tsx src/agent/cli.ts mutate",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "typecheck:test": "tsc -p tsconfig.test.json"
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test:coverage": "pnpm run typecheck:test && vitest run --coverage"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.79",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "5.0.4",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "vitest": "^5.0.4"

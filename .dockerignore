@@ -10,7 +10,7 @@ node_modules
 **/node_modules
 **/dist
 **/*.tsbuildinfo
-coverage
+**/coverage
 demo-bundle
 sample-bundle/.traces
 .DS_Store

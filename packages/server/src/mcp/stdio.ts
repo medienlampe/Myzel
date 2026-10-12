@@ -9,7 +9,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { KnowledgeBase } from "@myzel/core";
 import { buildMcpServer } from "./server.js";
-import { checkGitAutocommit, checkModelConfig } from "../startup.js";
+import { checkModelConfig, requireGitReady } from "../startup.js";
 
 const bundleRoot = process.env.BUNDLE_ROOT;
 if (!bundleRoot) {
@@ -19,10 +19,18 @@ if (!bundleRoot) {
 
 checkModelConfig((line) => console.error(line));
 
-const kb = new KnowledgeBase(bundleRoot, {
-  gitAutocommit: process.env.GIT_AUTOCOMMIT === "true",
-});
-await checkGitAutocommit(kb, (line) => console.error(line));
+const gitAutocommit = process.env.GIT_AUTOCOMMIT === "true";
+const kb = new KnowledgeBase(bundleRoot, { gitAutocommit });
+if (gitAutocommit) {
+  try {
+    await requireGitReady(kb, "the bundle");
+  } catch (err) {
+    console.error(`[myzel] ${(err as Error).message}`);
+    process.exit(1);
+  }
+  // stderr: stdout is the MCP protocol stream on this transport.
+  console.error("[myzel] git autocommit: enabled");
+}
 const server = await buildMcpServer(kb);
 await server.connect(new StdioServerTransport());
 // stdio transport keeps the process alive; logs must go to stderr only.

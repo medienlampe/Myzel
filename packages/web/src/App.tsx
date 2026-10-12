@@ -7,9 +7,11 @@ import {
   type Concept,
   type ConformanceReport,
   type LogEntry,
+  type SessionInfo,
   type SearchHit,
   type TreeNode,
 } from "./api";
+import { reloadPage } from "./reload";
 import { Tree } from "./components/Tree";
 import { ConceptView } from "./components/ConceptView";
 import { LogView } from "./components/LogView";
@@ -46,6 +48,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [needsToken, setNeedsToken] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<SessionInfo["mode"] | null>(null);
+  const [profile, setProfile] = useState<SessionInfo | null>(null);
 
   const refresh = useCallback(() => {
     api
@@ -55,8 +60,10 @@ export default function App() {
         setNeedsToken(false);
       })
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) setNeedsToken(true);
-        else setError(String(e));
+        if (e instanceof ApiError && e.status === 401) {
+          setAuthMode(e.authMode ?? null);
+          setNeedsToken(true);
+        } else setError(String(e));
       });
     api
       .validate()
@@ -73,6 +80,10 @@ export default function App() {
     api
       .config()
       .then(setConfig)
+      .catch(() => {});
+    api
+      .profile()
+      .then(setProfile)
       .catch(() => {});
   }, [refresh]);
 
@@ -135,32 +146,64 @@ export default function App() {
     setQuery("");
   }, []);
 
+  // Everything on screen belongs to the memory the current key opens, so a key
+  // change always starts from a clean page rather than patching state.
+  const submitKey = async (key: string) => {
+    setAuthToken(key);
+    try {
+      await api.profile();
+      reloadPage();
+    } catch (e) {
+      setAuthToken("");
+      setTokenError(
+        e instanceof ApiError && e.status === 401
+          ? "That key was not accepted."
+          : `Could not reach the server: ${String(e)}`
+      );
+    }
+  };
+
+  const switchProfile = () => {
+    setAuthToken("");
+    reloadPage();
+  };
+
   if (needsToken) {
     return (
       <div className="flex h-screen items-center justify-center">
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            setAuthToken(tokenInput.trim());
-            setTokenInput("");
-            refresh();
-            api
-              .config()
-              .then(setConfig)
-              .catch(() => {});
+            setTokenError(null);
+            void submitKey(tokenInput.trim());
           }}
           className="w-80 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5"
         >
           <h1 className="text-sm font-bold tracking-wide text-cyan-300">Myzel 🍄</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            This server requires an access token (its{" "}
-            <code className="text-zinc-300">AUTH_TOKEN</code>).
+            {authMode === "profiles" ? (
+              <>
+                This server hosts several memories. Enter your profile&apos;s API key — it decides
+                which memory opens.
+              </>
+            ) : (
+              <>
+                This server requires an access token (its{" "}
+                <code className="text-zinc-300">AUTH_TOKEN</code>).
+              </>
+            )}
           </p>
+          {tokenError && (
+            <p role="alert" className="mt-2 text-sm text-red-400">
+              {tokenError}
+            </p>
+          )}
           <input
             type="password"
             value={tokenInput}
             onChange={(e) => setTokenInput(e.target.value)}
-            placeholder="Access token"
+            placeholder={authMode === "profiles" ? "Profile API key" : "Access token"}
+            aria-label={authMode === "profiles" ? "Profile API key" : "Access token"}
             autoFocus
             className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-hidden focus:border-cyan-600"
           />
@@ -273,6 +316,19 @@ export default function App() {
     <div className="flex h-screen flex-col">
       <header className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-1.5">
         <h1 className="text-sm font-bold tracking-wide text-cyan-300">Myzel 🍄</h1>
+        {profile?.profile && (
+          <span className="flex items-center gap-1 text-xs">
+            <span className="text-zinc-500">profile</span>
+            <span className="font-medium text-zinc-200">{profile.profile}</span>
+            <button
+              onClick={switchProfile}
+              title="Forget this key and open a different profile"
+              className="rounded-sm px-1.5 py-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            >
+              switch
+            </button>
+          </span>
+        )}
         {report && (
           <span
             title={`${report.conceptCount} concepts, ${report.issues.length} issues`}

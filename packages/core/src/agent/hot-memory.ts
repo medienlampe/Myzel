@@ -42,16 +42,24 @@ const MAX_EXCERPT_CHARS = 1500;
 interface HotState {
   concepts: Map<string, number>; // path → touchedAt
   qas: HotQA[];
-  /** Bumped on every write, so an answer computed across a write can be dropped. */
-  generation: number;
 }
+
+/**
+ * Write generation per bundle, bumped on every write and on every clear, so an
+ * answer computed across either can be dropped. Kept outside HotState because
+ * it must outlive a clear: a query started before a profile was removed must
+ * not record its answer into the fresh state of a profile re-created under
+ * the same name.
+ */
+const generations = new Map<string, number>();
+const bump = (scope: string) => generations.set(scope, (generations.get(scope) ?? 0) + 1);
 
 const states = new Map<string, HotState>();
 
 function stateFor(scope: string): HotState {
   let state = states.get(scope);
   if (!state) {
-    state = { concepts: new Map(), qas: [], generation: 0 };
+    state = { concepts: new Map(), qas: [] };
     states.set(scope, state);
   }
   return state;
@@ -60,7 +68,7 @@ function stateFor(scope: string): HotState {
 /** Called by the write tools after any concept write/patch. */
 export function recordHotWrite(scope: string, path: string): void {
   const state = stateFor(scope);
-  state.generation++;
+  bump(scope);
   state.concepts.delete(path);
   state.concepts.set(path, Date.now());
   while (state.concepts.size > MAX_CONCEPTS) {
@@ -75,14 +83,14 @@ export function recordHotWrite(scope: string, path: string): void {
 /** Called on deletes: the concept leaves the hot set; answers may be stale. */
 export function recordHotDelete(scope: string, path: string): void {
   const state = stateFor(scope);
-  state.generation++;
+  bump(scope);
   state.concepts.delete(path);
   state.qas = [];
 }
 
 /** Current write generation; pass it back to recordHotQuery. */
 export function hotGeneration(scope: string): number {
-  return stateFor(scope).generation;
+  return generations.get(scope) ?? 0;
 }
 
 /** Called after a deep query completes. */
@@ -94,14 +102,20 @@ export function recordHotQuery(
   generation: number
 ): void {
   const state = stateFor(scope);
-  if (state.generation !== generation) return;
+  if (hotGeneration(scope) !== generation) return;
   state.qas.push({ question, answer, at: Date.now() });
   if (state.qas.length > MAX_QAS) state.qas = state.qas.slice(-MAX_QAS);
 }
 
-/** Test hook: drop every bundle's working set. */
-export function clearHotMemory(): void {
-  states.clear();
+/** Drop the working set — for one bundle (a removed profile) or, without a scope, all. */
+export function clearHotMemory(scope?: string): void {
+  if (scope === undefined) {
+    for (const root of states.keys()) bump(root);
+    states.clear();
+  } else {
+    bump(scope);
+    states.delete(scope);
+  }
 }
 
 export type HotGenerate = (

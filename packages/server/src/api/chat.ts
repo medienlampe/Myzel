@@ -15,18 +15,22 @@ const chatBodySchema = z.object({
   // The UI only ever sends user and assistant turns; a client-supplied
   // "system" message would sit next to the real system prompt.
   messages: z
-    .array(z.looseObject({ role: z.enum(["user", "assistant"]) }))
+    .array(
+      z.looseObject({
+        role: z.enum(["user", "assistant"]),
+        parts: z.array(z.looseObject({ type: z.string() })),
+      })
+    )
     .min(1)
     .max(LIMITS.chatMessages),
   model: z.string().min(1).max(200).optional(),
 });
 
 /** Characters of text in the newest user turn — capped on its own for a clear error. */
-export function newestUserTurnLength(messages: Array<{ role: string; parts?: unknown }>): number {
+function newestUserTurnLength(messages: Array<{ role: string; parts: unknown[] }>): number {
   const turn = [...messages].reverse().find((m) => m.role === "user");
-  if (!turn || !Array.isArray(turn.parts)) return 0;
-  return turn.parts.reduce<number>((sum, part) => {
-    const text = (part as { type?: unknown; text?: unknown }).text;
+  return (turn?.parts ?? []).reduce<number>((sum, part) => {
+    const text = (part as { text?: unknown }).text;
     return typeof text === "string" ? sum + text.length : sum;
   }, 0);
 }

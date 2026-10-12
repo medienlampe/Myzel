@@ -136,10 +136,18 @@ export function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** Which memory this session talks to. `profile` is null when the server hosts one memory. */
+export interface SessionInfo {
+  mode: "single" | "profiles";
+  profile: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
-    message: string
+    message: string,
+    /** On a 401: whether the server wants a profile key or its single AUTH_TOKEN. */
+    public readonly authMode?: SessionInfo["mode"]
   ) {
     super(message);
     this.name = "ApiError";
@@ -157,7 +165,17 @@ export function apiUrl(path: string): string {
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(apiUrl(url), { headers: authHeaders() });
-  if (!res.ok) throw new ApiError(res.status, `${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    let authMode: SessionInfo["mode"] | undefined;
+    try {
+      const mode = (JSON.parse(body) as { mode?: unknown }).mode;
+      if (mode === "single" || mode === "profiles") authMode = mode;
+    } catch {
+      // Not JSON: no mode to report.
+    }
+    throw new ApiError(res.status, `${res.status} ${body}`, authMode);
+  }
   return res.json();
 }
 
@@ -171,4 +189,5 @@ export const api = {
   traces: () => get<TraceSummary[]>("/api/traces"),
   trace: (id: string) => get<QueryTrace>(`/api/trace?id=${encodeURIComponent(id)}`),
   config: () => get<AppConfig>("/api/config"),
+  profile: () => get<SessionInfo>("/api/profile"),
 };

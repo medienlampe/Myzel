@@ -34,13 +34,38 @@ Untrusted input arrives in five ways:
   Failed attempts are throttled *before* the comparison: 20 per 15 minutes per client. A failure
   is counted in the same synchronous step that detects it, so a burst of parallel guesses cannot
   slip past the limit, and valid requests — however long they run — never count.
-- **Order matters** in `server/src/index.ts`: the network guard runs before auth, so a hostile
+- **Order matters** in `buildApp()` (`server/src/app.ts`): the network guard runs before auth, so a hostile
   origin is refused whether or not a token is set.
 - **Response hardening:**
   - a CSP that allows scripts only from the same origin and no framing (`frame-ancestors 'none'`);
   - `nosniff` and `Referrer-Policy: no-referrer`;
   - no `x-powered-by` header;
   - a final error handler that never returns stack traces.
+
+### Profiles (one server, several memories)
+
+- **The API key is the only selector.** A key both authenticates the caller and decides which
+  memory they reach; there is no request parameter that names a profile, so one profile's key
+  cannot be pointed at another's data. Each profile is a separate bundle with its own caches,
+  hot memory, traces and git history.
+- Keys are 192 random bits (`myz_…`), shown once and stored only as SHA-256 hashes in
+  `profiles.json` (mode `0600`); lookups compare against every record in constant time. Wrong keys
+  hit the same kind of failure throttle as `AUTH_TOKEN` guesses (a request with no key at all is
+  not counted, so page loads before a key is entered never lock anyone out).
+- **The registry fails closed:** an unreadable or malformed `profiles.json` (including duplicate
+  names or keys) authenticates nobody. Registry changes take a lock file across processes (server
+  and CLI); the lock holds a random token, so a process only ever releases its own, and a stale
+  lock is taken over by an atomic rename. A re-read that overlaps a change is discarded, so a
+  revoked or rotated key cannot come back.
+- **Removing a profile stops its memory.** Its `KnowledgeBase` is closed — requests still holding
+  it can no longer write — and running writes finish before a purge deletes the data. A profile
+  re-created under the same name gets a fresh instance with empty caches.
+- **`/admin` uses a separate `ADMIN_TOKEN`**, which manages profiles but opens no memory; a profile
+  key cannot reach `/admin`. `/admin` sits behind the same network guard, and has a failure
+  throttle of its own (same limits, separate budget).
+  Without `ADMIN_TOKEN`, it does not exist.
+- Profile names are restricted to `[a-z0-9][a-z0-9_-]{0,62}` — no dots or slashes — because a name
+  is used as a directory.
 
 ### Bundle files
 
@@ -156,8 +181,9 @@ Untrusted input arrives in five ways:
    by IP address needs nothing.
 3. **Behind a reverse proxy**, set `TRUST_PROXY` (e.g. `1` for one hop), so rate limits apply per
    client.
-4. **Shared instance:** set `HOT_MEMORY_RECALL_QA=false` so one caller's recent questions and
-   answers stay out of another caller's prompt.
+4. **Shared instance:** prefer profiles (`PROFILES_ROOT`) — one memory and key per person or team.
+   If people must share one memory, set `HOT_MEMORY_RECALL_QA=false` so one caller's recent
+   questions and answers stay out of another caller's prompt.
 5. **`GIT_AUTOCOMMIT` with a bind-mounted bundle** works across file owners. A repository whose
    config can run programs is refused, so remove such keys to enable commits.
 

@@ -3,15 +3,14 @@ import express from "express";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import { KnowledgeBase } from "@myzel/core";
 import { chatRouter } from "../src/api/chat.js";
 import { mcpRouter } from "../src/mcp/http.js";
 import { LIMITS } from "../src/limits.js";
+import { listen } from "./support/serve.js";
 
 let root: string;
-let server: Server;
+let closeServer: () => void;
 let base: string;
 
 beforeAll(async () => {
@@ -22,13 +21,11 @@ beforeAll(async () => {
   app.use(express.json({ limit: LIMITS.jsonBody }));
   app.use("/mcp", mcpRouter(kb));
   app.use("/api", chatRouter(kb));
-  server = app.listen(0, "127.0.0.1");
-  await new Promise((resolve) => server.once("listening", resolve));
-  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  ({ base, close: closeServer } = await listen(app));
 });
 
 afterAll(async () => {
-  server.close();
+  closeServer();
   await fs.rm(root, { recursive: true, force: true });
 });
 

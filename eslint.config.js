@@ -15,7 +15,7 @@ export default defineConfig(
     ignores: [
       "**/dist/**",
       "**/node_modules/**",
-      "coverage/**",
+      "**/coverage/**",
       "sample-bundle/**",
       "demo-bundle/**",
     ],

@@ -71,10 +71,18 @@ packages/core/          # zero-server, zero-express. Reusable library.
   src/util/             # parseDuration, truncate, redactUrl
 
 packages/server/        # Express 5 + MCP SDK
-  src/index.ts          # app wiring: headers, /healthz, CORS, guards, auth (+ failed-auth throttle),
-                        #   rate limits, static web build, error handler, graceful shutdown
+  src/index.ts          # bootstrap: mode (single bundle / profiles), startup checks, listen, shutdown
+  src/app.ts            # buildApp(): headers, /healthz, CORS, guards, auth via the memory host,
+                        #   rate limits, per-memory routers, /admin, static web build, error handler
+  src/host.ts           # MemoryHost: which memory a request reaches (single bundle or profile key)
+  src/auth.ts           # bearer parsing, constant-time compare, FailureThrottle
+  src/profiles.ts       # ProfileRegistry: profiles.json, hashed keys, cross-process lock
+  src/admin.ts          # /admin profile API (ADMIN_TOKEN)
+  src/profiles-commands.ts # the profiles CLI's commands · src/profiles-cli.ts: process wiring
+  src/env.ts            # numeric env parsing (blank = unset), ALLOWED_MODELS
+  src/dreamer.ts        # scheduled dreaming over every hosted memory
   src/limits.ts         # input ceilings for everything that reaches a model
-  src/startup.ts        # model-config check shared by the HTTP and stdio entry points
+  src/startup.ts        # model-config and git checks shared by the HTTP and stdio entry points
   src/net-guard.ts      # Origin/Host validation + the CORS delegate
   src/rate-limit.ts     # per-client brake on the token-spending routes
   src/mcp/server.ts     # the five MCP tools + seed memory refresh
@@ -83,7 +91,9 @@ packages/server/        # Express 5 + MCP SDK
   src/api/chat.ts       # streaming chat for the web UI (aborts the run when the client disconnects)
 
 packages/web/           # Vite 8 + React 19 + Tailwind 4
-  src/App.tsx           #   data loading + the three panels' content
+  src/App.tsx           #   data loading, key prompt / profile label, the three panels' content
+  src/api.ts            #   API client, token storage (sessionStorage), apiUrl() for sub-paths
+  src/reload.ts         #   reloadPage() — its own module so tests can replace it
   src/layout.ts         #   pure layout model: panel order, visibility, widths (persisted in localStorage)
   src/components/Workspace.tsx  # drag & drop + resizable columns (react-resizable-panels v4)
 sample-bundle/          # a small conformant bundle used for dev + tests
@@ -109,7 +119,7 @@ pnpm test                  # vitest + typecheck in every package
 ```
 
 CI runs `pnpm install --frozen-lockfile`, then `pnpm audit --prod --audit-level high`, lint,
-format:check, build and test on Node 24. Run `make check` before pushing and you will not be
+format:check, build and `pnpm test:coverage` (tests, typechecks, 80% coverage) on Node 24. Run `make check` before pushing and you will not be
 surprised.
 
 Run the server from source:
@@ -187,7 +197,11 @@ dummy `LLM_*` values are enough to exercise the UI.
     `.traces/` excluded. Never call `simpleGit()` on the bundle directly.
 14. **Every model-bound input is capped** (`server/src/limits.ts`). A new tool parameter or route
     that reaches a model gets a `max` from there.
-15. **The web UI must work under the server's CSP** (`script-src 'self'`, no inline scripts, no
+15. **In profile mode the bearer key is the only memory selector.** Never add a request parameter,
+    header or path segment that names a profile — it would let one key reach another profile's
+    data. Everything per-memory hangs off the resolved `KnowledgeBase`: routers and the seed
+    cache by instance, query cache, hot memory and traces by its bundle root.
+16. **The web UI must work under the server's CSP** (`script-src 'self'`, no inline scripts, no
     `eval`). Inline *styles* are allowed only because Shiki emits them.
 
 ---
@@ -226,21 +240,24 @@ dummy `LLM_*` values are enough to exercise the UI.
 
 ## 6. Testing
 
+- `make test` (= `pnpm test`) runs every package's tests and typechecks its sources and tests.
+  `make coverage` (= `pnpm test:coverage`, what CI runs) adds coverage and **fails below 80%**
+  statements, branches, functions or lines in any package (`vitest.config.ts`). Only process
+  entry points are excluded from coverage, each with the reason in its config.
 - `packages/core/test/` — vitest, no mocking of the filesystem: tests build real temp bundles.
   The OKF suite is organized by spec section (§5 frontmatter, §6 index, §7 log, §9 conformance)
-  plus sandbox, search, graph/lint, and mutation-concurrency cases.
-- LLM calls are **injected, never mocked globally**: `runDream`, `runQueryCached`, and `hotLookup`
-  each take an injectable runner/generate parameter for exactly this reason. Follow that pattern
-  for any new LLM-touching function — do not add a test that hits a real provider. Fake models in
-  tests use `specificationVersion: "v4"`; older specs get adapted by `wrapLanguageModel`.
-- `packages/core/test/` and `packages/server/test/` run `tsc -p tsconfig.test.json` first
-  (`typecheck:test`), then vitest — tests are typechecked like the sources.
-  HTTP-level tests start a real Express app on an ephemeral port (`http.test.ts`,
-  `rate-limit.test.ts`) — validation paths only, never a model call.
+  plus sandbox, search, graph/lint, pruning and mutation-concurrency cases.
+- **Model calls never reach a real provider.** Agent tests run against a scripted
+  OpenAI-compatible server (`test/support/fake-llm.ts`: tool calls, text, HTTP errors, hangs,
+  streaming), so the real provider, fallback and tool-loop code is exercised. `runDream`,
+  `runQueryCached` and `hotLookup` additionally take an injectable runner for unit tests.
 - `packages/core/test/git.test.ts` needs a `git` binary and plants real attacks (fsmonitor,
-  filters, hooks) in a temp repo; keep that style for anything touching git.
-- `packages/web/test/` covers the pure layout model (`src/layout.ts`); `pnpm test` there also
-  typechecks.
+  filters, hooks, config.worktree) in a temp repo; keep that style for anything touching git.
+- `packages/server/test/` builds real apps with `buildApp()` on ephemeral ports — both memory
+  modes, the MCP tools (via the fake model), browse/chat routes, rate limits, profiles, admin.
+- `packages/web/test/` — Testing Library in jsdom (`test/setup.ts` polyfills what jsdom lacks)
+  against a fake `fetch` (`test/support/fake-api.ts`, which can also stream the AI SDK's UI
+  message protocol). jsdom has no `DragEvent`, so drag tests cannot set coordinates.
 - Adding behaviour to `src/okf/` without a test is the wrong move — that layer is the correctness
   guarantee and is cheap to test (no network, no model).
 
@@ -254,6 +271,7 @@ dummy `LLM_*` values are enough to exercise the UI.
 | Add a tool the *internal* model can call | `packages/core/src/agent/tools.ts` (`buildReadTools` / `buildWriteTools`) + a `trace?.record(...)` call + a case in `buildNotation` |
 | Change agent behaviour/rules | `packages/core/src/agent/system-prompt.ts` — but first check §1: is this really a prompt problem? |
 | Change what a new session sees about the memory | `packages/server/src/mcp/seed.ts` |
+| Change how requests find their memory (auth, profiles) | `packages/server/src/host.ts`, `profiles.ts`, `admin.ts` — and the wiring in `app.ts` |
 | Add a REST endpoint for the UI | `packages/server/src/api/browse.ts` (deterministic; must not call the LLM) |
 | Add a provider / change model resolution | `packages/core/src/providers/index.ts` |
 | Change conformance rules | `packages/core/src/okf/validate.ts` + a test per spec section |
@@ -282,7 +300,7 @@ dummy `LLM_*` values are enough to exercise the UI.
   enforces same-origin (plus `ALLOWED_ORIGINS`) on `/mcp` and `/api`, and **always** checks the
   `Host` header against DNS rebinding: loopback names pass, IP literals pass on a public bind
   (`hostPolicy: "public"`), every other hostname needs `ALLOWED_HOSTS`. Keep the invariant when
-  touching `index.ts`: **the guard mounts before `bearerAuth`**, and CORS must never reflect an
+  touching `app.ts`: **the guard mounts before `host.authenticate`**, and CORS must never reflect an
   origin the guard would reject. `HOST=0.0.0.0` is the explicit opt-in for network exposure and
   warns when no token is set. The Docker image sets it, so for containers the *published* address
   decides exposure — the compose files default to `127.0.0.1` via `MYZEL_BIND`.
@@ -340,6 +358,7 @@ worth knowing:
 | `LLM_FALLBACK_*` | Optional second model, used on retryable failures. `LLM_FALLBACK_ALLOW_FOR=query` restricts it to read-only ops. |
 | `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, … | **Deprecated** legacy path in `providers/index.ts`. Still supported; don't extend it. |
 | `AUTH_TOKEN` | Bearer token for `/mcp` + `/api`. Unset = open. |
+| `PROFILES_ROOT` / `ADMIN_TOKEN` | Profile mode: one bundle per API key (takes precedence over `BUNDLE_ROOT`); `ADMIN_TOKEN` enables `/admin`. |
 | `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Per-client brake on `/mcp` + `/api/chat` (default 60/1m, `0` disables). |
 | `RATE_LIMIT_BROWSE` | Separate brake on the `/api` browse routes (default 600 per window, `0` disables). |
 | `TRUST_PROXY` | Express `trust proxy` (hop count or addresses) so rate limits see real clients behind a proxy. |

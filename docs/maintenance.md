@@ -27,7 +27,7 @@ Run this before merging any dependency change:
 pnpm install --frozen-lockfile   # what CI does: the lockfile must match package.json
 pnpm audit --prod --audit-level high
 pnpm lint && pnpm format:check
-pnpm -r build && pnpm test
+pnpm -r build && pnpm test:coverage   # fails below 80% coverage in any package
 ```
 
 The same steps as one command: `make check`.

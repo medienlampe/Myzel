@@ -6,24 +6,20 @@ import {
 } from "@myzel/core";
 
 /**
- * With GIT_AUTOCOMMIT, make sure commits can actually happen before serving —
- * otherwise every mutation would report success while history silently stays
- * empty. `log` is stderr for the stdio transport.
+ * With GIT_AUTOCOMMIT, make sure commits can actually happen before a memory
+ * serves requests — otherwise every mutation would report success while
+ * history silently stays empty. Throws with the reason; `label` names the
+ * memory (the bundle, or a profile) in the message.
  */
-export async function checkGitAutocommit(
-  kb: KnowledgeBase,
-  log: (line: string) => void
-): Promise<void> {
-  if (process.env.GIT_AUTOCOMMIT !== "true") return;
+export async function requireGitReady(kb: KnowledgeBase, label: string): Promise<void> {
   try {
     await kb.ensureGitReady();
   } catch (err) {
-    console.error(
-      `[myzel] GIT_AUTOCOMMIT=true, but autocommit cannot work: ${(err as Error).message}`
+    throw new Error(
+      `GIT_AUTOCOMMIT=true, but autocommit cannot work for ${label}: ${(err as Error).message}`,
+      { cause: err }
     );
-    process.exit(1);
   }
-  log("[myzel] git autocommit: enabled");
 }
 
 /**

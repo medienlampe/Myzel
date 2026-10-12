@@ -77,27 +77,43 @@ status (`publicErrorMessage`).
 
 ## 4. The server (`packages/server`)
 
-The middleware order in `src/index.ts` matters:
+`src/index.ts` only bootstraps: it picks the mode, runs the startup checks and calls
+`buildApp()` (`src/app.ts`), which holds the HTTP wiring. A **`MemoryHost`** (`src/host.ts`)
+decides which memory a request reaches:
+
+- `singleMemoryHost` — one bundle (`BUNDLE_ROOT`), optionally behind `AUTH_TOKEN`;
+- `profileMemoryHost` — one bundle per profile (`PROFILES_ROOT`): the bearer key is looked up in
+  the `ProfileRegistry` (`src/profiles.ts`) and selects the memory. Profiles are managed with the
+  CLI (`src/profiles-cli.ts`) or the `/admin` API (`src/admin.ts`, behind `ADMIN_TOKEN`).
+
+Routers are built once per memory and cached by `KnowledgeBase`; each request is dispatched to the
+set its memory resolved to. The middleware order in `buildApp()` matters:
 
 1. security headers (CSP, `nosniff`, `Referrer-Policy`); `x-powered-by` is disabled; and
    `trust proxy` when `TRUST_PROXY` is set
 2. `/healthz`, which needs no token and touches no memory
 3. CORS, which mirrors the network guard's allowlist and never reflects arbitrary origins
 4. `express.json` (1 MB limit; per-field limits are in `limits.ts`)
-5. **net guard** on `/mcp` and `/api`: an Origin check, plus a Host check on every bind. Loopback
+5. **net guard** on `/mcp`, `/api` and `/admin`: an Origin check, plus a Host check on every bind. Loopback
    names always pass; IP literals pass on public binds; any other hostname must be listed in
    `ALLOWED_HOSTS`.
-6. **failed-auth throttle**, then **bearer auth**, if `AUTH_TOKEN` is set
-7. **rate limits**: `/mcp` and `/api/chat` (they cost tokens), plus a looser one on `/api`
-8. routers: `/mcp` (a stateless MCP server per request, with the seed cached by bundle
-   fingerprint), `/api` browse (no LLM), `/api/chat` (streaming, aborted when the client
-   disconnects)
-9. the static web UI (`index.html` at `/` plus its assets; any other path is a 404)
-10. a final error handler that logs the error and returns `{ "error": "internal error" }` with no
+6. **authentication** of `/mcp` and `/api` via the memory host — `AUTH_TOKEN` or a profile
+   key, each with the failed-attempt throttle in front (a request with no key is answered 401
+   without counting) — which attaches the request's memory
+7. **rate limits**: `/mcp` and `/api/chat` (they cost tokens), plus a looser one on the rest of
+   `/api`
+8. routers, per memory: `/mcp` (a stateless MCP server per request, with the seed cached by
+   bundle fingerprint), `GET /api/profile` (which memory the key opened), `/api` browse (no LLM),
+   `/api/chat` (streaming, aborted when the client disconnects)
+9. `/admin` (profile mode with `ADMIN_TOKEN` only), behind the network guard and its own token
+   check with its own failure throttle (no rate limit beyond that)
+10. the static web UI (`index.html` at `/` plus its assets; any other path is a 404)
+11. a final error handler that logs the error and returns `{ "error": "internal error" }` with no
     stack trace
 
-On SIGTERM or SIGINT the server stops accepting requests and waits for the mutation queue to
-drain (`KnowledgeBase.idle()`) before it exits.
+On SIGTERM or SIGINT the server stops accepting requests, lets running requests finish, and
+waits for the mutation queue of every memory it opened to drain (`MemoryHost.drain()`), within
+an 8-second deadline.
 
 `src/mcp/seed.ts` builds the overview of the memory that MCP clients receive at session start.
 It is sent both in the `instructions` field and in the `memory_query` tool description.

@@ -12,11 +12,13 @@ Documentation for people working on Myzel. Start elsewhere if you are looking fo
    1. Packages and the one-way dependency rule (`okf ← agent ← server`)
    2. The deterministic OKF layer: sandbox, write path, frontmatter, git, index, log
    3. The agent layer: tool loop, memory layers, dreaming, traces, model chain
-   4. The server: middleware order, MCP, browse and chat APIs, shutdown
+   4. The server: memory hosts (single bundle or profiles), middleware order, MCP, browse and
+      chat APIs, admin, shutdown
    5. The web UI, including the drag & drop workspace and how to add a panel
 2. **[Security](security.md)** — how the memory is defended.
    1. Threat model
-   2. Defenses: network, bundle files, prompt injection, model output, cost, secrets, supply chain
+   2. Defenses: network, profiles, bundle files, prompt injection, model output, cost, secrets,
+      supply chain
    3. Deploying safely
    4. Known limitations
 3. **[Maintenance](maintenance.md)** — keeping dependencies current.
