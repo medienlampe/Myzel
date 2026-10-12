@@ -17,14 +17,12 @@ export function LogView({
   if (entries.length === 0) {
     return <p className="p-6 text-sm text-zinc-500">No log entries yet.</p>;
   }
-  let lastDate = "";
   return (
     <div className="mx-auto max-w-3xl p-6">
       <h1 className="mb-4 text-2xl font-bold">Update Log</h1>
       <div className="space-y-2">
         {entries.map((e, i) => {
-          const showDate = e.date !== lastDate;
-          lastDate = e.date;
+          const showDate = e.date !== entries[i - 1]?.date;
           return (
             <div key={i}>
               {showDate && (
@@ -32,7 +30,7 @@ export function LogView({
               )}
               <div className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
                 <span
-                  className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${ACTION_STYLES[e.action]}`}
+                  className={`mt-0.5 shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${ACTION_STYLES[e.action]}`}
                 >
                   {e.action}
                 </span>

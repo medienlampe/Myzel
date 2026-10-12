@@ -1,10 +1,9 @@
 import { wrapLanguageModel, type LanguageModel } from "ai";
+import { publicErrorMessage } from "./errors.js";
 
-type ResolvedLanguageModel = Extract<LanguageModel, { doGenerate: unknown }>;
+type ResolvedLanguageModel = Exclude<LanguageModel, string>;
 
 export interface FallbackOptions {
-  maxInputTokens?: number;
-  allowFor?: ("query" | "mutate" | "chat")[];
   /** Opt-in: retry a 429 (rate limit) against the fallback. Off by default. */
   retry429?: boolean;
 }
@@ -20,7 +19,12 @@ export function withFallback(
   fallback: LanguageModel,
   opts: FallbackOptions = {}
 ): LanguageModel {
-  const fallbackModel = fallback as ResolvedLanguageModel;
+  // Wrapping without middleware normalizes the fallback to the current model
+  // spec version, so it accepts the call options the primary was given.
+  const fallbackModel = wrapLanguageModel({
+    model: fallback as ResolvedLanguageModel,
+    middleware: [],
+  });
   return wrapLanguageModel({
     model: primary as ResolvedLanguageModel,
     middleware: {
@@ -140,8 +144,8 @@ function isAbortError(err: unknown): boolean {
 
 function combinedFallbackError(primaryErr: unknown, fallbackErr: unknown): Error {
   const message =
-    `Primary and fallback model calls failed. Primary: ${errorMessage(primaryErr)}; ` +
-    `Fallback: ${errorMessage(fallbackErr)}`;
+    `Primary and fallback model calls failed. Primary: ${publicErrorMessage(primaryErr)}; ` +
+    `Fallback: ${publicErrorMessage(fallbackErr)}`;
   return new Error(message, { cause: { primary: primaryErr, fallback: fallbackErr } });
 }
 

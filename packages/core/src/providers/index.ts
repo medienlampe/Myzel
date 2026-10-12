@@ -2,6 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { parseDuration } from "../util/duration.js";
+import { redactUrl } from "../util/url.js";
 
 type ResolvedLanguageModel = Extract<LanguageModel, { doGenerate: unknown }>;
 
@@ -184,10 +185,10 @@ export async function discoverLlamaCppModel(baseURL: string): Promise<string> {
       res = await fetch(`${url}/models`, { signal: AbortSignal.timeout(discoveryTimeoutMs()) });
     } catch (err) {
       const reason = (err as Error).name === "TimeoutError" ? "timed out" : (err as Error).message;
-      throw new Error(`Model discovery failed: ${reason} at ${url}/models`);
+      throw new Error(`Model discovery failed: ${reason} at ${redactUrl(url)}`, { cause: err });
     }
     if (!res.ok) {
-      throw new Error(`Model discovery failed: ${res.status} at ${url}/models`);
+      throw new Error(`Model discovery failed: HTTP ${res.status} at ${redactUrl(url)}`);
     }
     const body = (await res.json()) as {
       data?: { id: string; status?: { value?: string } }[];

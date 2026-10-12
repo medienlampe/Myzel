@@ -7,7 +7,7 @@
 A long-term memory for your AI assistants — stored as plain markdown files you own.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-339933.svg)](package.json)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522.12-339933.svg)](package.json)
 [![Spec](https://img.shields.io/badge/spec-OKF%20v0.1-8b5cf6.svg)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20%2B%20HTTP-f59e0b.svg)](#connect-your-agent)
 [![Forked from thecodacus/understory](https://img.shields.io/badge/forked%20from-thecodacus%2Funderstory-8957e5.svg?logo=github)](https://github.com/thecodacus/understory)
@@ -140,7 +140,8 @@ services:
   understory:
     image: ghcr.io/medienlampe/understory:latest
     ports:
-      - "3800:3800"
+      # This machine only. See "Network exposure" before opening it up.
+      - "127.0.0.1:3800:3800"
     volumes:
       # Your memory lives here. This keeps it in a Docker volume; to keep it in a
       # folder you can see, replace this line with e.g.  - ./my-memory:/bundle
@@ -189,12 +190,18 @@ If the container exited instead, the log says why — see [Troubleshooting](#tro
 
 **→ Now open [http://localhost:3800](http://localhost:3800).** Three things to look at:
 
-- **Browser** — your markdown files as a folder tree, rendered for reading.
+- **Explorer** — your markdown files as a folder tree, with search; opened files render for reading.
 - **Graph** — every concept as a dot, every link as a line, arranged so related things cluster
   together (like Obsidian's graph view). Drag it around, zoom, click a dot to open that file. Dots
   ringed in red are *orphans*: nothing links to them yet.
 - **Chat** — talk to understory's own agent directly, without hooking up an assistant first. Each
   step it takes (searching, reading, writing) appears as you watch.
+
+The three panels are columns you can arrange: **drag a panel's title bar** onto another panel to
+move it there (put the chat in the middle, say), drag the lines between columns to resize, and
+close or reopen panels from the top bar. The **←** / **→** buttons in each title bar move a panel
+from the keyboard, and **Reset layout** restores the default. Your arrangement is remembered in
+this browser.
 
 > [!TIP]
 > **Try this first.** Your memory starts empty, so teach it something. In the chat, say:
@@ -441,8 +448,11 @@ outline, everything else fades. It's the answer to *"why did it tell me that?"*
 | `PORT` | Default `3800`. |
 | `HOST` | Which network interface to listen on. Default `127.0.0.1` (this machine only); `0.0.0.0` exposes it to the network. |
 | `AUTH_TOKEN` | Require this token on `/mcp` and `/api`. Unset = no auth. |
-| `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Extra origins/hostnames allowed past the browser guard. |
+| `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Extra origins/hostnames allowed past the browser guard. Needed when you reach the server by a hostname other than `localhost`. |
+| `UNDERSTORY_BIND` | Compose files only: host interface the port is published on. Default `127.0.0.1`. |
 | `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Requests per client on `/mcp` and `/api/chat`. Default `60` per `1m`; `0` disables. |
+| `RATE_LIMIT_BROWSE` | Requests per client on the read-only `/api` routes. Default `600` per window; `0` disables. |
+| `TRUST_PROXY` | Set behind a reverse proxy (`1`, or the proxy's address) so rate limits apply per client. |
 | `ALLOWED_MODELS` | Models a client may request per call. Unset = the server's model always wins. `*` allows any. |
 | `LLM_TIMEOUT` / `LLM_MAX_STEPS` | Ceiling for one agent run (default `5m`) and its tool-loop budget (default `12`). |
 | `GIT_AUTOCOMMIT` | Commit the bundle after every change. Default `false`. |
@@ -463,14 +473,19 @@ Together those close the drive-by case — without them, any page you visit coul
 rewrite your whole memory through your browser.
 
 - `HOST=0.0.0.0` exposes it to your network. That's a deliberate step — pair it with `AUTH_TOKEN`;
-  the server warns at startup if you don't. (The Docker image sets `HOST=0.0.0.0` itself, because a
-  published container port requires it — which is why `AUTH_TOKEN` matters as soon as the container's
-  port is reachable by others.)
+  the server warns at startup if you don't.
+- **With Docker**, the image binds `0.0.0.0` inside the container (a published port requires it), so
+  *where the port is published* decides who can reach it. The compose files in this repo and the
+  quick start publish on `127.0.0.1` only. To reach understory from other machines, publish on all
+  interfaces (`UNDERSTORY_BIND=0.0.0.0` with this repo's compose files, or `"3800:3800"` in your
+  own) **and** set `AUTH_TOKEN`.
 - Requests from understory's own web UI always pass, so the UI and the dev proxy need no setup. A
   browser app on a *different* address needs `ALLOWED_ORIGINS=https://your-frontend`.
 - Non-browser clients (curl, MCP over stdio, native MCP clients) are unaffected.
-- On a loopback bind, the `Host` header is checked too — that's what stops DNS rebinding attacks. If
-  you reach the server by hostname rather than `localhost`, add it: `ALLOWED_HOSTS=my-box.local`.
+- The `Host` header is checked too — that's what stops DNS rebinding attacks, where a malicious
+  site points its own domain at your server. `localhost` always works, and so do IP addresses
+  (e.g. `http://192.168.1.20:3800`) when the server is exposed. If you reach it by any other name —
+  `nas.local`, a reverse-proxy domain — add that name: `ALLOWED_HOSTS=nas.local`.
 
 ### What the memory can talk your assistant into
 
@@ -495,7 +510,11 @@ Every request to `/mcp` and `/api/chat` can start an agent run, and agent runs c
 brakes: a per-client rate limit (`RATE_LIMIT`, default 60/minute) and a refusal to let a client pick
 the model — the server's configured model is used unless you list alternatives in `ALLOWED_MODELS`.
 Agent runs also have a wall-clock ceiling (`LLM_TIMEOUT`, default 5 minutes) so a stalled endpoint
-cannot hold a request open indefinitely.
+cannot hold a request open indefinitely, and inputs are capped (a question at 4,000 characters, a
+`memory_add` document at 100,000) so a single request cannot carry an unbounded prompt.
+
+Behind a reverse proxy, set `TRUST_PROXY` (e.g. `1` for one proxy hop) — otherwise every client
+arrives from the proxy's address and shares one rate-limit bucket.
 
 ### Auth
 
@@ -507,7 +526,9 @@ AUTH_TOKEN=$(openssl rand -hex 24)
 ```
 
 Then `/mcp` and `/api` require it as a bearer token. The web UI stays reachable and simply prompts you
-for the value. Authenticated MCP clients need it as a header:
+for the value; it keeps the token for the browser tab only, so a new tab asks again. Repeated wrong
+tokens lock a client out for 15 minutes (after 20 failures). Authenticated MCP clients need it as a
+header:
 
 ```bash
 claude mcp add --transport http ustory http://host:3800/mcp \
@@ -518,7 +539,7 @@ The stdio transport needs no token — there the client starts understory itself
 
 ## From source
 
-Requires **Node ≥ 20** and **pnpm 10.15.0** (pinned in `package.json` — `corepack enable` gets you the
+Requires **Node ≥ 22.12** and **pnpm 10.34.6** (pinned in `package.json` — `corepack enable` gets you the
 right version).
 
 ```bash
@@ -548,7 +569,8 @@ BUNDLE_ROOT=./sample-bundle pnpm --filter @understory/server dev
 pnpm --filter @understory/web dev
 ```
 
-Planning to contribute? [AGENT.md](AGENT.md) documents the invariants, conventions, and sharp edges.
+Planning to contribute? [AGENTS.md](AGENTS.md) documents the invariants, conventions, and sharp edges;
+[docs/](docs/outline.md) covers the architecture, the security model, and dependency maintenance.
 
 ## Repo layout
 
@@ -566,11 +588,12 @@ layer — that's what keeps it testable and trustworthy.
 ## Tests
 
 ```bash
-pnpm test    # core:   69 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
+pnpm test    # core:   87 tests — spec §5/§6/§7/§9, path sandboxing, search, graph,
              #                    write concurrency, providers, cache, hot memory,
-             #                    dreaming, prompt-injection neutralization
-             # server: 25 tests — auth, network guard, seed memory (plus a typecheck)
-             # web:    typecheck
+             #                    dreaming, prompt-injection neutralization, git hardening
+             # server: 47 tests — auth, network guard, rate limits, seed memory, chat and
+             #                    MCP over HTTP (plus a typecheck)
+             # web:    15 tests — workspace layout model (plus a typecheck)
 
 # End-to-end check of the MCP stdio transport (needs SMOKE_BUNDLE + an API key)
 pnpm --filter @understory/server exec tsx scripts/mcp-smoke.mts

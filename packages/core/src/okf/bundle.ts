@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "./atomic.js";
 import { parseDoc, serializeDoc, hasNonEmptyType } from "./frontmatter.js";
@@ -88,6 +88,16 @@ export class Bundle {
         "OUTSIDE_BUNDLE"
       );
     }
+  }
+
+  /**
+   * resolve() plus the symlink-following containment check, for callers outside
+   * this class that write into the bundle (index regeneration).
+   */
+  async resolveContained(bundlePath: string): Promise<string> {
+    const abs = this.resolve(bundlePath);
+    await this.assertRealPathInside(abs, bundlePath);
+    return abs;
   }
 
   /** Normalize any input to a canonical bundle-relative path starting with "/". */
@@ -198,6 +208,9 @@ export class Bundle {
     const canonical = this.toBundlePath(bundlePath);
     this.assertConceptPath(canonical);
     const abs = this.resolve(canonical);
+    // unlink() removes a symlinked *file* itself (harmless), but follows a
+    // symlinked parent directory — which would delete a file outside the bundle.
+    await this.assertRealPathInside(path.dirname(abs), canonical);
     try {
       await fs.unlink(abs);
     } catch {
@@ -221,7 +234,7 @@ export class Bundle {
     const abs = this.resolve(dir);
     const entries = await fs.readdir(abs, { withFileTypes: true });
     return entries
-      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .filter((e) => e.isDirectory() && !isHiddenOrLink(e))
       .map((e) => this.toBundlePath(path.join(abs, e.name)))
       .sort();
   }
@@ -237,7 +250,7 @@ export class Bundle {
     };
     const entries = await fs.readdir(abs, { withFileTypes: true });
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (entry.name.startsWith(".")) continue;
+      if (isHiddenOrLink(entry)) continue;
       const childAbs = path.join(abs, entry.name);
       if (entry.isDirectory()) {
         node.children!.push(await this.listTree(this.toBundlePath(childAbs)));
@@ -284,12 +297,22 @@ export class Bundle {
       return;
     }
     for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
+      if (isHiddenOrLink(entry)) continue;
       const child = path.join(absDir, entry.name);
       if (entry.isDirectory()) await this.walk(child, visit);
       else visit(child, entry.name);
     }
   }
+}
+
+/**
+ * Entries every bundle walker skips: dot-entries (traces, .git) and symlinks.
+ * A symlink can point anywhere on the host; following it would put host files
+ * into the tree, search, graph and index. Content reads refuse escapes anyway
+ * (assertRealPathInside) — skipping links keeps the listings consistent with that.
+ */
+export function isHiddenOrLink(entry: Dirent): boolean {
+  return entry.name.startsWith(".") || entry.isSymbolicLink();
 }
 
 /** Replace the content under a top-level heading; append the section if absent. */

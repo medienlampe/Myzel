@@ -1,6 +1,22 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/*
+  Tailwind v4 compatibility: v3 defaulted borders to gray-200 and buttons to a
+  pointer cursor; keep both so the upgrade does not change the UI.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
 
 body {
   @apply bg-zinc-950 text-zinc-100 antialiased;
@@ -20,7 +36,7 @@ body {
   @apply my-2 ml-5 list-disc space-y-1;
 }
 .markdown code {
-  @apply bg-zinc-800 px-1 py-0.5 rounded text-sm text-amber-300;
+  @apply bg-zinc-800 px-1 py-0.5 rounded-sm text-sm text-amber-300;
 }
 .markdown pre {
   @apply bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto;

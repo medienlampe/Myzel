@@ -3,7 +3,7 @@ import path from "node:path";
 import { writeFileAtomic } from "./atomic.js";
 import { parseDoc } from "./frontmatter.js";
 import { RESERVED_FILENAMES } from "./types.js";
-import type { Bundle } from "./bundle.js";
+import { isHiddenOrLink, type Bundle } from "./bundle.js";
 
 /**
  * Regenerate a directory's index.md per spec §6:
@@ -11,7 +11,7 @@ import type { Bundle } from "./bundle.js";
  * The root index.md carries the only frontmatter allowed in an index: okf_version.
  */
 export async function regenerateIndex(bundle: Bundle, dir = "/"): Promise<string> {
-  const absDir = bundle.resolve(dir);
+  const absDir = await bundle.resolveContained(dir);
   const isRoot = absDir === bundle.root;
   const entries = await fs.readdir(absDir, { withFileTypes: true });
 
@@ -19,7 +19,7 @@ export async function regenerateIndex(bundle: Bundle, dir = "/"): Promise<string
   const dirLines: string[] = [];
 
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (entry.name.startsWith(".")) continue;
+    if (isHiddenOrLink(entry)) continue;
     if (entry.isDirectory()) {
       const summary = await summarizeDirectory(path.join(absDir, entry.name));
       dirLines.push(`* [${entry.name}](${entry.name}/) - ${summary}`);
@@ -87,7 +87,7 @@ async function summarizeDirectory(absDir: string): Promise<string> {
       return;
     }
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (entry.name.startsWith(".")) continue;
+      if (isHiddenOrLink(entry)) continue;
       const child = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         await walk(child);

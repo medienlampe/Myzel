@@ -15,6 +15,16 @@ import { ConceptView } from "./components/ConceptView";
 import { LogView } from "./components/LogView";
 import { ChatPanel } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
+import { Workspace, type PanelSpec } from "./components/Workspace";
+import {
+  DEFAULT_LAYOUT,
+  PANEL_IDS,
+  loadLayout,
+  saveLayout,
+  togglePanel,
+  type LayoutState,
+  type PanelId,
+} from "./layout";
 
 type View =
   { kind: "concept"; path: string } | { kind: "log" } | { kind: "graph" } | { kind: "empty" };
@@ -28,7 +38,11 @@ export default function App() {
   const [concept, setConcept] = useState<Concept | null>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
-  const [chatOpen, setChatOpen] = useState(true);
+  const [layout, setLayout] = useState<LayoutState>(loadLayout);
+  const updateLayout = useCallback((next: LayoutState) => {
+    setLayout(next);
+    saveLayout(next);
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [needsToken, setNeedsToken] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
@@ -79,11 +93,11 @@ export default function App() {
     setView((v) => ({ ...v }));
   }, [refresh]);
 
+  // Results for a cleared query are simply not shown, rather than reset from
+  // inside the effect (which would cost an extra render per keystroke).
+  const shownHits = query.trim() ? hits : null;
   useEffect(() => {
-    if (!query.trim()) {
-      setHits(null);
-      return;
-    }
+    if (!query.trim()) return;
     const t = setTimeout(
       () =>
         api
@@ -132,7 +146,7 @@ export default function App() {
             onChange={(e) => setTokenInput(e.target.value)}
             placeholder="Access token"
             autoFocus
-            className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-cyan-600"
+            className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-hidden focus:border-cyan-600"
           />
           <button
             type="submit"
@@ -145,107 +159,147 @@ export default function App() {
     );
   }
 
-  return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-800">
-        <div className="border-b border-zinc-800 p-3">
-          <div className="flex items-center gap-2">
-            <h1 className="text-sm font-bold tracking-wide text-cyan-300">understory 🌱</h1>
-            {report && (
-              <span
-                title={`${report.conceptCount} concepts, ${report.issues.length} issues`}
-                className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                  report.conformant
-                    ? "bg-emerald-900/60 text-emerald-300"
-                    : "bg-red-900/60 text-red-300"
-                }`}
+  const viewTitle =
+    view.kind === "log"
+      ? "Log"
+      : view.kind === "graph"
+        ? "Graph"
+        : view.kind === "concept"
+          ? "Concept"
+          : "View";
+
+  const explorer = (
+    <div className="flex h-full flex-col">
+      <div className="border-b border-zinc-800 p-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search…"
+          aria-label="Search concepts"
+          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm outline-hidden focus:border-cyan-600"
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2">
+        {shownHits ? (
+          <div className="space-y-1">
+            {shownHits.length === 0 && <p className="px-2 text-xs text-zinc-500">No matches.</p>}
+            {shownHits.map((h) => (
+              <button
+                key={h.path}
+                onClick={() => openConcept(h.path)}
+                className="block w-full rounded-sm px-2 py-1.5 text-left hover:bg-zinc-800"
               >
-                {report.conformant ? "conformant" : "non-conformant"}
-              </span>
-            )}
+                <div className="text-sm text-zinc-200">{h.title ?? h.path}</div>
+                {h.snippet && <div className="truncate text-xs text-zinc-500">{h.snippet}</div>}
+              </button>
+            ))}
           </div>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search…"
-            className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm outline-none focus:border-cyan-600"
+        ) : tree ? (
+          <Tree
+            node={tree}
+            selected={view.kind === "concept" ? view.path : null}
+            onSelect={openConcept}
           />
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2">
-          {hits ? (
-            <div className="space-y-1">
-              {hits.length === 0 && <p className="px-2 text-xs text-zinc-500">No matches.</p>}
-              {hits.map((h) => (
-                <button
-                  key={h.path}
-                  onClick={() => openConcept(h.path)}
-                  className="block w-full rounded px-2 py-1.5 text-left hover:bg-zinc-800"
-                >
-                  <div className="text-sm text-zinc-200">{h.title ?? h.path}</div>
-                  {h.snippet && <div className="truncate text-xs text-zinc-500">{h.snippet}</div>}
-                </button>
-              ))}
-            </div>
-          ) : tree ? (
-            <Tree
-              node={tree}
-              selected={view.kind === "concept" ? view.path : null}
-              onSelect={openConcept}
-            />
-          ) : (
-            <p className="px-2 text-xs text-zinc-500">Loading…</p>
-          )}
-        </div>
-
-        <div className="flex border-t border-zinc-800 text-xs">
-          <button
-            onClick={() => setView({ kind: "log" })}
-            className={`flex-1 px-3 py-2 hover:bg-zinc-800 ${view.kind === "log" ? "text-cyan-300" : "text-zinc-400"}`}
-          >
-            Log
-          </button>
-          <button
-            onClick={() => setView({ kind: "graph" })}
-            className={`flex-1 border-l border-zinc-800 px-3 py-2 hover:bg-zinc-800 ${view.kind === "graph" ? "text-cyan-300" : "text-zinc-400"}`}
-          >
-            Graph
-          </button>
-          <button
-            onClick={() => setChatOpen(!chatOpen)}
-            className="flex-1 border-l border-zinc-800 px-3 py-2 text-zinc-400 hover:bg-zinc-800"
-          >
-            {chatOpen ? "Hide chat" : "Chat"}
-          </button>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <main
-        className={`min-w-0 flex-1 ${view.kind === "graph" ? "overflow-hidden" : "overflow-y-auto"}`}
-      >
-        {error && <p className="p-6 text-sm text-red-400">{error}</p>}
-        {!error && view.kind === "empty" && (
-          <div className="flex h-full items-center justify-center text-zinc-600">
-            <p>Select a concept, or ask the agent →</p>
-          </div>
+        ) : (
+          <p className="px-2 text-xs text-zinc-500">Loading…</p>
         )}
-        {!error && view.kind === "concept" && concept && (
-          <ConceptView concept={concept} onNavigate={openConcept} />
-        )}
-        {!error && view.kind === "log" && <LogView entries={log} onNavigate={openConcept} />}
-        {!error && view.kind === "graph" && (
-          <GraphView refreshKey={graphRefreshKey} onNavigate={openConcept} />
-        )}
-      </main>
+      </div>
 
-      {/* Chat */}
-      {chatOpen && (
-        <aside className="w-96 shrink-0 border-l border-zinc-800">
-          <ChatPanel config={config} onMutation={onMutation} onOpenConcept={openConcept} />
-        </aside>
+      <div className="flex border-t border-zinc-800 text-xs">
+        <button
+          onClick={() => setView({ kind: "log" })}
+          className={`flex-1 px-3 py-2 hover:bg-zinc-800 ${view.kind === "log" ? "text-cyan-300" : "text-zinc-400"}`}
+        >
+          Log
+        </button>
+        <button
+          onClick={() => setView({ kind: "graph" })}
+          className={`flex-1 border-l border-zinc-800 px-3 py-2 hover:bg-zinc-800 ${view.kind === "graph" ? "text-cyan-300" : "text-zinc-400"}`}
+        >
+          Graph
+        </button>
+      </div>
+    </div>
+  );
+
+  const content = (
+    <div
+      className={`h-full min-w-0 ${view.kind === "graph" ? "overflow-hidden" : "overflow-y-auto"}`}
+    >
+      {error && <p className="p-6 text-sm text-red-400">{error}</p>}
+      {!error && view.kind === "empty" && (
+        <div className="flex h-full items-center justify-center p-6 text-center text-zinc-600">
+          <p>Select a concept, or ask the agent.</p>
+        </div>
+      )}
+      {!error && view.kind === "concept" && concept && (
+        <ConceptView concept={concept} onNavigate={openConcept} />
+      )}
+      {!error && view.kind === "log" && <LogView entries={log} onNavigate={openConcept} />}
+      {!error && view.kind === "graph" && (
+        <GraphView refreshKey={graphRefreshKey} onNavigate={openConcept} />
       )}
     </div>
   );
+
+  const panels: Record<PanelId, PanelSpec> = {
+    explorer: { title: "Explorer", minWidth: 200, content: explorer },
+    content: { title: viewTitle, minWidth: 320, content },
+    chat: {
+      title: "Agent chat",
+      minWidth: 280,
+      content: <ChatPanel config={config} onMutation={onMutation} onOpenConcept={openConcept} />,
+    },
+  };
+
+  return (
+    <div className="flex h-screen flex-col">
+      <header className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-1.5">
+        <h1 className="text-sm font-bold tracking-wide text-cyan-300">understory 🌱</h1>
+        {report && (
+          <span
+            title={`${report.conceptCount} concepts, ${report.issues.length} issues`}
+            className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${
+              report.conformant
+                ? "bg-emerald-900/60 text-emerald-300"
+                : "bg-red-900/60 text-red-300"
+            }`}
+          >
+            {report.conformant ? "conformant" : "non-conformant"}
+          </span>
+        )}
+        <nav aria-label="Panels" className="ml-auto flex items-center gap-1 text-xs">
+          {PANEL_IDS.map((id) => {
+            const open = !layout.hidden.includes(id);
+            return (
+              <button
+                key={id}
+                aria-pressed={open}
+                onClick={() => updateLayout(togglePanel(layout, id))}
+                className={`rounded-sm px-2 py-1 hover:bg-zinc-800 ${open ? "text-cyan-300" : "text-zinc-500"}`}
+              >
+                {PANEL_LABELS[id]}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => updateLayout(DEFAULT_LAYOUT)}
+            title="Restore the default panel arrangement"
+            className="ml-1 rounded-sm border border-zinc-800 px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+          >
+            Reset layout
+          </button>
+        </nav>
+      </header>
+
+      <Workspace layout={layout} onLayoutChange={updateLayout} panels={panels} />
+    </div>
+  );
 }
+
+const PANEL_LABELS: Record<PanelId, string> = {
+  explorer: "Explorer",
+  content: "View",
+  chat: "Chat",
+};

@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { truncate } from "../util/text.js";
 
 /** One tool invocation in an agent run. */
 export interface TraceStep {
@@ -101,10 +102,6 @@ function outcomeMarker(outcome: TraceOutcome): string {
 
 function shortPath(p: string): string {
   return p.split("/").pop() ?? p;
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 const MAX_TRACES = 50;

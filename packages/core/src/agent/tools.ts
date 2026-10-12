@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import type { KnowledgeBase } from "../okf/index.js";
 import type { TreeNode } from "../okf/types.js";
@@ -12,14 +12,13 @@ const conceptPathSchema = z
   .describe('Bundle-relative path starting with "/", ending in .md');
 
 const frontmatterSchema = z
-  .object({
+  .looseObject({
     type: z.string().min(1).describe("Concept kind, e.g. 'API Endpoint'. Required."),
     title: z.string().optional(),
     description: z.string().optional().describe("One-line summary"),
     resource: z.string().optional().describe("Canonical URI of the underlying asset"),
     tags: z.array(z.string()).optional(),
   })
-  .passthrough()
   .describe("YAML frontmatter. Additional producer-defined keys are allowed.");
 
 const logSummary = z
@@ -28,7 +27,7 @@ const logSummary = z
     "One past-tense sentence for the update log, with bundle-relative links, e.g. 'Added [Billing API](/apis/billing-api.md).'"
   );
 
-export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder) {
+export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSet {
   return {
     search_knowledge: tool({
       description:
@@ -93,7 +92,7 @@ export function buildWriteTools(
   kb: KnowledgeBase,
   filesChanged: Set<string>,
   trace?: TraceRecorder
-) {
+): ToolSet {
   return {
     write_concept: tool({
       description:
@@ -118,7 +117,7 @@ export function buildWriteTools(
       inputSchema: z.object({
         path: conceptPathSchema,
         frontmatter: z
-          .record(z.unknown())
+          .record(z.string(), z.unknown())
           .optional()
           .describe("Frontmatter keys to merge; set a key to null to remove it"),
         replace_section: z

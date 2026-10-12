@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { CorsOptions } from "cors";
 import type { NextFunction, Request, Response } from "express";
 
@@ -16,7 +17,7 @@ import type { NextFunction, Request, Response } from "express";
  * - Requests without an Origin header (curl, MCP stdio, native clients) pass the
  *   origin check — browsers always send Origin on cross-origin and on POST, and
  *   a non-browser client is not subject to the confused-deputy problem.
- * - Host validation only runs on a loopback bind (see checkHost below).
+ * - The Host header is always validated (DNS-rebinding guard, see hostPolicy).
  */
 export interface NetGuardConfig {
   /** Origins allowed beyond same-origin. "*" disables the origin check. */
@@ -24,13 +25,16 @@ export interface NetGuardConfig {
   /** Host header hostnames allowed beyond loopback. "*" disables the host check. */
   allowedHosts: string[];
   /**
-   * Whether to validate the Host header. DNS rebinding only threatens a
-   * loopback-bound server (the attacker re-points their own hostname at
-   * 127.0.0.1 and the browser then treats us as same-origin). On a deliberate
-   * public bind we cannot know the legitimate hostnames, so the guard steps
-   * aside there and AUTH_TOKEN carries the weight instead.
+   * Which Host headers pass besides ALLOWED_HOSTS. DNS rebinding works by
+   * re-pointing an attacker-controlled *hostname* at our address (127.0.0.1,
+   * or a LAN IP when bound publicly), after which the browser treats the
+   * attacker's page as same-origin. An IP-literal Host cannot be rebound, so:
+   * - "loopback": only loopback names (the server is bound to loopback);
+   * - "public":   loopback names and any IP literal, so the server stays
+   *               reachable by address on a deliberate public bind, while
+   *               every other hostname must be listed in ALLOWED_HOSTS.
    */
-  checkHost: boolean;
+  hostPolicy: "loopback" | "public";
 }
 
 /** Split a comma-separated env var into trimmed, lowercased entries. */
@@ -58,15 +62,25 @@ function hostname(authority: string): string {
 
 const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1)$/;
 
+/** Is this authority an IP literal (v4, or v6 with or without brackets)? */
+export function isIpLiteralHost(authority: string): boolean {
+  return isIP(hostname(authority).replace(/^\[(.*)\]$/, "$1")) !== 0;
+}
+
 /** Is this authority (or bind address) a loopback one? */
 export function isLoopbackHost(authority: string): boolean {
   return LOOPBACK.test(hostname(authority));
 }
 
-export function isAllowedHost(hostHeader: string, allowed: string[]): boolean {
+export function isAllowedHost(
+  hostHeader: string,
+  allowed: string[],
+  policy: NetGuardConfig["hostPolicy"] = "loopback"
+): boolean {
   if (allowed.includes("*")) return true;
   if (!hostHeader) return false;
   if (isLoopbackHost(hostHeader)) return true;
+  if (policy === "public" && isIpLiteralHost(hostHeader)) return true;
   const authority = hostHeader.trim().toLowerCase();
   return allowed.includes(authority) || allowed.includes(hostname(authority));
 }
@@ -88,11 +102,11 @@ export function isAllowedOrigin(origin: string, hostHeader: string, allowed: str
 export function netGuard(config: NetGuardConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const host = String(req.headers.host ?? "");
-    if (config.checkHost && !isAllowedHost(host, config.allowedHosts)) {
+    if (!isAllowedHost(host, config.allowedHosts, config.hostPolicy)) {
       res.status(403).json({
         error:
           `forbidden: unexpected Host header "${host}" (DNS-rebinding guard). ` +
-          `Reach the server on localhost, or add the hostname to ALLOWED_HOSTS.`,
+          `Reach the server by IP address or localhost, or add the hostname to ALLOWED_HOSTS.`,
       });
       return;
     }

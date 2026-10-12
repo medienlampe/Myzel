@@ -12,6 +12,7 @@ import {
   readLog,
   searchBundle,
   lintBundle,
+  regenerateIndex,
 } from "../src/okf/index.js";
 
 let root: string;
@@ -67,6 +68,36 @@ describe("frontmatter round-trip", () => {
     const { frontmatter } = parseDoc(`---\ntype: Alien Format\nweird: [1, 2]\n---\nbody`);
     expect(frontmatter.type).toBe("Alien Format");
     expect(frontmatter.weird).toEqual([1, 2]);
+  });
+
+  it("round-trips values exactly as written — dates and yes/no stay strings", async () => {
+    await fs.writeFile(
+      path.join(root, "d.md"),
+      "---\ntype: T\nreleased: 2026-01-01\nflag: yes\n---\nbody\n"
+    );
+    await kb.patchConcept("/d.md", { frontmatter: { title: "D" } }, "Titled d.");
+    const { frontmatter } = await kb.readConcept("/d.md");
+    expect(frontmatter.released).toBe("2026-01-01");
+    expect(frontmatter.flag).toBe("yes");
+    // …and stay readable by YAML 1.1 tools, which would otherwise coerce them.
+    const raw = await fs.readFile(path.join(root, "d.md"), "utf-8");
+    expect(raw).toContain("released: '2026-01-01'");
+    expect(raw).toContain("flag: 'yes'");
+  });
+
+  it("rejects frontmatter that is not a mapping or never closed", () => {
+    expect(() => parseDoc("---\n- a\n- b\n---\nbody")).toThrow(/mapping/);
+    expect(() => parseDoc("---\ntype: T\nbody without a closing fence")).toThrow(/never closed/);
+  });
+
+  it("never evaluates JavaScript frontmatter", () => {
+    const g = globalThis as { __okfEvaluated?: boolean };
+    for (const fence of ["---js", "---javascript"]) {
+      expect(() =>
+        parseDoc(`${fence}\n(globalThis.__okfEvaluated = true, { type: "T" })\n---\nbody`)
+      ).toThrow(/only YAML/);
+    }
+    expect(g.__okfEvaluated).toBeUndefined();
   });
 });
 
@@ -147,6 +178,58 @@ describe("sandbox", () => {
         kb.writeConcept("/escape/planted.md", { type: "T" }, "body", "log")
       ).rejects.toMatchObject({ code: "OUTSIDE_BUNDLE" });
       await expect(fs.access(path.join(outside, "planted.md"))).rejects.toThrow();
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps symlinked files and directories out of the tree, search, graph and index", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
+    try {
+      await fs.writeFile(
+        path.join(outside, "host.md"),
+        "---\ntype: Secret\ntitle: Host secret\ndescription: leaked\n---\nhostonly\n"
+      );
+      await fs.symlink(path.join(outside, "host.md"), path.join(root, "link.md"));
+      await fs.symlink(outside, path.join(root, "linkdir"), "dir");
+      await kb.writeConcept("/real.md", { type: "T" }, "body", "Added real.");
+
+      const tree = JSON.stringify(await kb.listTree());
+      expect(tree).not.toContain("link");
+      expect(tree).not.toContain("Host secret");
+      expect(await kb.bundle.listConceptPaths()).toEqual(["/real.md"]);
+      expect(await searchBundle(kb.bundle, "hostonly")).toEqual([]);
+      const index = await fs.readFile(path.join(root, "index.md"), "utf-8");
+      expect(index).not.toContain("Host secret");
+      expect(index).not.toContain("linkdir");
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to regenerate an index inside a symlinked directory", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
+    try {
+      await fs.symlink(outside, path.join(root, "escape"), "dir");
+      await expect(regenerateIndex(kb.bundle, "/escape")).rejects.toMatchObject({
+        code: "OUTSIDE_BUNDLE",
+      });
+      await expect(fs.access(path.join(outside, "index.md"))).rejects.toThrow();
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to delete through a symlinked directory that points outside the bundle", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "okf-outside-"));
+    try {
+      await fs.writeFile(path.join(outside, "victim.md"), "---\ntype: T\n---\nbody\n");
+      await fs.symlink(outside, path.join(root, "escape"), "dir");
+
+      await expect(kb.deleteConcept("/escape/victim.md", "log")).rejects.toMatchObject({
+        code: "OUTSIDE_BUNDLE",
+      });
+      await expect(fs.access(path.join(outside, "victim.md"))).resolves.toBeUndefined();
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
     }
@@ -367,5 +450,14 @@ describe("mutation serialization", () => {
     const tree = await kb.listTree();
     const concepts = tree.children!.filter((c) => c.kind === "concept");
     expect(concepts.length).toBe(8);
+  });
+
+  it("idle() waits for queued writes, including ones queued while waiting", async () => {
+    const first = kb.writeConcept("/a.md", { type: "T" }, "x", "Added a.");
+    const idle = kb.idle();
+    const second = kb.writeConcept("/b.md", { type: "T" }, "x", "Added b.");
+    await idle;
+    expect(await readLog(kb.bundle)).toHaveLength(2);
+    await Promise.all([first, second]);
   });
 });

@@ -2,12 +2,18 @@ services:
   understory:
     build: .
     ports:
-      - "3800:3800"
+      # Published on the Docker host's loopback only. To reach understory from
+      # other machines set UNDERSTORY_BIND=0.0.0.0 (or one interface's address)
+      # AND set AUTH_TOKEN — anyone who can reach the port can rewrite the memory.
+      - "${UNDERSTORY_BIND:-127.0.0.1}:3800:3800"
     volumes:
       - ./sample-bundle:/bundle
     environment:
       BUNDLE_ROOT: /bundle
       AUTH_TOKEN: ${AUTH_TOKEN:-}
+      # Hostnames you reach the server by (e.g. nas.local). Access by IP address
+      # or localhost needs nothing; any other hostname is refused (DNS-rebinding guard).
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
       # Primary model
       LLM_API_BASE_URL: ${LLM_API_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}

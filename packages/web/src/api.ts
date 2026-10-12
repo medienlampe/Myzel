@@ -81,13 +81,36 @@ export interface AppConfig {
 
 const TOKEN_KEY = "understory-token";
 
+/**
+ * The access token lives in sessionStorage: it is gone when the tab closes, so
+ * a script injected into the page later cannot harvest a token that has been
+ * sitting on disk for months. Storage can be unavailable (private modes,
+ * blocked site data) — then it is kept in memory for the life of the page.
+ */
+let memoryToken = "";
+
 export function getAuthToken(): string {
-  return localStorage.getItem(TOKEN_KEY) ?? "";
+  try {
+    // One-time move of a token saved by older versions in localStorage.
+    const legacy = localStorage.getItem(TOKEN_KEY);
+    if (legacy) {
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.setItem(TOKEN_KEY, legacy);
+    }
+    return sessionStorage.getItem(TOKEN_KEY) ?? memoryToken;
+  } catch {
+    return memoryToken;
+  }
 }
 
 export function setAuthToken(token: string): void {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  memoryToken = token;
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Storage unavailable: memoryToken carries it until the page is closed.
+  }
 }
 
 /** Headers for API calls — includes the bearer token when one is stored. */

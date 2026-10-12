@@ -1,3 +1,4 @@
+import type { LanguageModel } from "ai";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   discoverLlamaCppModel,
@@ -247,7 +248,7 @@ describe("fallback middleware", () => {
     expect(model.supportedUrls).toEqual({ "image/*": [/.*/] });
     expect(model.provider).toBe("test-provider");
     expect(model.modelId).toBe("test-model-id");
-    expect(model.specificationVersion).toBe("v2");
+    expect(model.specificationVersion).toBe("v4");
   });
 
   it("respects the retry429 option for fallback behavior", async () => {
@@ -344,7 +345,7 @@ describe("isRetryableError", () => {
 
 function fakeModel(overrides: Record<string, unknown> = {}) {
   return {
-    specificationVersion: "v2",
+    specificationVersion: "v4",
     provider: "test",
     modelId: "test-model",
     supportedUrls: {},
@@ -356,5 +357,5 @@ function fakeModel(overrides: Record<string, unknown> = {}) {
     }),
     doStream: async () => ({ stream: new ReadableStream() }),
     ...overrides,
-  } as any;
+  } as unknown as Exclude<LanguageModel, string>;
 }

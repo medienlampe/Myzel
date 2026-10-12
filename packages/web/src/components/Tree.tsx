@@ -28,14 +28,14 @@ export function Tree({
             key={child.path}
             onClick={() => onSelect(child.path)}
             title={child.description}
-            className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-zinc-800 ${
+            className={`flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-zinc-800 ${
               selected === child.path ? "bg-zinc-800 text-cyan-300" : "text-zinc-300"
             } ${child.kind === "reserved" ? "italic text-zinc-500" : ""}`}
             style={{ paddingLeft: `${depth * 14 + 8}px` }}
           >
             <span className="truncate">{child.title ?? child.name}</span>
             {child.type && (
-              <span className="ml-auto shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-purple-300">
+              <span className="ml-auto shrink-0 rounded-sm bg-zinc-800 px-1.5 py-0.5 text-[10px] text-purple-300">
                 {child.type}
               </span>
             )}

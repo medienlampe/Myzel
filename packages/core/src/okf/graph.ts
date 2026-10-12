@@ -27,7 +27,13 @@ export interface GraphScan extends GraphData {
 }
 
 // Bundle-relative links to concepts: [text](/dir/concept.md)
-const LINK_RE = /\]\((\/[^)#?\s]+\.md)\)/g;
+/**
+ * A bundle-relative concept link: `](/path/to/concept.md)`. Brackets and
+ * parentheses are excluded from the path so a match attempt stops at the next
+ * link — with them allowed, a body of repeated "](/" made every attempt scan to
+ * the end of the text (quadratic; seconds per request on a large concept).
+ */
+export const BUNDLE_LINK_RE = /\]\((\/[^()[\]#?\s]+\.md)\)/g;
 
 /**
  * One pass over the bundle building the inter-concept link graph.
@@ -70,7 +76,7 @@ export async function scanGraph(bundle: Bundle): Promise<GraphScan> {
   for (const source of nodes.keys()) {
     const body = bodies.get(source) ?? "";
     const targeted = new Set<string>();
-    for (const match of body.matchAll(LINK_RE)) {
+    for (const match of body.matchAll(BUNDLE_LINK_RE)) {
       const target = match[1];
       if (target === source || targeted.has(target)) continue;
       targeted.add(target);

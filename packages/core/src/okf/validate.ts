@@ -1,5 +1,6 @@
 import { parseDoc, hasNonEmptyType } from "./frontmatter.js";
 import type { Bundle } from "./bundle.js";
+import { BUNDLE_LINK_RE } from "./graph.js";
 import type { ConformanceIssue, ConformanceReport } from "./types.js";
 
 /**
@@ -60,7 +61,7 @@ export async function validateBundle(bundle: Bundle): Promise<ConformanceReport>
       });
     }
     // Broken bundle-relative links → warnings only (spec: MUST tolerate).
-    for (const match of body.matchAll(/\]\((\/[^)#?\s]+\.md)\)/g)) {
+    for (const match of body.matchAll(BUNDLE_LINK_RE)) {
       if (!known.has(match[1])) {
         issues.push({
           path: conceptPath,

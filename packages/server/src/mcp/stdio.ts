@@ -5,8 +5,9 @@
  *     -e LLM_PROVIDER=openrouter -- node <repo>/packages/server/dist/mcp/stdio.js
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { KnowledgeBase, resolveFallbackConfig, resolveModelConfig } from "@understory/core";
+import { KnowledgeBase } from "@understory/core";
 import { buildMcpServer } from "./server.js";
+import { checkModelConfig } from "../startup.js";
 
 const bundleRoot = process.env.BUNDLE_ROOT;
 if (!bundleRoot) {
@@ -14,25 +15,7 @@ if (!bundleRoot) {
   process.exit(1);
 }
 
-// Validate LLM config at startup — fail fast with a clear error. stdio's
-// only output channel to the user is stderr; stdout is reserved for the
-// MCP protocol stream.
-try {
-  const primaryConfig = resolveModelConfig();
-  console.error(
-    `[understory] model: ${primaryConfig.format}:${primaryConfig.model || "auto"} @ ${primaryConfig.baseURL}`
-  );
-  const fallbackConfig = resolveFallbackConfig();
-  if (fallbackConfig) {
-    console.error(
-      `[understory] fallback: ${fallbackConfig.format}:${fallbackConfig.model || "auto"} @ ${fallbackConfig.baseURL}`
-    );
-  }
-} catch (err) {
-  console.error(`[understory] LLM configuration error: ${(err as Error).message}`);
-  console.error("[understory] Set LLM_API_BASE_URL + LLM_API_KEY, or configure legacy env vars.");
-  process.exit(1);
-}
+checkModelConfig((line) => console.error(line));
 
 const kb = new KnowledgeBase(bundleRoot, {
   gitAutocommit: process.env.GIT_AUTOCOMMIT === "true",

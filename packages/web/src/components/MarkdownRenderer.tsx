@@ -53,10 +53,11 @@ const sanitizeSchema = {
     th: [...(defaultSchema.attributes?.th || []), "className"],
     td: [...(defaultSchema.attributes?.td || []), "className"],
   },
-  // Allow alignment attributes on th/td for GFM table alignment
+  // A flat list: hast-util-sanitize compares entries as strings, so a nested
+  // array silently matches nothing and strips every external link.
   protocols: {
     ...(defaultSchema.protocols || {}),
-    href: [["http", "https", "mailto"]],
+    href: ["http", "https", "mailto"],
   },
 };
 
@@ -181,7 +182,7 @@ export function MarkdownRenderer({
       // Inline code — no highlighting
       return (
         <code
-          className="bg-zinc-800 px-1 py-0.5 rounded text-sm text-amber-300 font-mono"
+          className="bg-zinc-800 px-1 py-0.5 rounded-sm text-sm text-amber-300 font-mono"
           {...props}
         >
           {nodeChildren}

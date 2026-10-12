@@ -1,16 +1,13 @@
-import { generateText, streamText, stepCountIs, type LanguageModel, type ModelMessage } from "ai";
+import { generateText, streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import type { KnowledgeBase } from "../okf/index.js";
-import {
-  createModel,
-  resolveFallbackConfig,
-  resolveModelConfig,
-  type ModelConfig,
-} from "../providers/index.js";
-import { withFallback } from "../providers/fallback.js";
+import { publicErrorMessage } from "../providers/errors.js";
 import { parseDuration } from "../util/duration.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { buildReadTools, buildWriteTools, formatTree } from "./tools.js";
 import { TraceRecorder, TraceStore } from "./trace.js";
+import { resolveAgentModel, type AgentOptions } from "./model.js";
+
+export type { AgentOptions } from "./model.js";
 
 const DEFAULT_MAX_STEPS = 12;
 const DEFAULT_RUN_TIMEOUT_MS = 300_000;
@@ -33,8 +30,10 @@ function runTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   return parseDuration(env.LLM_TIMEOUT) ?? DEFAULT_RUN_TIMEOUT_MS;
 }
 
-export interface AgentOptions {
-  model?: string;
+/** The run ceiling, combined with the caller's own cancellation if any. */
+function runSignal(options: AgentOptions): AbortSignal {
+  const timeout = AbortSignal.timeout(runTimeoutMs());
+  return options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
 }
 
 export interface QueryResult {
@@ -55,69 +54,22 @@ export type MutationOutcome =
   | { ok: false; status: "partial"; filesChanged: string[]; error: string; traceId: string }
   | { ok: false; status: "failed"; error: string };
 
-interface ResolvedAgentModel {
-  model: LanguageModel;
-  modelChain: string[];
-}
-
 async function promptContext(kb: KnowledgeBase, mode: "query" | "mutate" | "chat") {
   const [types, tree] = await Promise.all([kb.listTypes(), kb.listTree()]);
   return { existingTypes: types, treeSummary: formatTree(tree), mode };
-}
-
-async function resolveAgentModel(
-  options: AgentOptions,
-  mode: "query" | "mutate" | "chat",
-  env: NodeJS.ProcessEnv = process.env
-): Promise<ResolvedAgentModel> {
-  const primaryConfig = withModelOverride(resolveModelConfig(env), options.model);
-  const primary = await createModel(primaryConfig);
-  const fallbackConfig = resolveFallbackConfig(env);
-
-  if (!fallbackConfig) {
-    return { model: primary, modelChain: [modelLabel(primaryConfig)] };
-  }
-
-  const allowFor = resolveAllowFor(env.LLM_FALLBACK_ALLOW_FOR);
-  if (allowFor && !allowFor.has(mode)) {
-    return { model: primary, modelChain: [modelLabel(primaryConfig)] };
-  }
-
-  const fallback = await createModel(fallbackConfig);
-  return {
-    model: withFallback(primary, fallback, {
-      retry429: env.LLM_FALLBACK_RETRY_429 === "true",
-    }),
-    modelChain: [modelLabel(primaryConfig), modelLabel(fallbackConfig)],
-  };
-}
-
-function resolveAllowFor(raw: string | undefined): Set<string> | null {
-  if (!raw || raw === "*") return null;
-  return new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-  );
-}
-
-function withModelOverride(config: ModelConfig, model: string | undefined): ModelConfig {
-  return model ? { ...config, model } : config;
-}
-
-// No baseURL here by design: traces persist under <bundle>/.traces/, and a
-// published bundle would otherwise leak internal hostnames/IPs/ports.
-function modelLabel(config: ModelConfig): string {
-  return `${config.format}:${config.model || "auto"}`;
 }
 
 function traceStore(kb: KnowledgeBase): TraceStore {
   return new TraceStore(kb.bundle.root);
 }
 
+/**
+ * What callers (MCP clients, traces) get to see of a failure: provider errors
+ * reduced to their status. The full error is logged here, on the server.
+ */
 function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  console.error("[understory] agent run failed:", err);
+  return publicErrorMessage(err);
 }
 
 /** Read-only Q&A over the bundle. */
@@ -138,15 +90,16 @@ export async function runQuery(
       prompt: question,
       tools: buildReadTools(kb, recorder),
       stopWhen: stepCountIs(maxSteps()),
-      abortSignal: AbortSignal.timeout(runTimeoutMs()),
+      abortSignal: runSignal(options),
     });
     const trace = recorder.finalize("query", question, result.text, "success", modelChain);
     await traceStore(kb).save(trace);
     return { answer: result.text, steps: result.steps.length, traceId: trace.id };
   } catch (err) {
-    const trace = recorder.finalize("query", question, errorMessage(err), "failed", modelChain);
+    const message = errorMessage(err);
+    const trace = recorder.finalize("query", question, message, "failed", modelChain);
     await traceStore(kb).save(trace);
-    throw err;
+    throw new Error(message, { cause: err });
   }
 }
 
@@ -169,7 +122,7 @@ export async function runMutation(
       prompt: instruction,
       tools: { ...buildReadTools(kb, recorder), ...buildWriteTools(kb, filesChanged, recorder) },
       stopWhen: stepCountIs(maxSteps()),
-      abortSignal: AbortSignal.timeout(runTimeoutMs()),
+      abortSignal: runSignal(options),
       temperature: 0.2,
     });
     const trace = recorder.finalize("mutation", instruction, result.text, "success", modelChain);
@@ -209,7 +162,7 @@ export async function streamChat(
   kb: KnowledgeBase,
   messages: ModelMessage[],
   options: AgentOptions = {}
-) {
+): Promise<{ result: ReturnType<typeof streamText<ToolSet>>; filesChanged: Set<string> }> {
   const ctx = await promptContext(kb, "chat");
   const recorder = new TraceRecorder();
   const filesChanged = new Set<string>();
@@ -233,7 +186,7 @@ export async function streamChat(
       messages,
       tools: { ...buildReadTools(kb, recorder), ...buildWriteTools(kb, filesChanged, recorder) },
       stopWhen: stepCountIs(maxSteps()),
-      abortSignal: AbortSignal.timeout(runTimeoutMs()),
+      abortSignal: runSignal(options),
       onFinish: async ({ text }) => {
         // Persist only turns that actually touched the bundle.
         if (recorder.steps.length > 0) {

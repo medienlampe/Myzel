@@ -1,5 +1,11 @@
-import { UNTRUSTED_CONTENT_NOTICE, sanitizeInline, sanitizePath } from "@understory/core";
-import type { KnowledgeBase } from "@understory/core";
+import {
+  formatLogLine,
+  sanitizeInline,
+  sanitizePath,
+  UNTRUSTED_CONTENT_NOTICE,
+} from "@understory/core";
+import { promises as fs } from "node:fs";
+import { bundleFingerprint, type KnowledgeBase } from "@understory/core";
 import type { TreeNode } from "@understory/core";
 
 const MAX_SEED_CHARS = 3000;
@@ -15,6 +21,27 @@ const MAX_DESCRIPTIONS_PER_SEGMENT = 10;
  * concept DESCRIPTIONS per segment — semantic hooks beat filenames for
  * igniting the "memory might know this" instinct.
  */
+/**
+ * The stateless HTTP transport builds a fresh McpServer for every request —
+ * `tools/list` included — and each needs the seed. Building it reads and
+ * parses every concept; the fingerprint only stats them. The log is part of
+ * the seed but not of the concept fingerprint, so its mtime joins the key.
+ */
+const seedCache = new WeakMap<KnowledgeBase, { key: string; seed: string }>();
+
+export async function cachedSeedMemory(kb: KnowledgeBase): Promise<string> {
+  const logMtime = await fs
+    .stat(kb.bundle.resolve("/log.md"))
+    .then((st) => String(st.mtimeMs))
+    .catch(() => "none");
+  const key = `${await bundleFingerprint(kb)}:${logMtime}`;
+  const hit = seedCache.get(kb);
+  if (hit?.key === key) return hit.seed;
+  const seed = await buildSeedMemory(kb);
+  seedCache.set(kb, { key, seed });
+  return seed;
+}
+
 export async function buildSeedMemory(kb: KnowledgeBase): Promise<string> {
   const [tree, types, log] = await Promise.all([kb.listTree(), kb.listTypes(), kb.readLog()]);
 
@@ -39,7 +66,7 @@ export async function buildSeedMemory(kb: KnowledgeBase): Promise<string> {
           (more > 0 ? `\n    * …and ${more} more` : "")
       );
     } else if (child.kind === "concept") {
-      rootDescriptions.push(child.description ?? child.title ?? child.name);
+      rootDescriptions.push(deriveConceptDescription(child));
     }
   }
   if (rootDescriptions.length > 0) {
@@ -50,12 +77,7 @@ export async function buildSeedMemory(kb: KnowledgeBase): Promise<string> {
   }
 
   // Log summaries are written by the agent from user-supplied knowledge.
-  const recent = log
-    .slice(0, 3)
-    .map(
-      (e) =>
-        `- ${sanitizeInline(e.date, 20)} ${sanitizeInline(e.action, 20)}: ${sanitizeInline(e.summary, 200)}`
-    );
+  const recent = log.slice(0, 3).map(formatLogLine);
 
   const sections = [
     `Concept types in use: ${

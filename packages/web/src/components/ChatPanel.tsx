@@ -22,12 +22,13 @@ export function ChatPanel({
 }) {
   const [input, setInput] = useState("");
   const [model, setModel] = useState("");
-  const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({
-      api: "/api/chat",
-      headers: () => authHeaders(),
-      body: () => ({ model: model || undefined }),
-    }),
+  // useChat keeps the transport it was first given, so per-request values (the
+  // model choice) travel with each sendMessage call instead of in the transport.
+  const [transport] = useState(
+    () => new DefaultChatTransport({ api: "/api/chat", headers: () => authHeaders() })
+  );
+  const { messages, sendMessage, status, error } = useChat({
+    transport,
     onFinish: () => onMutation(), // refresh browse pane; agent may have written files
   });
 
@@ -35,35 +36,6 @@ export function ChatPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
-        <span className="text-sm font-semibold text-zinc-300">Agent chat</span>
-        {config && (
-          <div className="ml-auto flex items-center gap-1.5">
-            {config.fallbackConfigured && (
-              <span
-                title="Fallback model configured"
-                className="h-1.5 w-1.5 rounded-full bg-emerald-400"
-              />
-            )}
-            {config.modelOverride ? (
-              <input
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder={config.model}
-                className="w-32 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-300 outline-none focus:border-cyan-600"
-              />
-            ) : (
-              <span
-                title="The server decides the model. Set ALLOWED_MODELS to pick one here."
-                className="text-xs text-zinc-500"
-              >
-                {config.model || "auto"}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {messages.length === 0 && (
           <p className="p-4 text-sm text-zinc-500">
@@ -125,13 +97,18 @@ export function ChatPanel({
           </div>
         ))}
         {busy && <div className="animate-pulse text-xs text-zinc-500">agent working…</div>}
+        {error && !busy && (
+          <p role="alert" className="text-xs text-red-400">
+            {error.message || "The request failed."}
+          </p>
+        )}
       </div>
 
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (!input.trim() || busy) return;
-          sendMessage({ text: input });
+          sendMessage({ text: input }, { body: { model: model || undefined } });
           setInput("");
         }}
         className="border-t border-zinc-800 p-3"
@@ -140,8 +117,36 @@ export function ChatPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask or teach the knowledge base…"
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-cyan-600"
+          aria-label="Message the agent"
+          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-hidden focus:border-cyan-600"
         />
+        {config && (
+          <div className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-500">
+            <span>model</span>
+            {config.modelOverride ? (
+              <input
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder={config.model}
+                aria-label="Model override"
+                className="w-40 rounded-sm border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-zinc-300 outline-hidden focus:border-cyan-600"
+              />
+            ) : (
+              <span
+                title="The server decides the model. Set ALLOWED_MODELS to pick one here."
+                className="text-zinc-400"
+              >
+                {config.model || "auto"}
+              </span>
+            )}
+            {config.fallbackConfigured && (
+              <span
+                title="Fallback model configured"
+                className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
+              />
+            )}
+          </div>
+        )}
       </form>
     </div>
   );

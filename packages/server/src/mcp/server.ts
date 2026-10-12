@@ -1,15 +1,16 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
+  formatBrokenLinkList,
+  formatOrphanList,
   KnowledgeBase,
   runMutation,
   runQueryCached,
-  sanitizeInline,
-  sanitizePath,
   UNTRUSTED_CONTENT_NOTICE,
   type MutationOutcome,
 } from "@understory/core";
-import { buildSeedMemory, seedInstructions } from "./seed.js";
+import { LIMITS } from "../limits.js";
+import { cachedSeedMemory, seedInstructions } from "./seed.js";
 
 /**
  * Build the OKF MCP server. Each knowledge tool internally drives the LLM
@@ -25,7 +26,7 @@ import { buildSeedMemory, seedInstructions } from "./seed.js";
 export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
   // Seed generation must never prevent the server from starting — a missing
   // or empty bundle root degrades to a minimal seed, not a crash.
-  const seed = await buildSeedMemory(kb).catch((err: Error) => {
+  const seed = await cachedSeedMemory(kb).catch((err: Error) => {
     console.error(`[understory] seed generation failed: ${err.message}`);
     return "(memory overview unavailable — the bundle may be empty or unreadable; memory_status can diagnose)";
   });
@@ -46,7 +47,9 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
     {
       title: "Query the knowledge base",
       description: queryDescription(seed),
-      inputSchema: { question: z.string().describe("The question to answer") },
+      inputSchema: {
+        question: z.string().min(1).max(LIMITS.question).describe("The question to answer"),
+      },
     },
     async ({ question }) => {
       const { answer, source } = await runQueryCached(kb, question);
@@ -67,7 +70,7 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
    */
   const refreshSeed = async () => {
     try {
-      const fresh = await buildSeedMemory(kb);
+      const fresh = await cachedSeedMemory(kb);
       queryTool.update({ description: queryDescription(fresh) });
     } catch (err) {
       console.error(`[understory] seed refresh failed: ${(err as Error).message}`);
@@ -109,9 +112,14 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
       description:
         "Provide free-form knowledge (facts, docs, decisions, runbooks). An internal agent searches for overlap, then creates or extends OKF concepts; indexes and the update log are maintained automatically.",
       inputSchema: {
-        content: z.string().describe("The knowledge to record, in any prose form"),
+        content: z
+          .string()
+          .min(1)
+          .max(LIMITS.content)
+          .describe("The knowledge to record, in any prose form"),
         suggested_path: z
           .string()
+          .max(LIMITS.path)
           .optional()
           .describe('Optional bundle path hint, e.g. "/apis/payments.md"'),
       },
@@ -143,7 +151,11 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
       description:
         "Instruct a change to existing knowledge (correct a fact, deprecate a concept, restructure). An internal agent locates the concepts and applies targeted edits.",
       inputSchema: {
-        instruction: z.string().describe("What to change, in natural language"),
+        instruction: z
+          .string()
+          .min(1)
+          .max(LIMITS.instruction)
+          .describe("What to change, in natural language"),
       },
     },
     async ({ instruction }) => {
@@ -213,17 +225,8 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
 
       // Paths and titles are stored content going into an instruction — same
       // rule as the seed: one line each, no forged directives.
-      const orphanList =
-        before.orphans
-          .map((o) => {
-            const title = sanitizeInline(o.title, 120);
-            return `- ${sanitizePath(o.path)}${title ? ` (${title})` : ""}`;
-          })
-          .join("\n") || "(none)";
-      const brokenList =
-        before.brokenLinks
-          .map((b) => `- ${sanitizePath(b.path)} → ${sanitizePath(b.target)} (missing)`)
-          .join("\n") || "(none)";
+      const orphanList = formatOrphanList(before.orphans) || "(none)";
+      const brokenList = formatBrokenLinkList(before.brokenLinks) || "(none)";
       const instruction =
         `Repair the knowledge graph. This is a maintenance task — use the write tools.\n\n` +
         `ORPHANED CONCEPTS (no other concept links to them). For each, read it and the ` +

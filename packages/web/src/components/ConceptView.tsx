@@ -45,12 +45,12 @@ export function ConceptView({
       ) : (
         <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-purple-900/60 px-2 py-0.5 text-xs font-medium text-purple-300">
+            <span className="rounded-sm bg-purple-900/60 px-2 py-0.5 text-xs font-medium text-purple-300">
               {fm.type}
             </span>
             {Array.isArray(fm.tags) &&
               (fm.tags as string[]).map((t) => (
-                <span key={t} className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-cyan-300">
+                <span key={t} className="rounded-sm bg-zinc-800 px-2 py-0.5 text-xs text-cyan-300">
                   #{t}
                 </span>
               ))}

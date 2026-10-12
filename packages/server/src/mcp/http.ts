@@ -20,8 +20,8 @@ export function mcpRouter(kb: KnowledgeBase): Router {
       enableJsonResponse: true, // one JSON reply per request — no long-lived SSE
     });
     res.on("close", () => {
-      transport.close();
-      server.close();
+      // A rejected close must not become an unhandled rejection (fatal in Node).
+      Promise.allSettled([transport.close(), server.close()]).catch(() => {});
     });
     await server.connect(transport);
     // express.json() already parsed the body; pass it so the transport doesn't

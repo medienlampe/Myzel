@@ -4,4 +4,11 @@ export { buildSystemPrompt } from "./system-prompt.js";
 export { buildReadTools, buildWriteTools, formatTree } from "./tools.js";
 export { TraceRecorder, TraceStore, buildNotation } from "./trace.js";
 export type { QueryTrace, TraceStep, TraceOutcome } from "./trace.js";
-export { sanitizeInline, sanitizePath, UNTRUSTED_CONTENT_NOTICE } from "./untrusted.js";
+export {
+  formatBrokenLinkList,
+  formatLogLine,
+  formatOrphanList,
+  sanitizeInline,
+  sanitizePath,
+  UNTRUSTED_CONTENT_NOTICE,
+} from "./untrusted.js";

@@ -7,10 +7,19 @@ import {
   isLoopbackHost,
   netGuard,
   parseList,
+  type NetGuardConfig,
 } from "../src/net-guard.js";
 
-const LOOPBACK_CONFIG = { allowedOrigins: [], allowedHosts: [], checkHost: true };
-const PUBLIC_CONFIG = { allowedOrigins: [], allowedHosts: [], checkHost: false };
+const LOOPBACK_CONFIG: NetGuardConfig = {
+  allowedOrigins: [],
+  allowedHosts: [],
+  hostPolicy: "loopback",
+};
+const PUBLIC_CONFIG: NetGuardConfig = {
+  allowedOrigins: [],
+  allowedHosts: [],
+  hostPolicy: "public",
+};
 
 function call(
   middleware: ReturnType<typeof netGuard>,
@@ -135,15 +144,40 @@ describe("netGuard", () => {
     expect(status).toHaveBeenCalledWith(403);
   });
 
-  it("skips the Host check on a public bind, where hostnames are unknowable", () => {
-    const { next, status } = call(netGuard(PUBLIC_CONFIG), { host: "nas.local:3800" });
+  it("accepts IP-literal hosts on a public bind — an address cannot be rebound", () => {
+    for (const host of ["192.168.1.10:3800", "10.0.0.5", "[fe80::1]:3800", "localhost:3800"]) {
+      const { next, status } = call(netGuard(PUBLIC_CONFIG), { host });
+      expect(next, host).toHaveBeenCalledOnce();
+      expect(status, host).not.toHaveBeenCalled();
+    }
+  });
+
+  it("blocks DNS rebinding on a public bind: an unlisted hostname with a matching origin", () => {
+    // evil.example re-pointed at the server's LAN address: Origin and Host
+    // agree, so only the Host check can tell this apart from the real UI.
+    const { next, status } = call(netGuard(PUBLIC_CONFIG), {
+      host: "evil.example:3800",
+      origin: "http://evil.example:3800",
+    });
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(403);
+  });
+
+  it("accepts hostnames listed in ALLOWED_HOSTS on a public bind", () => {
+    const guard = netGuard({ ...PUBLIC_CONFIG, allowedHosts: ["nas.local"] });
+    const { next } = call(guard, { host: "nas.local:3800", origin: "http://nas.local:3800" });
     expect(next).toHaveBeenCalledOnce();
-    expect(status).not.toHaveBeenCalled();
+  });
+
+  it("still rejects IP-literal hosts on a loopback bind", () => {
+    const { next, status } = call(guard, { host: "192.168.1.10:3800" });
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(403);
   });
 
   it("still enforces the origin check on a public bind", () => {
     const { next, status } = call(netGuard(PUBLIC_CONFIG), {
-      host: "nas.local:3800",
+      host: "192.168.1.10:3800",
       origin: "https://evil.example",
     });
     expect(next).not.toHaveBeenCalled();
@@ -154,7 +188,7 @@ describe("netGuard", () => {
     const guardWithAllowlist = netGuard({
       allowedOrigins: ["https://app.example"],
       allowedHosts: [],
-      checkHost: true,
+      hostPolicy: "loopback",
     });
     const { next } = call(guardWithAllowlist, {
       host: "localhost:3800",

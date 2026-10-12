@@ -1,4 +1,6 @@
 import js from "@eslint/js";
+import { defineConfig } from "eslint/config";
+import globals from "globals";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import prettier from "eslint-config-prettier";
@@ -8,7 +10,7 @@ import prettier from "eslint-config-prettier";
  * the type errors are already caught by `pnpm test`, which typechecks every
  * package, so lint stays fast and focused on the things tsc does not say.
  */
-export default tseslint.config(
+export default defineConfig(
   {
     ignores: [
       "**/dist/**",
@@ -18,7 +20,7 @@ export default tseslint.config(
     ],
   },
   js.configs.recommended,
-  ...tseslint.configs.recommended,
+  tseslint.configs.recommended,
   {
     rules: {
       // Unused args are often part of a signature we must keep (middleware,
@@ -41,39 +43,12 @@ export default tseslint.config(
   },
   {
     files: ["packages/web/**/*.{ts,tsx}"],
-    ...reactHooks.configs["recommended-latest"],
-    languageOptions: {
-      globals: {
-        window: "readonly",
-        document: "readonly",
-        localStorage: "readonly",
-        fetch: "readonly",
-        console: "readonly",
-        setTimeout: "readonly",
-        clearTimeout: "readonly",
-        requestAnimationFrame: "readonly",
-        cancelAnimationFrame: "readonly",
-        HTMLElement: "readonly",
-        SVGSVGElement: "readonly",
-      },
-    },
+    extends: [reactHooks.configs.flat.recommended],
+    languageOptions: { globals: globals.browser },
   },
   {
-    files: ["packages/{core,server}/**/*.ts", "*.js"],
-    languageOptions: {
-      globals: {
-        process: "readonly",
-        console: "readonly",
-        fetch: "readonly",
-        Response: "readonly",
-        URL: "readonly",
-        AbortSignal: "readonly",
-        setInterval: "readonly",
-        clearInterval: "readonly",
-        setTimeout: "readonly",
-        Buffer: "readonly",
-      },
-    },
+    files: ["packages/{core,server}/**/*.{ts,mts}", "*.js"],
+    languageOptions: { globals: globals.node },
   },
   prettier
 );

@@ -1,5 +1,6 @@
 import path from "node:path";
-import { simpleGit, type SimpleGit } from "simple-git";
+import type { SimpleGit } from "simple-git";
+import { autocommit, createBundleGit } from "./git.js";
 import { Bundle } from "./bundle.js";
 import { regenerateIndexChain } from "./indexer.js";
 import { appendLog, readLog } from "./logger.js";
@@ -37,7 +38,7 @@ export class KnowledgeBase {
     private readonly options: KnowledgeBaseOptions = {}
   ) {
     this.bundle = new Bundle(bundleRoot);
-    this.git = options.gitAutocommit ? simpleGit(this.bundle.root) : null;
+    this.git = options.gitAutocommit ? createBundleGit(this.bundle.root) : null;
   }
 
   // ── Reads (no queue) ────────────────────────────────────────────────
@@ -112,6 +113,18 @@ export class KnowledgeBase {
     });
   }
 
+  /**
+   * Resolves once every mutation queued so far has finished (index, log and
+   * commit included) — for a graceful shutdown that must not cut a write in half.
+   */
+  async idle(): Promise<void> {
+    let tail: Promise<unknown>;
+    do {
+      tail = this.mutationQueue;
+      await tail;
+    } while (tail !== this.mutationQueue);
+  }
+
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
     const next = this.mutationQueue.then(fn, fn);
     this.mutationQueue = next.catch(() => {});
@@ -128,8 +141,7 @@ export class KnowledgeBase {
     await appendLog(this.bundle, action, logSummary || `${action} of ${linked}.`);
     if (this.git) {
       try {
-        await this.git.add(".");
-        await this.git.commit(`${action.toLowerCase()}: ${logSummary || conceptPath}`);
+        await autocommit(this.git, `${action.toLowerCase()}: ${logSummary || conceptPath}`);
       } catch (err) {
         // Autocommit is best-effort; the KB write itself already succeeded.
         console.error(`[understory] git autocommit failed: ${(err as Error).message}`);

@@ -327,7 +327,7 @@ export function GraphView({
               <button
                 key={t.id}
                 onClick={() => (activeTrace?.id === t.id ? closeTrace() : selectTrace(t.id))}
-                className={`block w-full rounded px-2 py-1.5 text-left hover:bg-zinc-800 ${
+                className={`block w-full rounded-sm px-2 py-1.5 text-left hover:bg-zinc-800 ${
                   activeTrace?.id === t.id ? "bg-zinc-800 ring-1 ring-zinc-700" : ""
                 }`}
               >
@@ -353,7 +353,7 @@ export function GraphView({
         <div className="absolute bottom-3 left-1/2 z-10 w-[min(90%,800px)] -translate-x-1/2 rounded-lg border border-zinc-800 bg-zinc-900/95 px-3 py-2">
           <div className="flex items-center gap-2 text-xs">
             <span
-              className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase"
+              className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase"
               style={{ background: `${pathColor}22`, color: pathColor }}
             >
               {activeTrace.kind}
@@ -361,7 +361,7 @@ export function GraphView({
             <span className="truncate text-zinc-200">{activeTrace.input}</span>
             <button
               onClick={closeTrace}
-              className="ml-auto shrink-0 rounded px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              className="ml-auto shrink-0 rounded-sm px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
             >
               ✕
             </button>
@@ -376,7 +376,7 @@ export function GraphView({
                   if (progress >= 100) setProgress(0);
                   setPlaying(!playing);
                 }}
-                className="shrink-0 rounded px-1 text-sm hover:bg-zinc-800"
+                className="shrink-0 rounded-sm px-1 text-sm hover:bg-zinc-800"
                 style={{ color: pathColor }}
                 title={playing ? "Pause" : "Play the traversal"}
               >
@@ -392,7 +392,7 @@ export function GraphView({
                   setPlaying(false);
                   setProgress(Number(e.target.value));
                 }}
-                className="h-1 w-full cursor-pointer appearance-none rounded bg-zinc-700"
+                className="h-1 w-full cursor-pointer appearance-none rounded-sm bg-zinc-700"
                 style={{ accentColor: pathColor }}
               />
               <span className="w-14 shrink-0 text-right font-mono text-[10px] text-zinc-500">

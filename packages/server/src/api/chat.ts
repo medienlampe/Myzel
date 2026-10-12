@@ -2,6 +2,7 @@ import express, { type Router } from "express";
 import { z } from "zod";
 import { convertToModelMessages, type UIMessage } from "ai";
 import { streamChat, type KnowledgeBase } from "@understory/core";
+import { LIMITS } from "../limits.js";
 
 /**
  * The client sends AI SDK UIMessages. Their internal shape is the SDK's
@@ -11,11 +12,24 @@ import { streamChat, type KnowledgeBase } from "@understory/core";
  */
 const chatBodySchema = z.object({
   messages: z
-    .array(z.object({ role: z.string() }).passthrough())
+    .array(z.looseObject({ role: z.string() }))
     .min(1)
-    .max(200),
+    .max(LIMITS.chatMessages),
   model: z.string().min(1).max(200).optional(),
 });
+
+/**
+ * Characters of text in the newest user turn. Earlier turns were accepted when
+ * they were new; the newest one is what this request adds to the bill.
+ */
+export function newestUserTurnLength(messages: Array<{ role: string; parts?: unknown }>): number {
+  const turn = [...messages].reverse().find((m) => m.role === "user");
+  if (!turn || !Array.isArray(turn.parts)) return 0;
+  return turn.parts.reduce<number>((sum, part) => {
+    const text = (part as { type?: unknown; text?: unknown }).text;
+    return typeof text === "string" ? sum + text.length : sum;
+  }, 0);
+}
 
 /**
  * Which models a client may request. Unset means none: the server's configured
@@ -44,6 +58,10 @@ export function chatRouter(kb: KnowledgeBase): Router {
       return;
     }
     const { messages, model } = parsed.data;
+    if (newestUserTurnLength(messages) > LIMITS.chatTurn) {
+      res.status(413).json({ error: `message too long (max ${LIMITS.chatTurn} characters)` });
+      return;
+    }
 
     if (model && !allowedModels.includes("*") && !allowedModels.includes(model)) {
       res.status(400).json({
@@ -56,22 +74,21 @@ export function chatRouter(kb: KnowledgeBase): Router {
 
     let modelMessages;
     try {
-      modelMessages = convertToModelMessages(messages as unknown as UIMessage[]);
+      modelMessages = await convertToModelMessages(messages as unknown as UIMessage[]);
     } catch (err) {
       res.status(400).json({ error: `unreadable messages: ${(err as Error).message}` });
       return;
     }
 
-    const { result } = await streamChat(kb, modelMessages, { model });
-    const response = result.toUIMessageStreamResponse();
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-    if (response.body) {
-      for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-        res.write(chunk);
-      }
-    }
-    res.end();
+    // A closed tab must stop the agent: otherwise it keeps spending tokens and
+    // writing files until the run ceiling, with nobody watching.
+    const disconnect = new AbortController();
+    res.on("close", () => {
+      if (!res.writableFinished) disconnect.abort();
+    });
+
+    const { result } = await streamChat(kb, modelMessages, { model, signal: disconnect.signal });
+    result.pipeUIMessageStreamToResponse(res);
   });
 
   return router;
