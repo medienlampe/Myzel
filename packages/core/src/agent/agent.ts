@@ -68,7 +68,7 @@ function traceStore(kb: KnowledgeBase): TraceStore {
  * reduced to their status. The full error is logged here, on the server.
  */
 function errorMessage(err: unknown): string {
-  console.error("[understory] agent run failed:", err);
+  console.error("[myzel] agent run failed:", err);
   return publicErrorMessage(err);
 }
 

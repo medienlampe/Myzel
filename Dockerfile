@@ -41,8 +41,8 @@ USER node
 # Set AUTH_TOKEN when the port is reachable beyond the Docker host.
 ENV NODE_ENV=production BUNDLE_ROOT=/bundle PORT=3800 HOST=0.0.0.0
 # Identity for GIT_AUTOCOMMIT commits; override per deployment if you like.
-ENV GIT_AUTHOR_NAME=understory GIT_AUTHOR_EMAIL=understory@localhost \
-    GIT_COMMITTER_NAME=understory GIT_COMMITTER_EMAIL=understory@localhost
+ENV GIT_AUTHOR_NAME=myzel GIT_AUTHOR_EMAIL=myzel@localhost \
+    GIT_COMMITTER_NAME=myzel GIT_COMMITTER_EMAIL=myzel@localhost
 EXPOSE 3800
 VOLUME /bundle
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Working notes for coding agents (Claude Code, Cursor, Copilot, …) on **understory**.
+Working notes for coding agents (Claude Code, Cursor, Copilot, …) on **Myzel**.
 Read this before touching code. It encodes the invariants that are not obvious from the file tree.
 `CLAUDE.md` is a symlink to this file — edit `AGENTS.md`, never the link.
 
@@ -11,14 +11,15 @@ dependency maintenance.
 
 ## 1. What this project is
 
-understory is an **LLM-managed knowledge base** stored as plain markdown, conforming to the
+Myzel is an **LLM-managed knowledge base** stored as plain markdown, conforming to the
 [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 
 This repository **started as a fork of [thecodacus/understory](https://github.com/thecodacus/understory)**
-by [@thecodacus](https://github.com/thecodacus) and develops independently from it. History and
+by [@thecodacus](https://github.com/thecodacus), was renamed to Myzel, and develops independently
+from it. History and
 design decisions predating the fork live upstream — worth a look before concluding something here is
 unexplained — but do not assume the two are in sync, and do not port changes across without being
-asked. This repository publishes its own image, `ghcr.io/medienlampe/understory`.
+asked. This repository publishes its own image, `ghcr.io/medienlampe/myzel`.
 
 A "bundle" is a directory of `.md` files with YAML frontmatter. Three entry points drive the same
 internal agent against that bundle:
@@ -122,8 +123,8 @@ node packages/server/dist/index.js       # → http://localhost:3800
 Dev mode (two terminals — server on :3800, Vite HMR on :5180 proxying `/api` and `/mcp`):
 
 ```bash
-BUNDLE_ROOT=./sample-bundle pnpm --filter @understory/server dev
-pnpm --filter @understory/web dev
+BUNDLE_ROOT=./sample-bundle pnpm --filter @myzel/server dev
+pnpm --filter @myzel/web dev
 ```
 
 Agent smoke entries (need a working `BUNDLE_ROOT` + LLM env):
@@ -131,7 +132,7 @@ Agent smoke entries (need a working `BUNDLE_ROOT` + LLM env):
 ```bash
 BUNDLE_ROOT=./sample-bundle pnpm agent:query  "What do we know about billing?"
 BUNDLE_ROOT=./sample-bundle pnpm agent:mutate "Record that we deploy on Fridays"
-pnpm --filter @understory/server exec tsx scripts/mcp-smoke.mts   # needs SMOKE_BUNDLE
+pnpm --filter @myzel/server exec tsx scripts/mcp-smoke.mts   # needs SMOKE_BUNDLE
 ```
 
 **Never commit to `sample-bundle/` as a side effect.** Agent runs against it mutate real files
@@ -195,7 +196,7 @@ dummy `LLM_*` values are enough to exercise the UI.
   arguments.
 - Exported functions returning AI SDK tool sets or stream results need an explicit return type
   (`ToolSet`, `ReturnType<typeof streamText<ToolSet>>`) — TS 6 refuses non-portable inferred types.
-- Cross-package imports use the workspace entry point: `import { KnowledgeBase } from "@understory/core"`.
+- Cross-package imports use the workspace entry point: `import { KnowledgeBase } from "@myzel/core"`.
   New public symbols must be re-exported through the `index.ts` barrel of their directory.
 - Formatting is Prettier's job (`.prettierrc.json`, 100 columns) — don't hand-wrap against it, and
   don't reformat unrelated lines. Lint is `eslint.config.js`, deliberately type-unaware, with the
@@ -276,7 +277,7 @@ dummy `LLM_*` values are enough to exercise the UI.
   touching `index.ts`: **the guard mounts before `bearerAuth`**, and CORS must never reflect an
   origin the guard would reject. `HOST=0.0.0.0` is the explicit opt-in for network exposure and
   warns when no token is set. The Docker image sets it, so for containers the *published* address
-  decides exposure — the compose files default to `127.0.0.1` via `UNDERSTORY_BIND`.
+  decides exposure — the compose files default to `127.0.0.1` via `MYZEL_BIND`.
 - **Errors shown to clients go through `publicErrorMessage`** (provider errors → HTTP status only);
   log the full error on the server. URLs in logs go through `redactUrl`.
 - **simple-git 4 strips ambient `GIT_*` env vars** unless listed in `allowEnvironment`
@@ -334,7 +335,7 @@ worth knowing:
 | `HOST` | Bind address. Default `127.0.0.1`; `0.0.0.0` to expose on the network (the Docker image sets it). |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Additions to the same-origin/loopback defaults of the network guard. `*` opts out. |
 | `PORT` | Default 3800. |
-| `UNDERSTORY_BIND` | Compose files only: host interface the port is published on (default `127.0.0.1`). |
+| `MYZEL_BIND` | Compose files only: host interface the port is published on (default `127.0.0.1`). |
 | `GIT_AUTOCOMMIT` | Commit the bundle after every mutation (best-effort; failures are logged, not thrown). |
 | `QUERY_CACHE` / `QUERY_CACHE_TTL` | Exact-answer cache (default on, 24h). |
 | `HOT_MEMORY` / `HOT_MEMORY_TTL` | Working-set layer (default on, 1h). |

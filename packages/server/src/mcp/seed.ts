@@ -1,12 +1,7 @@
-import {
-  formatLogLine,
-  sanitizeInline,
-  sanitizePath,
-  UNTRUSTED_CONTENT_NOTICE,
-} from "@understory/core";
+import { formatLogLine, sanitizeInline, sanitizePath, UNTRUSTED_CONTENT_NOTICE } from "@myzel/core";
 import { promises as fs } from "node:fs";
-import { bundleFingerprint, type KnowledgeBase } from "@understory/core";
-import type { TreeNode } from "@understory/core";
+import { bundleFingerprint, type KnowledgeBase } from "@myzel/core";
+import type { TreeNode } from "@myzel/core";
 
 const MAX_SEED_CHARS = 3000;
 const MAX_DESCRIPTIONS_PER_SEGMENT = 10;

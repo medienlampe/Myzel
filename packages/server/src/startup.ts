@@ -1,4 +1,4 @@
-import { redactUrl, resolveFallbackConfig, resolveModelConfig } from "@understory/core";
+import { redactUrl, resolveFallbackConfig, resolveModelConfig } from "@myzel/core";
 
 /**
  * Validate the LLM configuration at startup and log what will be used — fail
@@ -9,17 +9,17 @@ export function checkModelConfig(log: (line: string) => void): void {
   try {
     const primary = resolveModelConfig();
     log(
-      `[understory] model: ${primary.format}:${primary.model || "auto"} @ ${redactUrl(primary.baseURL)}`
+      `[myzel] model: ${primary.format}:${primary.model || "auto"} @ ${redactUrl(primary.baseURL)}`
     );
     const fallback = resolveFallbackConfig();
     if (fallback) {
       log(
-        `[understory] fallback: ${fallback.format}:${fallback.model || "auto"} @ ${redactUrl(fallback.baseURL)}`
+        `[myzel] fallback: ${fallback.format}:${fallback.model || "auto"} @ ${redactUrl(fallback.baseURL)}`
       );
     }
   } catch (err) {
-    console.error(`[understory] LLM configuration error: ${(err as Error).message}`);
-    console.error("[understory] Set LLM_API_BASE_URL + LLM_API_KEY, or configure legacy env vars.");
+    console.error(`[myzel] LLM configuration error: ${(err as Error).message}`);
+    console.error("[myzel] Set LLM_API_BASE_URL + LLM_API_KEY, or configure legacy env vars.");
     process.exit(1);
   }
 }

@@ -154,7 +154,7 @@ export async function hotLookup(
   } catch (err) {
     // Hot memory is an optimization in front of deep memory. A failure here —
     // including the timeout above — must degrade to a miss, never fail the query.
-    console.error(`[understory] hot memory lookup failed: ${(err as Error).message}`);
+    console.error(`[myzel] hot memory lookup failed: ${(err as Error).message}`);
     return null;
   }
   if (!text || /^UNKNOWN\b/i.test(text)) return null;

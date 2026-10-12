@@ -16,7 +16,7 @@ function fakeRunner(answer: string) {
 }
 
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "ustory-cache-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "myzel-cache-"));
   kb = new KnowledgeBase(root);
   clearQueryCache();
   clearHotMemory();

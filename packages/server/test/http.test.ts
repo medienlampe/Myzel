@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import { KnowledgeBase } from "@understory/core";
+import { KnowledgeBase } from "@myzel/core";
 import { chatRouter } from "../src/api/chat.js";
 import { mcpRouter } from "../src/mcp/http.js";
 import { LIMITS } from "../src/limits.js";
@@ -73,7 +73,7 @@ describe("/mcp over streamable HTTP", () => {
       capabilities: {},
       clientInfo: { name: "test", version: "0" },
     });
-    expect(res.result.serverInfo.name).toBe("understory");
+    expect(res.result.serverInfo.name).toBe("myzel");
     expect(res.result.instructions).toContain("Alpha");
   });
 

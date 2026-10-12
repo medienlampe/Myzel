@@ -17,7 +17,7 @@ let root: string;
 let kb: KnowledgeBase;
 
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "ustory-hot-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "myzel-hot-"));
   kb = new KnowledgeBase(root);
   clearHotMemory();
   clearQueryCache();
@@ -130,7 +130,7 @@ describe("runQueryCached layering", () => {
 
 describe("hot memory isolation", () => {
   it("does not leak a working set between two bundles in one process", async () => {
-    const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ustory-hot-other-"));
+    const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), "myzel-hot-other-"));
     try {
       const other = new KnowledgeBase(otherRoot);
       await other.writeConcept(

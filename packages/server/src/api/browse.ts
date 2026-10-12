@@ -6,7 +6,7 @@ import {
   resolveFallbackConfig,
   resolveModelConfig,
   type KnowledgeBase,
-} from "@understory/core";
+} from "@myzel/core";
 
 /** Deterministic browse API — no LLM involved, browsing never costs tokens. */
 export function browseRouter(kb: KnowledgeBase): Router {

@@ -1,4 +1,4 @@
-# understory — convenience targets around pnpm and Docker. Run `make` for the list.
+# Myzel — convenience targets around pnpm and Docker. Run `make` for the list.
 #
 # Settings come from, in order: the environment / `make VAR=value`, then `.env`
 # (read by Node's own --env-file parser, the same way the server sees it), then
@@ -22,7 +22,7 @@ BUNDLE_HOME := $(patsubst ~/%,$(HOME)/%,$(BUNDLE_ROOT))
 BUNDLE_PATH := $(abspath $(if $(filter /%,$(BUNDLE_HOME)),$(BUNDLE_HOME),$(ROOT)/$(BUNDLE_HOME)))
 DEMO_BUNDLE := $(ROOT)/demo-bundle
 
-IMAGE ?= understory:local
+IMAGE ?= myzel:local
 IMAGE_CHECK_PORT ?= 3899
 
 .PHONY: help install build dev start mcp-stdio query mutate bundle reset-demo \
@@ -51,16 +51,16 @@ build: node_modules ## Build all packages (core, server, web)
 ##@ Running
 
 dev: node_modules bundle ## Run everything with live reload: server :3800, web UI :5180
-	@pnpm --filter @understory/core build >/dev/null
+	@pnpm --filter @myzel/core build >/dev/null
 	@echo "Dev mode on $(BUNDLE_PATH) — web UI at http://localhost:5180 (Ctrl-C stops all)" >&2
 	@$(MAKE) --no-print-directory -j3 _dev-core _dev-server _dev-web
 
 _dev-core:
-	@pnpm --filter @understory/core dev
+	@pnpm --filter @myzel/core dev
 _dev-server:
 	@cd packages/server && BUNDLE_ROOT="$(BUNDLE_PATH)" node_modules/.bin/tsx watch $(NODE_ENV_FILE) src/index.ts
 _dev-web:
-	@pnpm --filter @understory/web dev
+	@pnpm --filter @myzel/web dev
 
 start: build bundle ## Build, then serve the web UI, /api and /mcp on :3800
 	@BUNDLE_ROOT="$(BUNDLE_PATH)" node $(NODE_ENV_FILE) packages/server/dist/index.js
@@ -120,11 +120,11 @@ down: ## Stop and remove the container
 logs: ## Follow the container's logs
 	docker compose logs -f
 
-image: ## Build the Docker image (tag: IMAGE, default understory:local)
+image: ## Build the Docker image (tag: IMAGE, default myzel:local)
 	docker build -t $(IMAGE) .
 
 image-check: image ## Build, start and health-check the image, then stop it cleanly
-	@name=understory-image-check; \
+	@name=myzel-image-check; \
 	trap 'docker rm -f $$name >/dev/null 2>&1' EXIT; \
 	docker rm -f $$name >/dev/null 2>&1; \
 	docker run -d --name $$name -p 127.0.0.1:$(IMAGE_CHECK_PORT):3800 \

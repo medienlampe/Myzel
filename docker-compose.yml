@@ -1,11 +1,11 @@
 services:
-  understory:
+  myzel:
     build: .
     ports:
-      # Published on the Docker host's loopback only. To reach understory from
-      # other machines set UNDERSTORY_BIND=0.0.0.0 (or one interface's address)
+      # Published on the Docker host's loopback only. To reach Myzel from
+      # other machines set MYZEL_BIND=0.0.0.0 (or one interface's address)
       # AND set AUTH_TOKEN — anyone who can reach the port can rewrite the memory.
-      - "${UNDERSTORY_BIND:-127.0.0.1}:3800:3800"
+      - "${MYZEL_BIND:-127.0.0.1}:3800:3800"
     volumes:
       - ./sample-bundle:/bundle
     environment:

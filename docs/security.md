@@ -1,6 +1,6 @@
 # Security
 
-How understory defends the memory, how to deploy it without undoing that, and what is known to be
+How Myzel defends the memory, how to deploy it without undoing that, and what is known to be
 left open. The rules that code changes must keep are in [AGENTS.md](../AGENTS.md) §4 and §8;
 this page explains the reasoning behind them.
 
@@ -22,7 +22,7 @@ Untrusted input arrives in five ways:
 ### Network
 
 - **Loopback by default.** The server binds `127.0.0.1`. The compose files publish the port on
-  `127.0.0.1` (`UNDERSTORY_BIND`). Network exposure is always an explicit step, and the server
+  `127.0.0.1` (`MYZEL_BIND`). Network exposure is always an explicit step, and the server
   warns when it is exposed without `AUTH_TOKEN`.
 - **Origin check** on `/mcp` and `/api`: browsers may call only from the same origin or from an
   origin listed in `ALLOWED_ORIGINS`. CORS mirrors the same allowlist and never reflects the
@@ -125,7 +125,7 @@ Untrusted input arrives in five ways:
 ## Deploying safely
 
 1. **Keep the default bind** unless other machines need access. To expose it, set
-   `UNDERSTORY_BIND=0.0.0.0` (compose) or `HOST=0.0.0.0` (native), **and** set `AUTH_TOKEN` to a
+   `MYZEL_BIND=0.0.0.0` (compose) or `HOST=0.0.0.0` (native), **and** set `AUTH_TOKEN` to a
    long random value (`openssl rand -hex 24`).
 2. **Reaching it by name** (`nas.local`, a proxy domain)? Add that name to `ALLOWED_HOSTS`. Access
    by IP address needs nothing.

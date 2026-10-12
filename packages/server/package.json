@@ -1,10 +1,10 @@
 {
-  "name": "@understory/server",
+  "name": "@myzel/server",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "ustory": "./bin/ustory"
+    "myzel": "./bin/myzel"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "@understory/core": "workspace:*",
+    "@myzel/core": "workspace:*",
     "ai": "^7.0.138",
     "cors": "^2.8.6",
     "express": "^5.3.0",

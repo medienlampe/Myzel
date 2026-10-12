@@ -1,6 +1,6 @@
 # Documentation outline
 
-Documentation for people working on understory. Start elsewhere if you are looking for:
+Documentation for people working on Myzel. Start elsewhere if you are looking for:
 
 - **installing, connecting and configuring it** — the [README](../README.md);
 - **the rules every code change must keep** — [AGENTS.md](../AGENTS.md) (also read by coding

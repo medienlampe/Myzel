@@ -5,7 +5,7 @@
  *     -e LLM_PROVIDER=openrouter -- node <repo>/packages/server/dist/mcp/stdio.js
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { KnowledgeBase } from "@understory/core";
+import { KnowledgeBase } from "@myzel/core";
 import { buildMcpServer } from "./server.js";
 import { checkModelConfig } from "../startup.js";
 
@@ -23,4 +23,4 @@ const kb = new KnowledgeBase(bundleRoot, {
 const server = await buildMcpServer(kb);
 await server.connect(new StdioServerTransport());
 // stdio transport keeps the process alive; logs must go to stderr only.
-console.error(`[understory] serving bundle ${bundleRoot} over stdio`);
+console.error(`[myzel] serving bundle ${bundleRoot} over stdio`);

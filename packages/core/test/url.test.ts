@@ -45,7 +45,7 @@ describe("publicErrorMessage", () => {
     expect(publicErrorMessage(retry)).toBe("the model provider returned HTTP 503");
   });
 
-  it("names timeouts and keeps understory's own messages", () => {
+  it("names timeouts and keeps Myzel's own messages", () => {
     expect(publicErrorMessage(new DOMException("t", "TimeoutError"))).toMatch(/timed out/);
     expect(publicErrorMessage(new Error("Concept not found: /x.md"))).toBe(
       "Concept not found: /x.md"

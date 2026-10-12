@@ -25,7 +25,9 @@ export const DEFAULT_LAYOUT: LayoutState = {
   sizes: { explorer: 20, content: 52, chat: 28 },
 };
 
-const STORAGE_KEY = "understory-layout";
+const STORAGE_KEY = "myzel-layout";
+/** Key used before the project was renamed from understory. */
+const LEGACY_STORAGE_KEY = "understory-layout";
 
 function isPanelId(value: unknown): value is PanelId {
   return typeof value === "string" && (PANEL_IDS as readonly string[]).includes(value);
@@ -52,7 +54,15 @@ export function parseLayout(raw: unknown): LayoutState | null {
 
 export function loadLayout(): LayoutState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy !== null) {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      if (raw === null) {
+        raw = legacy;
+        localStorage.setItem(STORAGE_KEY, legacy);
+      }
+    }
     return (raw && parseLayout(JSON.parse(raw))) || DEFAULT_LAYOUT;
   } catch {
     return DEFAULT_LAYOUT;

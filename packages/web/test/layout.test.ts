@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_LAYOUT,
+  loadLayout,
   movePanel,
   parseLayout,
   shiftPanel,
@@ -81,5 +82,47 @@ describe("parseLayout", () => {
   it("replaces out-of-range sizes with defaults", () => {
     const parsed = parseLayout({ ...DEFAULT_LAYOUT, sizes: { explorer: -5, content: 300 } });
     expect(parsed?.sizes).toEqual(DEFAULT_LAYOUT.sizes);
+  });
+});
+
+describe("loadLayout", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubStorage(entries: Record<string, string>) {
+    const map = new Map(Object.entries(entries));
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      removeItem: (k: string) => void map.delete(k),
+    });
+    return map;
+  }
+
+  it("picks up a layout saved under the name used before the rename", () => {
+    const saved = { ...DEFAULT_LAYOUT, order: ["explorer", "chat", "content"] };
+    const map = stubStorage({ "understory-layout": JSON.stringify(saved) });
+    expect(loadLayout().order).toEqual(["explorer", "chat", "content"]);
+    expect(map.has("understory-layout")).toBe(false);
+    expect(map.has("myzel-layout")).toBe(true);
+  });
+
+  it("prefers the current key when both exist", () => {
+    const current = { ...DEFAULT_LAYOUT, hidden: ["chat"] };
+    stubStorage({
+      "myzel-layout": JSON.stringify(current),
+      "understory-layout": JSON.stringify({ ...DEFAULT_LAYOUT, hidden: ["explorer"] }),
+    });
+    expect(loadLayout().hidden).toEqual(["chat"]);
+  });
+
+  it("falls back to the default when storage throws", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+    });
+    expect(loadLayout()).toEqual(DEFAULT_LAYOUT);
   });
 });

@@ -144,7 +144,7 @@ export class KnowledgeBase {
         await autocommit(this.git, `${action.toLowerCase()}: ${logSummary || conceptPath}`);
       } catch (err) {
         // Autocommit is best-effort; the KB write itself already succeeded.
-        console.error(`[understory] git autocommit failed: ${(err as Error).message}`);
+        console.error(`[myzel] git autocommit failed: ${(err as Error).message}`);
       }
     }
   }

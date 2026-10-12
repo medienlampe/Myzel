@@ -1,6 +1,6 @@
 # Architecture
 
-understory keeps an AI assistant's long-term memory as a folder of markdown files (a **bundle**)
+Myzel keeps an AI assistant's long-term memory as a folder of markdown files (a **bundle**)
 that follows the [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 Clients talk to it over MCP. Internally, a small agent decides what to read and write, and a
 plain-code layer guarantees that every write leaves a valid bundle.
@@ -119,12 +119,12 @@ described in the [README](../README.md#quick-start); the implementation is split
 - **`src/layout.ts`** is the model. It is made of plain functions with no React in them
   (`movePanel`, `shiftPanel`, `togglePanel`, `visibleSizes`, `parseLayout`), and it is
   unit-tested in `test/layout.test.ts`. The layout (column order, closed panels, widths in
-  percent) is saved per browser in `localStorage` under `understory-layout`. `parseLayout` checks
+  percent) is saved per browser in `localStorage` under `myzel-layout`. `parseLayout` checks
   everything read back, and any problem falls back to the default.
 - **`src/components/Workspace.tsx`** renders the model with `react-resizable-panels` v4
   (`Group` / `Panel` / `Separator`):
   - **Drag and drop** uses the native HTML5 API with a private MIME type
-    (`application/x-understory-panel`), so text or files dragged in from outside are ignored.
+    (`application/x-myzel-panel`), so text or files dragged in from outside are ignored.
     While a panel is being dragged, a transparent shield covers the other panels; without it,
     inputs, links or the graph canvas inside them would swallow the drop.
   - **The keyboard** path is the ← / → buttons in each title bar. Separators are focusable and

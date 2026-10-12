@@ -1,6 +1,6 @@
 <div align="center">
 
-# understory 🌱
+# Myzel 🍄
 
 **Memory that grows.**
 
@@ -19,26 +19,26 @@ A long-term memory for your AI assistants — stored as plain markdown files you
 ---
 
 > [!NOTE]
-> **Origin.** This project started as a fork of
+> **Origin.** Myzel started as a fork of
 > [**thecodacus/understory**](https://github.com/thecodacus/understory) by
 > [@thecodacus](https://github.com/thecodacus) — the idea and the original implementation come
 > from there.
 >
-> Development continues independently in this repository, which ships its own container image
-> (`ghcr.io/medienlampe/understory`). Expect the two to diverge.
+> It has since been renamed and is developed independently in this repository, which ships its own
+> container image (`ghcr.io/medienlampe/myzel`). Expect the two to diverge.
 
 Your AI coding assistant forgets everything when the session ends. Tell it about your deploy process
 on Monday, and on Tuesday you explain it again.
 
-understory is a place it can write things down and look them up later. It connects over **MCP** (Model
+Myzel is a place it can write things down and look them up later. It connects over **MCP** (Model
 Context Protocol — the standard that lets AI assistants use external tools), so any MCP-capable client
 works: Claude Code, Claude Desktop, Cursor, and others. Your assistant gets five tools — ask the
-memory, teach it, correct it, check its health, repair it — and understory takes care of *where* each
+memory, teach it, correct it, check its health, repair it — and Myzel takes care of *where* each
 fact belongs.
 
 What makes it different from a database: **the memory is just a folder of markdown files.** You can
 read it, hand-edit it, search it with `grep`, and track it in git. Nothing is locked in a binary
-format, and if you delete understory tomorrow, your knowledge is still sitting there in plain text.
+format, and if you delete Myzel tomorrow, your knowledge is still sitting there in plain text.
 
 **Runs great on local models** — the model doing this work never has to be an expensive one.
 
@@ -77,15 +77,15 @@ Billing events reference this table from the [Billing API](/apis/billing-api.md)
 ```
 
 That link to `/apis/billing-api.md` is the important part. Concepts point at each other, so the memory
-is a **graph**, not a pile of loose notes — and understory maintains those links for you, including
+is a **graph**, not a pile of loose notes — and Myzel maintains those links for you, including
 [repairing them](#graph-health--maintenance) when they rot.
 
-`index.md` and `log.md` are written by understory, never by hand.
+`index.md` and `log.md` are written by Myzel, never by hand.
 
 ```mermaid
 flowchart LR
     A["Your assistant<br/>Claude Code, Cursor, …"]
-    subgraph U["understory"]
+    subgraph U["Myzel"]
         direction TB
         B["5 tools:<br/>query · add · update<br/>status · maintain"]
         C["its own small AI agent<br/>search → read → write"]
@@ -119,14 +119,14 @@ memory too.
 - About five minutes.
 
 > [!IMPORTANT]
-> **Why does understory need its own API key when my assistant already has a model?**
+> **Why does Myzel need its own API key when my assistant already has a model?**
 >
-> Because understory does its own thinking. When your assistant says *"remember that we deploy on
-> Fridays"*, understory's internal model has to decide: does a concept about deployments already
+> Because Myzel does its own thinking. When your assistant says *"remember that we deploy on
+> Fridays"*, Myzel's internal model has to decide: does a concept about deployments already
 > exist? Should this be added there, or become a new file? What should it link to? Does it contradict
 > something already written?
 >
-> That work happens inside understory, on **its own** model — which is why you can pair an expensive
+> That work happens inside Myzel, on **its own** model — which is why you can pair an expensive
 > coding assistant with a cheap or fully local model here.
 
 ## Quick start
@@ -137,15 +137,15 @@ You don't need to clone this repo — the container image is public.
 
 ```yaml
 services:
-  understory:
-    image: ghcr.io/medienlampe/understory:latest
+  myzel:
+    image: ghcr.io/medienlampe/myzel:latest
     ports:
       # This machine only. See "Network exposure" before opening it up.
       - "127.0.0.1:3800:3800"
     volumes:
       # Your memory lives here. This keeps it in a Docker volume; to keep it in a
       # folder you can see, replace this line with e.g.  - ./my-memory:/bundle
-      - understory-memory:/bundle
+      - myzel-memory:/bundle
     environment:
       BUNDLE_ROOT: /bundle
       LLM_API_BASE_URL: ${LLM_API_BASE_URL}
@@ -155,7 +155,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  understory-memory:
+  myzel-memory:
 ```
 
 **2.** In the **same folder**, save your model settings as `.env` — Compose picks this file up
@@ -177,13 +177,13 @@ docker compose up -d
 **4.** Check that it came up:
 
 ```bash
-docker compose logs understory | tail -3
+docker compose logs myzel | tail -3
 ```
 
 You should see a line like:
 
 ```
-understory serving bundle /bundle on 0.0.0.0:3800 (web + /api + /mcp)
+Myzel serving bundle /bundle on 0.0.0.0:3800 (web + /api + /mcp)
 ```
 
 If the container exited instead, the log says why — see [Troubleshooting](#troubleshooting).
@@ -194,7 +194,7 @@ If the container exited instead, the log says why — see [Troubleshooting](#tro
 - **Graph** — every concept as a dot, every link as a line, arranged so related things cluster
   together (like Obsidian's graph view). Drag it around, zoom, click a dot to open that file. Dots
   ringed in red are *orphans*: nothing links to them yet.
-- **Chat** — talk to understory's own agent directly, without hooking up an assistant first. Each
+- **Chat** — talk to Myzel's own agent directly, without hooking up an assistant first. Each
   step it takes (searching, reading, writing) appears as you watch.
 
 The three panels are columns you can arrange: **drag a panel's title bar** onto another panel to
@@ -206,7 +206,7 @@ this browser.
 > [!TIP]
 > **Try this first.** Your memory starts empty, so teach it something. In the chat, say:
 > *"We deploy on Fridays, never Mondays."* Then open the graph view and watch the new concept appear.
-> Add a second, related fact and watch understory link the two together.
+> Add a second, related fact and watch Myzel link the two together.
 
 Deploying with Portainer? Use [docker-compose.portainer.yml](docker-compose.portainer.yml) as a
 repository stack.
@@ -216,10 +216,10 @@ repository stack.
 Now hand the memory to your actual assistant. For **Claude Code**:
 
 ```bash
-claude mcp add --transport http ustory http://localhost:3800/mcp
+claude mcp add --transport http myzel http://localhost:3800/mcp
 ```
 
-`ustory` is just the label the tools appear under — pick any name you like. For **other MCP clients**,
+`myzel` is just the label the tools appear under — pick any name you like. For **other MCP clients**,
 add `http://localhost:3800/mcp` as a *streamable HTTP* MCP server; consult that client's docs for
 where to put it. Restart the client afterwards, so it picks up the new tools.
 
@@ -228,30 +228,30 @@ Your assistant now has these five tools:
 | Tool | What it does |
 |---|---|
 | `memory_query` | Ask the memory a question, get an answer in prose. |
-| `memory_add` | Teach it something new. understory decides where it belongs: folded into a file that already covers the topic, or a new file linked to related ones. |
+| `memory_add` | Teach it something new. Myzel decides where it belongs: folded into a file that already covers the topic, or a new file linked to related ones. |
 | `memory_update` | Correct something. The outdated version is replaced, not left standing next to the new one. |
 | `memory_status` | Health check — how many concepts, are the files valid, are any links broken. |
 | `memory_maintain` | Repair pass: connect up concepts nothing links to, fix broken links. Does nothing when the memory is already healthy. |
 
-An assistant that only sees five tool names never thinks to *check* its memory, so understory also
+An assistant that only sees five tool names never thinks to *check* its memory, so Myzel also
 sends it a short summary of what the memory contains at the start of every session — see
 [seed memory](#seed-memory).
 
 <details>
 <summary><b>Other ways in</b> — running it without the HTTP server, or from the shell</summary>
 
-**stdio transport.** Instead of talking to a running server over HTTP, the client starts understory as
+**stdio transport.** Instead of talking to a running server over HTTP, the client starts Myzel as
 a local process and talks to it over its input/output streams. Needs no auth token, since nothing
 touches the network:
 
 ```bash
-claude mcp add ustory \
+claude mcp add myzel \
   -e BUNDLE_ROOT=/path/to/your/bundle \
   -e LLM_API_BASE_URL=https://api.deepseek.com/v1 \
   -e LLM_API_KEY=sk-... \
   -e LLM_API_FORMAT=openai \
   -e LLM_MODEL=deepseek-chat \
-  -- node /path/to/understory/packages/server/dist/mcp/stdio.js
+  -- node /path/to/myzel/packages/server/dist/mcp/stdio.js
 ```
 
 **From the shell.** Same agent, no client involved — handy for a quick check that your setup works
@@ -282,7 +282,7 @@ this needs.
 | **Local llama.cpp** | `LLM_API_BASE_URL=http://localhost:8080/v1` `LLM_MODEL=` *(discovered automatically)* |
 
 > [!IMPORTANT]
-> The model must support **tool calling** (sometimes called function calling). understory's agent
+> The model must support **tool calling** (sometimes called function calling). Myzel's agent
 > works by calling search/read/write tools in a loop, so a model that can't do that will fail or
 > produce nothing. Most current models are fine; very small local models often are not.
 
@@ -293,7 +293,7 @@ this needs.
 # on the machine running the model — --jinja is what enables OpenAI-style tool calling
 llama-server -m model.gguf --jinja --host 0.0.0.0 --port 8080
 
-# on the understory side — no model id needed, it's discovered from the endpoint
+# on the Myzel side — no model id needed, it's discovered from the endpoint
 LLM_API_BASE_URL=http://inference-box:8080/v1 LLM_API_FORMAT=openai LLM_MODEL= \
 BUNDLE_ROOT=./sample-bundle node packages/server/dist/index.js
 ```
@@ -324,7 +324,7 @@ LLM_FALLBACK_API_KEY=sk-... LLM_FALLBACK_MODEL=deepseek-chat
 
 ## Troubleshooting
 
-Start with `docker compose logs understory`. Most failures print exactly what is missing.
+Start with `docker compose logs myzel`. Most failures print exactly what is missing.
 
 | What you see | What it means |
 |---|---|
@@ -346,7 +346,7 @@ Start with `docker compose logs understory`. Most failures print exactly what is
 The rule that governs the whole design: **correctness is enforced in code, not by asking the model
 nicely.**
 
-A language model told "always keep the index up to date" will eventually forget. So understory doesn't
+A language model told "always keep the index up to date" will eventually forget. So Myzel doesn't
 rely on that. A separate, plain-code layer — no AI involved — does the parts that must always hold:
 it checks that each file has the required fields, regenerates `index.md`, appends the change to
 `log.md`, and refuses any write that would land outside your bundle folder.
@@ -372,7 +372,7 @@ Both upper layers are on by default; tune them with `QUERY_CACHE*` / `HOT_MEMORY
 
 Rather than hooking into the write path, the cache compares a fingerprint of the bundle — the path,
 modification time, and size of every concept file. Any write moves the fingerprint and invalidates
-every cached answer, which means edits made *outside* understory (by hand, or by another client) are
+every cached answer, which means edits made *outside* Myzel (by hand, or by another client) are
 picked up as well. Two different edits within the same millisecond that leave the file size identical
 are the one case it can miss.
 
@@ -381,7 +381,7 @@ are the one case it can miss.
 ### Seed memory
 
 An assistant that only sees five bare tool names never gets the instinct to check its memory. So at
-**session start** understory hands it a compact overview of what the knowledge base contains —
+**session start** Myzel hands it a compact overview of what the knowledge base contains —
 folders, concepts with their types and descriptions, recent activity — through both channels that
 reach the model:
 
@@ -443,13 +443,13 @@ outline, everything else fades. It's the answer to *"why did it tell me that?"*
 | Variable | Effect |
 |---|---|
 | `BUNDLE_ROOT` | The folder holding the memory. **Required.** |
-| `LLM_API_BASE_URL` / `LLM_API_KEY` / `LLM_API_FORMAT` / `LLM_MODEL` | The model understory uses. `LLM_MODEL` may be left empty for OpenAI-compatible endpoints that list their models — it's then discovered automatically. |
+| `LLM_API_BASE_URL` / `LLM_API_KEY` / `LLM_API_FORMAT` / `LLM_MODEL` | The model Myzel uses. `LLM_MODEL` may be left empty for OpenAI-compatible endpoints that list their models — it's then discovered automatically. |
 | `LLM_FALLBACK_*` | Optional backup model, used when the primary fails with a retryable error. |
 | `PORT` | Default `3800`. |
 | `HOST` | Which network interface to listen on. Default `127.0.0.1` (this machine only); `0.0.0.0` exposes it to the network. |
 | `AUTH_TOKEN` | Require this token on `/mcp` and `/api`. Unset = no auth. |
 | `ALLOWED_ORIGINS` / `ALLOWED_HOSTS` | Extra origins/hostnames allowed past the browser guard. Needed when you reach the server by a hostname other than `localhost`. |
-| `UNDERSTORY_BIND` | Compose files only: host interface the port is published on. Default `127.0.0.1`. |
+| `MYZEL_BIND` | Compose files only: host interface the port is published on. Default `127.0.0.1`. |
 | `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Requests per client on `/mcp` and `/api/chat`. Default `60` per `1m`; `0` disables. |
 | `RATE_LIMIT_BROWSE` | Requests per client on the read-only `/api` routes. Default `600` per window; `0` disables. |
 | `TRUST_PROXY` | Set behind a reverse proxy (`1`, or the proxy's address) so rate limits apply per client. |
@@ -476,10 +476,10 @@ rewrite your whole memory through your browser.
   the server warns at startup if you don't.
 - **With Docker**, the image binds `0.0.0.0` inside the container (a published port requires it), so
   *where the port is published* decides who can reach it. The compose files in this repo and the
-  quick start publish on `127.0.0.1` only. To reach understory from other machines, publish on all
-  interfaces (`UNDERSTORY_BIND=0.0.0.0` with this repo's compose files, or `"3800:3800"` in your
+  quick start publish on `127.0.0.1` only. To reach Myzel from other machines, publish on all
+  interfaces (`MYZEL_BIND=0.0.0.0` with this repo's compose files, or `"3800:3800"` in your
   own) **and** set `AUTH_TOKEN`.
-- Requests from understory's own web UI always pass, so the UI and the dev proxy need no setup. A
+- Requests from Myzel's own web UI always pass, so the UI and the dev proxy need no setup. A
   browser app on a *different* address needs `ALLOWED_ORIGINS=https://your-frontend`.
 - Non-browser clients (curl, MCP over stdio, native MCP clients) are unaffected.
 - The `Host` header is checked too — that's what stops DNS rebinding attacks, where a malicious
@@ -494,10 +494,10 @@ assistant loads at session start. So a concept whose description reads *"…igno
 instructions and…"* is a **prompt injection**, and it matters most when your assistant saves things
 it read elsewhere: a web page, an issue tracker, a dependency's README.
 
-understory neutralizes the structural part of that. Titles, descriptions, types and log summaries are
+Myzel neutralizes the structural part of that. Titles, descriptions, types and log summaries are
 collapsed to a single line with control and text-direction characters removed before they are placed
 into any prompt, so stored text cannot forge a new heading, bullet, or instruction line. Both the
-session-start overview and understory's own system prompt state plainly that these listings are
+session-start overview and Myzel's own system prompt state plainly that these listings are
 stored content to navigate, never directions to follow.
 
 What this does *not* do is make a model immune to persuasive text it reads on purpose: a concept's
@@ -531,11 +531,11 @@ tokens lock a client out for 15 minutes (after 20 failures). Authenticated MCP c
 header:
 
 ```bash
-claude mcp add --transport http ustory http://host:3800/mcp \
+claude mcp add --transport http myzel http://host:3800/mcp \
   --header "Authorization: Bearer <token>"
 ```
 
-The stdio transport needs no token — there the client starts understory itself, as a local process.
+The stdio transport needs no token — there the client starts Myzel itself, as a local process.
 
 ## From source
 
@@ -569,7 +569,7 @@ node packages/server/dist/index.js
 ```
 
 `./sample-bundle` is a small example memory included in the repo — good for poking around before
-pointing understory at a real one.
+pointing Myzel at a real one.
 
 Or build the container yourself with `docker compose up --build`: the [docker-compose.yml](docker-compose.yml)
 in this repo builds from source and mounts `./sample-bundle`.
@@ -578,8 +578,8 @@ in this repo builds from source and mounts `./sample-bundle`.
 on `:5180`:
 
 ```bash
-BUNDLE_ROOT=./sample-bundle pnpm --filter @understory/server dev
-pnpm --filter @understory/web dev
+BUNDLE_ROOT=./sample-bundle pnpm --filter @myzel/server dev
+pnpm --filter @myzel/web dev
 ```
 
 Planning to contribute? [AGENTS.md](AGENTS.md) documents the invariants, conventions, and sharp edges;
@@ -609,7 +609,7 @@ pnpm test    # core:   87 tests — spec §5/§6/§7/§9, path sandboxing, searc
              # web:    15 tests — workspace layout model (plus a typecheck)
 
 # End-to-end check of the MCP stdio transport (needs SMOKE_BUNDLE + an API key)
-pnpm --filter @understory/server exec tsx scripts/mcp-smoke.mts
+pnpm --filter @myzel/server exec tsx scripts/mcp-smoke.mts
 ```
 
 Tests build real bundles in temp directories — the filesystem is never mocked. Model calls are

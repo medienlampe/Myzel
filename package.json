@@ -1,5 +1,5 @@
 {
-  "name": "understory",
+  "name": "myzel",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "dev": "pnpm --parallel -r dev",
-    "agent:query": "pnpm --filter @understory/core agent:query",
-    "agent:mutate": "pnpm --filter @understory/core agent:mutate",
+    "agent:query": "pnpm --filter @myzel/core agent:query",
+    "agent:mutate": "pnpm --filter @myzel/core agent:mutate",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

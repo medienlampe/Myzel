@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
-import { KnowledgeBase, parseDuration } from "@understory/core";
+import { KnowledgeBase, parseDuration } from "@myzel/core";
 import { mcpRouter } from "./mcp/http.js";
 import { browseRouter } from "./api/browse.js";
 import { chatRouter } from "./api/chat.js";
@@ -35,10 +35,10 @@ app.disable("x-powered-by");
 const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
 if (trustProxy !== undefined) {
   app.set("trust proxy", trustProxy);
-  console.log(`[understory] trust proxy: ${String(trustProxy)}`);
+  console.log(`[myzel] trust proxy: ${String(trustProxy)}`);
   if (trustProxy === true) {
     console.warn(
-      "[understory] WARNING: TRUST_PROXY=true trusts any X-Forwarded-For header — clients can " +
+      "[myzel] WARNING: TRUST_PROXY=true trusts any X-Forwarded-For header — clients can " +
         "pick their own rate-limit bucket. Name the proxy instead (e.g. TRUST_PROXY=loopback or 1)."
     );
   }
@@ -104,9 +104,9 @@ if (authToken) {
     })
   );
   app.use(["/mcp", "/api"], bearerAuth(authToken));
-  console.log("[understory] auth: bearer token required for /mcp and /api");
+  console.log("[myzel] auth: bearer token required for /mcp and /api");
 } else {
-  console.log("[understory] auth: disabled (set AUTH_TOKEN to protect /mcp and /api)");
+  console.log("[myzel] auth: disabled (set AUTH_TOKEN to protect /mcp and /api)");
 }
 
 // Both routers below can start an agent run, which costs tokens — brake them.
@@ -123,10 +123,10 @@ if (rateLimitOptions.limit > 0) {
     rateLimit({ ...rateLimitOptions, hint: "Raise RATE_LIMIT, or set it to 0 to disable." })
   );
   console.log(
-    `[understory] rate limit: ${rateLimitOptions.limit} requests / ${Math.round(rateLimitOptions.windowMs / 1000)}s per client on /mcp and /api/chat`
+    `[myzel] rate limit: ${rateLimitOptions.limit} requests / ${Math.round(rateLimitOptions.windowMs / 1000)}s per client on /mcp and /api/chat`
   );
 } else {
-  console.log("[understory] rate limit: disabled (RATE_LIMIT=0)");
+  console.log("[myzel] rate limit: disabled (RATE_LIMIT=0)");
 }
 
 // The browse API never calls a model, but each request reads the whole bundle;
@@ -162,7 +162,7 @@ if (existsSync(webDist)) {
 app.use(
   (err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (res.headersSent) return next(err);
-    console.error("[understory] unhandled request error:", err);
+    console.error("[myzel] unhandled request error:", err);
     const status = (err as { status?: unknown }).status;
     res
       .status(typeof status === "number" && status >= 400 && status < 600 ? status : 500)
@@ -173,7 +173,7 @@ app.use(
 const port = Number(process.env.PORT ?? 3800);
 const server = app.listen(port, host, () => {
   console.log(
-    `[understory] origin guard: same-origin` +
+    `[myzel] origin guard: same-origin` +
       (guardConfig.allowedOrigins.length ? ` + ${guardConfig.allowedOrigins.join(", ")}` : "") +
       `; Host header restricted to ${
         guardConfig.hostPolicy === "loopback" ? "loopback" : "loopback names and IP addresses"
@@ -182,11 +182,11 @@ const server = app.listen(port, host, () => {
   );
   if (!isLoopbackHost(host) && !authToken) {
     console.warn(
-      "[understory] WARNING: bound to a non-loopback interface with AUTH_TOKEN unset — " +
+      "[myzel] WARNING: bound to a non-loopback interface with AUTH_TOKEN unset — " +
         "anyone who can reach this port can read and rewrite the memory. Set AUTH_TOKEN."
     );
   }
-  console.log(`understory serving bundle ${bundleRoot} on ${host}:${port} (web + /api + /mcp)`);
+  console.log(`Myzel serving bundle ${bundleRoot} on ${host}:${port} (web + /api + /mcp)`);
 });
 
 /**
@@ -198,12 +198,12 @@ let shuttingDown = false;
 const shutdown = (signal: string) => {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`[understory] ${signal}: finishing pending writes, then exiting`);
+  console.log(`[myzel] ${signal}: finishing pending writes, then exiting`);
   stopDreamer();
   server.close();
   server.closeIdleConnections();
   const deadline = setTimeout(() => {
-    console.error("[understory] shutdown timed out with writes pending — exiting anyway");
+    console.error("[myzel] shutdown timed out with writes pending — exiting anyway");
     process.exit(1);
   }, 8_000);
   deadline.unref();

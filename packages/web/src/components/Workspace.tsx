@@ -12,7 +12,7 @@ import {
 } from "../layout";
 
 /** MIME type of a panel being dragged — nothing else on the page can carry it. */
-const DRAG_TYPE = "application/x-understory-panel";
+const DRAG_TYPE = "application/x-myzel-panel";
 
 export interface PanelSpec {
   title: string;

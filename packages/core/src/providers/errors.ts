@@ -4,7 +4,7 @@ import { APICallError, RetryError } from "ai";
  * The error text a client may see. A provider's error response can carry
  * request details — gateway debug output, echoed headers, sometimes part of
  * the key — so provider errors are reduced to their HTTP status; callers log
- * the full error on the server. Errors raised by understory itself are already
+ * the full error on the server. Errors raised by Myzel itself are already
  * written for the user and pass through.
  */
 export function publicErrorMessage(err: unknown): string {

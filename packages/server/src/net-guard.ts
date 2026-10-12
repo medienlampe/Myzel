@@ -5,7 +5,7 @@ import type { NextFunction, Request, Response } from "express";
 /**
  * Network-level guards for /mcp and /api.
  *
- * The threat these close: understory holds a personal memory and, by default,
+ * The threat these close: Myzel holds a personal memory and, by default,
  * needs no credentials. Without an Origin check, any web page the user happens
  * to visit can POST to http://localhost:3800/api/chat or /mcp from their
  * browser — reading and rewriting the whole memory. The MCP specification

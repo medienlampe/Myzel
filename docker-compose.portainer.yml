@@ -2,13 +2,13 @@
 # Point Portainer at this file (Stacks → Add stack → Repository) and set
 # the LLM env vars in the stack's environment variables UI.
 services:
-  understory:
-    image: ghcr.io/medienlampe/understory:latest
+  myzel:
+    image: ghcr.io/medienlampe/myzel:latest
     ports:
-      # Published on the Docker host's loopback only. To reach understory from
-      # other machines set UNDERSTORY_BIND=0.0.0.0 (or one interface's address)
+      # Published on the Docker host's loopback only. To reach Myzel from
+      # other machines set MYZEL_BIND=0.0.0.0 (or one interface's address)
       # AND set AUTH_TOKEN — anyone who can reach the port can rewrite the memory.
-      - "${UNDERSTORY_BIND:-127.0.0.1}:3800:3800"
+      - "${MYZEL_BIND:-127.0.0.1}:3800:3800"
     volumes:
       # Persistent OKF bundle. Swap for a bind mount (e.g. /srv/okf-bundle:/bundle)
       # if you want to edit the markdown from the host / sync it with git.

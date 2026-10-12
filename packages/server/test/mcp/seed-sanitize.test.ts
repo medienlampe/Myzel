@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { KnowledgeBase } from "@understory/core";
+import { KnowledgeBase } from "@myzel/core";
 import { buildSeedMemory, cachedSeedMemory } from "../../src/mcp/seed.js";
 
 let root: string;

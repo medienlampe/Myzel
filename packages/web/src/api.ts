@@ -79,7 +79,9 @@ export interface AppConfig {
   modelOverride?: boolean;
 }
 
-const TOKEN_KEY = "understory-token";
+const TOKEN_KEY = "myzel-token";
+/** Key used before the project was renamed from understory. */
+const LEGACY_TOKEN_KEY = "understory-token";
 
 /**
  * The access token lives in sessionStorage: it is gone when the tab closes, so
@@ -89,14 +91,27 @@ const TOKEN_KEY = "understory-token";
  */
 let memoryToken = "";
 
+/**
+ * One-time move of a token kept where older versions put it: localStorage, and
+ * the key from before the rename (in either store).
+ */
+function migrateLegacyToken(): void {
+  const slots: [Storage, string][] = [
+    [localStorage, TOKEN_KEY],
+    [localStorage, LEGACY_TOKEN_KEY],
+    [sessionStorage, LEGACY_TOKEN_KEY],
+  ];
+  for (const [store, key] of slots) {
+    const legacy = store.getItem(key);
+    if (!legacy) continue;
+    store.removeItem(key);
+    if (!sessionStorage.getItem(TOKEN_KEY)) sessionStorage.setItem(TOKEN_KEY, legacy);
+  }
+}
+
 export function getAuthToken(): string {
   try {
-    // One-time move of a token saved by older versions in localStorage.
-    const legacy = localStorage.getItem(TOKEN_KEY);
-    if (legacy) {
-      localStorage.removeItem(TOKEN_KEY);
-      sessionStorage.setItem(TOKEN_KEY, legacy);
-    }
+    migrateLegacyToken();
     return sessionStorage.getItem(TOKEN_KEY) ?? memoryToken;
   } catch {
     return memoryToken;

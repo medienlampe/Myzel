@@ -1,12 +1,12 @@
 import express, { type Router } from "express";
 import { z } from "zod";
 import { convertToModelMessages, type UIMessage } from "ai";
-import { streamChat, type KnowledgeBase } from "@understory/core";
+import { streamChat, type KnowledgeBase } from "@myzel/core";
 import { LIMITS } from "../limits.js";
 
 /**
  * The client sends AI SDK UIMessages. Their internal shape is the SDK's
- * business, so this schema only asserts the envelope understory itself relies
+ * business, so this schema only asserts the envelope Myzel itself relies
  * on — enough to fail with a 400 instead of a 500, and to keep an unbounded or
  * client-chosen `model` out of the provider call.
  */
