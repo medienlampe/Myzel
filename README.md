@@ -540,12 +540,24 @@ The stdio transport needs no token — there the client starts understory itself
 ## From source
 
 Requires **Node ≥ 22.12** and **pnpm 10.34.6** (pinned in `package.json` — `corepack enable` gets you the
-right version).
+right version). The [Makefile](Makefile) wraps the common tasks:
+
+```bash
+cp .env.example .env   # then add your model settings — make loads this file for you
+make start             # install, build, serve web UI + /api + /mcp on http://localhost:3800
+make dev               # live reload instead: server on :3800, web UI on http://localhost:5180
+make query Q="What do we know about billing?"
+make help              # everything else: check, image-check, mcp-stdio, reset-demo, …
+```
+
+The `make` targets work on `demo-bundle/` — a gitignored copy of the sample memory, created on first
+use — unless you set `BUNDLE_ROOT` (in `.env` or as `make start BUNDLE_ROOT=~/my-memory`).
+
+Without make:
 
 ```bash
 pnpm install
 pnpm build
-cp .env.example .env   # then add your API key
 
 BUNDLE_ROOT=./sample-bundle \
 LLM_API_BASE_URL=https://api.deepseek.com/v1 \
@@ -562,7 +574,8 @@ pointing understory at a real one.
 Or build the container yourself with `docker compose up --build`: the [docker-compose.yml](docker-compose.yml)
 in this repo builds from source and mounts `./sample-bundle`.
 
-**Dev mode** — two terminals, server on `:3800` and the Vite dev server with hot reload on `:5180`:
+**Dev mode** without make — two terminals, server on `:3800` and the Vite dev server with hot reload
+on `:5180`:
 
 ```bash
 BUNDLE_ROOT=./sample-bundle pnpm --filter @understory/server dev

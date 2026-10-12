@@ -95,6 +95,10 @@ docs/                   # outline.md → architecture, security, maintenance
 
 Requires **Node ≥ 22.12** and **pnpm 10.34.6** (pinned via `packageManager`; use `corepack enable`).
 
+The [Makefile](Makefile) wraps everything below (`make help` lists it); `make check` runs exactly
+what CI runs, and `make dev` / `make start` / `make query` load `.env` and default to the gitignored
+`demo-bundle/`. The underlying commands:
+
 ```bash
 pnpm install
 pnpm lint                  # eslint 10 (flat config, type-unaware — tsc covers types)
@@ -131,9 +135,10 @@ pnpm --filter @understory/server exec tsx scripts/mcp-smoke.mts   # needs SMOKE_
 ```
 
 **Never commit to `sample-bundle/` as a side effect.** Agent runs against it mutate real files
-(`index.md`, `log.md`, concepts, and `.traces/`). Point `BUNDLE_ROOT` at a throwaway directory
-(`demo-bundle/` is gitignored) when exercising mutations, and `git checkout -- sample-bundle`
-if you dirtied it. The server boots without a reachable model (only the config is validated), so
+(`index.md`, `log.md`, concepts, and `.traces/`). The `make` targets default to `demo-bundle/`
+(gitignored, copied from the sample; `make reset-demo` starts it over); without make, point
+`BUNDLE_ROOT` there yourself, and `git checkout -- sample-bundle` if you dirtied it.
+`make up` (docker compose) does mount `sample-bundle/` — mind that when testing writes. The server boots without a reachable model (only the config is validated), so
 dummy `LLM_*` values are enough to exercise the UI.
 
 ---

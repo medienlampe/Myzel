@@ -30,20 +30,13 @@ pnpm lint && pnpm format:check
 pnpm -r build && pnpm test
 ```
 
+The same steps as one command: `make check`.
+
 If the Dockerfile, pnpm or the production dependencies changed, also **build and run** the image.
 A green build alone is not enough; it has happened that the image built but could not start.
-
-```bash
-docker build -t understory:check .
-docker run -d --name understory-check -p 127.0.0.1:3899:3800 \
-  -e LLM_API_BASE_URL=http://127.0.0.1:9/v1 -e LLM_API_KEY=dummy -e LLM_MODEL=dummy \
-  understory:check
-docker inspect -f '{{.State.Health.Status}}' understory-check   # wait for "healthy"
-docker stop understory-check   # should exit 0 within a second (graceful shutdown)
-docker rm understory-check && docker rmi understory:check
-```
-
-Dummy model settings are enough here: the server only validates its configuration at startup.
+`make image-check` does this: it builds the image, starts it with dummy model settings (the server
+only validates its configuration at startup), waits for the health check, and stops it, expecting
+a clean exit.
 
 ## Known traps
 
