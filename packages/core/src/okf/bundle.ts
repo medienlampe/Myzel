@@ -1,9 +1,18 @@
 import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { writeFileAtomic } from "./atomic.js";
+import { FAMILY_KEYS, findPlainObjectKeys, SCALAR_KEYS as SPEC_SCALAR_KEYS } from "./families.js";
 import { parseDoc, serializeDoc, hasNonEmptyType } from "./frontmatter.js";
 import { RESERVED_FILENAMES } from "./types.js";
 import type { Concept, ConceptFrontmatter, TreeNode } from "./types.js";
+
+/**
+ * The writer recorded in generated.by when the caller names none: Myzel's own
+ * deterministic code, as an automated process (spec §7). Agent writes pass
+ * `myzel/<model>` instead.
+ */
+export const DEFAULT_ACTOR = "process:myzel";
 
 export class BundleError extends Error {
   constructor(
@@ -15,6 +24,7 @@ export class BundleError extends Error {
       | "INVALID_FRONTMATTER"
       | "NOT_MARKDOWN"
       | "HIDDEN_PATH"
+      | "AMBIGUOUS_SECTION"
       | "CLOSED",
     options?: { cause?: unknown }
   ) {
@@ -217,19 +227,34 @@ export class Bundle {
   async writeConcept(
     bundlePath: string,
     frontmatter: ConceptFrontmatter,
-    body: string
+    body: string,
+    /** Who wrote it, in the actor convention (spec §7). */
+    actor: string = DEFAULT_ACTOR
   ): Promise<Concept> {
     const canonical = this.toBundlePath(bundlePath);
     this.assertConceptPath(canonical);
     if (!hasNonEmptyType(frontmatter)) {
       throw new BundleError(
-        `Frontmatter must include a non-empty "type" field (OKF spec §5)`,
+        `Frontmatter must include a non-empty "type" field (OKF spec §4.1)`,
         "INVALID_FRONTMATTER"
       );
     }
+    // A mapping where a string belongs serializes to YAML that breaks the
+    // concept for every consumer (the web UI included), so it never reaches disk.
+    const objectKeys = await this.rejectedObjectKeys(canonical, frontmatter);
+    if (objectKeys.length > 0) {
+      throw new BundleError(
+        `Frontmatter values must be strings or lists of strings here, not objects: ${objectKeys.join(", ")}. ` +
+          `Pass a plain string (or a list of strings for tags), or null to remove the key.`,
+        "INVALID_FRONTMATTER"
+      );
+    }
+    // v0.2 records the last change as generated: { by, at } (spec §5.2); it
+    // supersedes v0.1's timestamp (§13.1), which is dropped on write.
+    const { timestamp: _legacy, ...rest } = frontmatter;
     const stamped: ConceptFrontmatter = {
-      ...frontmatter,
-      timestamp: new Date().toISOString(),
+      ...rest,
+      generated: { by: actor, at: new Date().toISOString() },
     };
     const abs = this.resolve(canonical);
     await this.assertRealPathInside(abs, canonical);
@@ -239,8 +264,40 @@ export class Bundle {
   }
 
   /**
+   * Which object-valued keys this write must not save (adapted from upstream
+   * understory, thecodacus/understory#41 by @Piggidragon, for v0.2).
+   *
+   * v0.1 frontmatter was scalars and string lists; v0.2 adds structured
+   * families (sources, generated, verified, the computation keys), so those may
+   * hold mappings. Every other spec key is a string or a list of strings: an
+   * object there is always refused — models produce `{ __type, __value }`
+   * placeholders and tag maps. Producer-defined keys may be structured too
+   * (`owner: { team: … }` from another tool); such a key is kept when it is
+   * already in the file with exactly this value, so editing an imported concept
+   * does not destroy metadata it never touched — but a write cannot create or
+   * alter one.
+   */
+  private async rejectedObjectKeys(
+    canonical: string,
+    frontmatter: ConceptFrontmatter
+  ): Promise<string[]> {
+    const objectKeys = findPlainObjectKeys(frontmatter).filter((key) => !FAMILY_KEYS.has(key));
+    const producerKeys = objectKeys.filter((key) => !SPEC_SCALAR_KEYS.has(key));
+    if (producerKeys.length === 0) return objectKeys;
+    let existing: Record<string, unknown> = {};
+    try {
+      existing = (await this.readConcept(canonical)).frontmatter;
+    } catch {
+      // New or unreadable file: nothing to carry forward.
+    }
+    return objectKeys.filter(
+      (key) => SPEC_SCALAR_KEYS.has(key) || !isDeepStrictEqual(existing[key], frontmatter[key])
+    );
+  }
+
+  /**
    * Targeted update: merge frontmatter keys (null deletes a key) and/or
-   * replace the content under one top-level "# Section" heading.
+   * replace the content under one heading (any level).
    */
   async patchConcept(
     bundlePath: string,
@@ -248,7 +305,8 @@ export class Bundle {
       frontmatter?: Record<string, unknown>;
       replaceSection?: { heading: string; content: string };
       replaceBody?: string;
-    }
+    },
+    actor: string = DEFAULT_ACTOR
   ): Promise<Concept> {
     const existing = await this.readConcept(bundlePath);
     const fm: ConceptFrontmatter = { ...existing.frontmatter };
@@ -262,7 +320,7 @@ export class Bundle {
     if (changes.replaceSection) {
       body = replaceSection(body, changes.replaceSection.heading, changes.replaceSection.content);
     }
-    return this.writeConcept(existing.path, fm, body);
+    return this.writeConcept(existing.path, fm, body, actor);
   }
 
   async deleteConcept(bundlePath: string): Promise<void> {
@@ -376,9 +434,15 @@ export function isHiddenOrLink(entry: Dirent): boolean {
   return entry.name.startsWith(".") || entry.isSymbolicLink();
 }
 
-/** Replace the content under a top-level heading; append the section if absent. */
+/**
+ * Replace the content under a heading of any level, up to the next heading of
+ * the same or a higher level; append a top-level section when there is none.
+ * (Heading levels, closing hashes, the ambiguity check and the duplicate
+ * heading strip are ported from upstream understory, thecodacus/understory#35
+ * by @mebagwell.)
+ */
 export function replaceSection(body: string, heading: string, content: string): string {
-  const normalized = heading.replace(/^#+\s*/, "");
+  const normalized = heading.replace(/^#+\s*/, "").trim();
   const lines = body.split("\n");
   // A "# comment" inside a fenced code block is code, not a heading.
   const inFence: boolean[] = [];
@@ -392,17 +456,36 @@ export function replaceSection(body: string, heading: string, content: string): 
     // closes it: a ``` line inside a ```` block is content.
     else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
   }
-  const isHeadingAt = (i: number) => !inFence[i] && /^#\s+/.test(lines[i]);
-  const start = lines.findIndex(
-    (line, i) => isHeadingAt(i) && line.replace(/^#\s+/, "").trim() === normalized
+  const isHeadingAt = (i: number) => !inFence[i] && ATX_HEADING.test(lines[i]);
+  const level = (line: string) => /^#+/.exec(line)![0].length;
+
+  const matches = lines.flatMap((line, i) =>
+    isHeadingAt(i) && headingTitle(line) === normalized ? [i] : []
   );
-  if (start === -1) {
+  if (matches.length > 1) {
+    throw new BundleError(
+      `Section "${normalized}" appears ${matches.length} times — resolve the duplicates with replace_body first`,
+      "AMBIGUOUS_SECTION"
+    );
+  }
+  if (matches.length === 0) {
     const suffix = body.trim().length > 0 ? "\n\n" : "";
     return `${body.trimEnd()}${suffix}# ${normalized}\n\n${content.trim()}\n`;
   }
+  const start = matches[0];
+  // Models often repeat the heading at the top of the new content.
+  const contentLines = content.split("\n");
+  const first = contentLines.findIndex((l) => l.trim() !== "");
+  if (
+    first !== -1 &&
+    ATX_HEADING.test(contentLines[first]) &&
+    headingTitle(contentLines[first]) === normalized
+  ) {
+    content = contentLines.slice(first + 1).join("\n");
+  }
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    if (isHeadingAt(i)) {
+    if (isHeadingAt(i) && level(lines[i]) <= level(lines[start])) {
       end = i;
       break;
     }
@@ -410,4 +493,17 @@ export function replaceSection(body: string, heading: string, content: string): 
   const before = lines.slice(0, start + 1).join("\n");
   const after = lines.slice(end).join("\n");
   return `${before}\n\n${content.trim()}\n${after ? "\n" + after : ""}`;
+}
+
+const ATX_HEADING = /^#{1,6}\s+/;
+
+/**
+ * A heading's title: no leading hashes and no closing sequence — which counts
+ * only after whitespace (CommonMark §4.2: "Goals##" is the title "Goals##").
+ */
+function headingTitle(line: string): string {
+  return line
+    .replace(ATX_HEADING, "")
+    .trim()
+    .replace(/\s+#+$/, "");
 }

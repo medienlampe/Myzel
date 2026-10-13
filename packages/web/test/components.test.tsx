@@ -53,6 +53,40 @@ describe("ConceptView", () => {
     expect(screen.getByText("docs")).toHaveAttribute("target", "_blank");
   });
 
+  it("shows the v0.2 families: status, trust, staleness, writer and sources", async () => {
+    const onNavigate = vi.fn();
+    const concept = {
+      path: "/apis/billing.md",
+      frontmatter: {
+        type: "API",
+        title: "Billing API",
+        status: "deprecated",
+        stale_after: "2026-01-01T00:00:00Z",
+        generated: { by: "myzel/deepseek-chat", at: "2026-06-20T22:53:05Z" },
+        verified: { by: "human:ana", at: "2026-06-25T09:00:00Z" },
+        sources: [
+          { id: "runbook", resource: "https://wiki.example/billing", title: "Billing runbook" },
+          { resource: "/tables/customers.md", title: "Customers" },
+          { resource: "all queries in project acme" },
+        ],
+      },
+      body: "Charges settle nightly.",
+      raw: "",
+    } as unknown as Concept;
+    render(<ConceptView concept={concept} onNavigate={onNavigate} />);
+    expect(screen.getByText("deprecated")).toBeInTheDocument();
+    expect(screen.getByText("stale")).toBeInTheDocument();
+    expect(screen.getByText("human-reviewed")).toBeInTheDocument();
+    expect(screen.getByText("myzel/deepseek-chat")).toBeInTheDocument();
+    expect(screen.getByText("Billing runbook")).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("[^runbook]")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Customers"));
+    expect(onNavigate).toHaveBeenCalledWith("/tables/customers.md");
+    expect(screen.getByText("all queries in project acme").tagName).toBe("SPAN");
+    // The families are shown as such, not dumped as raw keys.
+    expect(screen.queryByText("sources:")).not.toBeInTheDocument();
+  });
+
   it("resolves directory, absolute, encoded and fragment links", async () => {
     const onNavigate = vi.fn();
     const body =

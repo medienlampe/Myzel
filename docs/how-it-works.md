@@ -36,6 +36,8 @@ type: BigQuery Table
 title: Customers
 description: 'Core customer dimension table, one row per registered customer.'
 tags: [crm, pii]
+generated: { by: 'human:maintainers', at: '2026-07-09T15:10:01Z' }
+verified: { by: 'human:data-eng', at: '2026-07-10T09:00:00Z' }
 ---
 The canonical customer record. Downstream marts join on `customer_id`.
 Billing events reference this table from the [Billing API](/apis/billing-api.md).
@@ -50,8 +52,23 @@ memory is a **graph** rather than a pile of loose notes, and Myzel maintains tho
 `index.md` and `log.md` are written by Myzel, never by hand.
 
 The format follows the
-[Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
+[Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
 a small open standard for markdown knowledge bases, so other tools can read your memory too.
+Beyond the required `type`, Myzel uses its optional families:
+
+- **`generated`** records who wrote the current content and when. Myzel sets it on every write:
+  `myzel/<model>` for its agent, `process:myzel` for its own code. It replaces v0.1's
+  `timestamp`, which is dropped when a concept is rewritten.
+- **`sources`** lists what a concept derives from; a footnote such as `[^billing-runbook]` in the
+  body attributes one claim to one source. The agent writes provenance this way instead of v0.1's
+  `# Citations` list, and moves an old list over when it edits such a concept.
+- **`status`** (`draft`, `stable`, `deprecated`) and **`stale_after`**: the agent deprecates
+  instead of deleting.
+- **`verified`** says who confirmed a concept (a `human:` actor makes it _human-reviewed_). Only
+  people and processes add it; the agent cannot, and a rewrite keeps it.
+
+The web UI shows all of these on the concept card, and the conformance report warns (but never
+fails) when one is malformed. v0.1 bundles keep working: they are read as they are.
 
 ## Why the files stay valid
 

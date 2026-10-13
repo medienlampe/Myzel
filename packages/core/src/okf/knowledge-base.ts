@@ -25,7 +25,7 @@ export interface KnowledgeBaseOptions {
 
 /**
  * The one write-path into the bundle. Spec conformance (index.md, log.md,
- * frontmatter validation, timestamps) is enforced HERE, deterministically —
+ * frontmatter validation, the generated stamp) is enforced HERE, deterministically —
  * never delegated to the LLM. Mutations are serialized through a queue.
  */
 export class KnowledgeBase {
@@ -89,15 +89,17 @@ export class KnowledgeBase {
 
   // ── Mutations (serialized; auto index + log + optional commit) ──────
 
+  /** `actor` is recorded as generated.by (spec §5.2, §7); default: process:myzel. */
   writeConcept(
     conceptPath: string,
     frontmatter: ConceptFrontmatter,
     body: string,
-    logSummary: string
+    logSummary: string,
+    actor?: string
   ): Promise<Concept> {
     return this.enqueue(async () => {
       const existed = await this.bundle.exists(conceptPath);
-      const concept = await this.bundle.writeConcept(conceptPath, frontmatter, body);
+      const concept = await this.bundle.writeConcept(conceptPath, frontmatter, body, actor);
       await this.afterMutation(concept.path, existed ? "Update" : "Creation", logSummary);
       return concept;
     });
@@ -106,10 +108,11 @@ export class KnowledgeBase {
   patchConcept(
     conceptPath: string,
     changes: Parameters<Bundle["patchConcept"]>[1],
-    logSummary: string
+    logSummary: string,
+    actor?: string
   ): Promise<Concept> {
     return this.enqueue(async () => {
-      const concept = await this.bundle.patchConcept(conceptPath, changes);
+      const concept = await this.bundle.patchConcept(conceptPath, changes, actor);
       await this.afterMutation(concept.path, "Update", logSummary);
       return concept;
     });

@@ -1,6 +1,18 @@
 export * from "./types.js";
 export { parseDoc, serializeDoc, hasNonEmptyType } from "./frontmatter.js";
-export { Bundle, BundleError, replaceSection } from "./bundle.js";
+export { Bundle, BundleError, DEFAULT_ACTOR, replaceSection } from "./bundle.js";
+export {
+  OKF_VERSION,
+  STATUSES,
+  SCALAR_KEYS,
+  FAMILY_KEYS,
+  SYSTEM_KEYS,
+  isOkfDatetime,
+  isActor,
+  containsPlainObject,
+  findPlainObjectKeys,
+  familyIssues,
+} from "./families.js";
 export { regenerateIndex, regenerateIndexChain, pruneEmptyDirs } from "./indexer.js";
 export { appendLog, readLog } from "./logger.js";
 export { searchBundle, listTypes, type SearchOptions } from "./search.js";

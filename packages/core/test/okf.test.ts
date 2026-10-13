@@ -15,6 +15,9 @@ import {
   lintBundle,
   regenerateIndex,
   pruneEmptyDirs,
+  familyIssues,
+  isOkfDatetime,
+  isActor,
 } from "../src/okf/index.js";
 
 let root: string;
@@ -30,7 +33,7 @@ afterEach(async () => {
 });
 
 describe("frontmatter round-trip", () => {
-  it("writes and reads a concept preserving fields, stamping timestamp", async () => {
+  it("writes and reads a concept preserving fields, stamping generated (v0.2 §5.2)", async () => {
     const written = await kb.writeConcept(
       "/tables/customers.md",
       {
@@ -43,7 +46,9 @@ describe("frontmatter round-trip", () => {
       "# Schema\n\nid, name, email",
       "Added customers table concept."
     );
-    expect(written.frontmatter.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(written.frontmatter.generated).toEqual({ by: "process:myzel", at: expect.any(String) });
+    expect(isOkfDatetime(written.frontmatter.generated?.at)).toBe(true);
+    expect(written.frontmatter).not.toHaveProperty("timestamp");
 
     const read = await kb.readConcept("/tables/customers.md");
     expect(read.frontmatter.type).toBe("BigQuery Table");
@@ -326,7 +331,7 @@ describe("sandbox", () => {
   });
 });
 
-describe("index regeneration (spec §6)", () => {
+describe("index regeneration (spec §8)", () => {
   it("keeps each index entry on one line with a valid link", async () => {
     await kb.writeConcept(
       "/my notes.md",
@@ -349,7 +354,7 @@ describe("index regeneration (spec §6)", () => {
       "add"
     );
     const rootIndex = await fs.readFile(path.join(root, "index.md"), "utf-8");
-    expect(rootIndex).toContain('okf_version: "0.1"');
+    expect(rootIndex).toContain('okf_version: "0.2"');
     expect(rootIndex).toContain("## Memory Segments");
     // Segment lines summarize contents: count, types, titles — not just "subdirectory".
     expect(rootIndex).toContain("* [tables](tables/) - 1 concept (Table): Customers");
@@ -411,7 +416,7 @@ describe("pruning husk directories", () => {
   });
 });
 
-describe("log (spec §7)", () => {
+describe("log (spec §9)", () => {
   it("appends newest-first with action bullets under ISO date headings", async () => {
     await kb.writeConcept("/one.md", { type: "T", title: "One" }, "x", "Created one.");
     await kb.writeConcept("/one.md", { type: "T", title: "One" }, "y", "Updated one.");
@@ -469,6 +474,214 @@ describe("patch", () => {
   });
 });
 
+// Ported from upstream understory, thecodacus/understory#35 by @mebagwell.
+describe("replaceSection at any heading level", () => {
+  it("replaces under a ## heading instead of appending a duplicate section", () => {
+    const body = "# Title\n\nIntro.\n\n## Goals\n\nold\n\n## Notes\n\nn1\n";
+    expect(replaceSection(body, "## Goals", "new goals")).toBe(
+      "# Title\n\nIntro.\n\n## Goals\n\nnew goals\n\n## Notes\n\nn1\n"
+    );
+  });
+
+  it("replaces nested subsections up to the next same-or-higher heading", () => {
+    const body = "## Goals\n\na\n\n### Detail\n\nd\n\n## Notes\n\nn\n";
+    expect(replaceSection(body, "Goals", "fresh")).toBe("## Goals\n\nfresh\n\n## Notes\n\nn\n");
+  });
+
+  it("matches a heading with a closing hash sequence, but not hashes glued to the title", () => {
+    const body = "# Title\n\n## Goals ##\n\nold\n\n## Notes\n\nn\n";
+    expect(replaceSection(body, "## Goals", "new")).toBe(
+      "# Title\n\n## Goals ##\n\nnew\n\n## Notes\n\nn\n"
+    );
+    expect(replaceSection("## Goals##\n\nx\n", "Goals", "y")).toContain("# Goals\n\ny");
+  });
+
+  it("drops a repeated heading at the top of the new content", () => {
+    expect(
+      replaceSection("# T\n\n## Gotchas\n\nold\n", "Gotchas", "## Gotchas ##\n\n- fresh")
+    ).toBe("# T\n\n## Gotchas\n\n- fresh\n");
+  });
+
+  it("refuses an ambiguous heading instead of editing the first match", () => {
+    const body = "## A\n\nx\n\n## B\n\nx\n\n## A\n\ny\n";
+    expect(() => replaceSection(body, "A", "z")).toThrow(BundleError);
+    expect(() => replaceSection(body, "A", "z")).toThrow(/appears 2 times/);
+  });
+
+  it("ignores headings inside a fenced code block at any level", () => {
+    const fence = "```";
+    const body = `# T\n\n## Setup\n\n${fence}bash\n## not a heading\n${fence}\n\n## Run\n\nr\n`;
+    expect(replaceSection(body, "Setup", "new")).toBe("# T\n\n## Setup\n\nnew\n\n## Run\n\nr\n");
+  });
+});
+
+describe("OKF v0.2 frontmatter on write", () => {
+  it("records the writer as generated.by and replaces a legacy timestamp", async () => {
+    await fs.writeFile(
+      path.join(root, "old.md"),
+      "---\ntype: T\ntimestamp: '2026-01-01T00:00:00Z'\n---\nBody.\n"
+    );
+    const patched = await kb.patchConcept(
+      "/old.md",
+      { replaceBody: "New." },
+      "patch",
+      "myzel/deepseek-chat"
+    );
+    expect(patched.frontmatter.generated?.by).toBe("myzel/deepseek-chat");
+    const raw = await fs.readFile(path.join(root, "old.md"), "utf-8");
+    expect(raw).not.toContain("timestamp");
+    expect(raw).toContain("generated:");
+  });
+
+  it("keeps the structured v0.2 families", async () => {
+    const written = await kb.writeConcept(
+      "/rev.md",
+      {
+        type: "Attested Computation",
+        runtime: "bigquery",
+        parameters: [{ name: "year", type: "integer", required: true }],
+        executor: { resource: "references/run.md", receipt: ["job_id"] },
+        sources: [{ id: "policy", resource: "https://wiki.example/policy", title: "Policy" }],
+        usage_window: { from: "2026-06-01T00:00:00Z", to: "2026-06-30T00:00:00Z" },
+        verified: { by: "human:ana", at: "2026-06-25T09:00:00Z" },
+      },
+      "# Computation\n\n    SELECT 1",
+      "add"
+    );
+    expect((await kb.readConcept("/rev.md")).frontmatter).toMatchObject({
+      sources: written.frontmatter.sources,
+      verified: { by: "human:ana", at: "2026-06-25T09:00:00Z" },
+      executor: { resource: "references/run.md", receipt: ["job_id"] },
+    });
+  });
+
+  // Adapted from upstream understory, thecodacus/understory#41 by @Piggidragon.
+  it("refuses objects where the spec wants strings, and leaves the file untouched", async () => {
+    await kb.writeConcept("/doc.md", { type: "T", description: "orig" }, "body", "add");
+    for (const value of [
+      { __type: "string", __value: "typed placeholder" },
+      {},
+      ["ok", { notOk: 1 }],
+    ]) {
+      await expect(
+        kb.patchConcept("/doc.md", { frontmatter: { description: value } }, "patch")
+      ).rejects.toMatchObject({ code: "INVALID_FRONTMATTER" });
+    }
+    await expect(
+      kb.writeConcept("/x.md", { type: "T", tags: { a: true } as never }, "body", "add")
+    ).rejects.toMatchObject({ code: "INVALID_FRONTMATTER" });
+    expect((await kb.readConcept("/doc.md")).frontmatter.description).toBe("orig");
+  });
+
+  it("carries a structured producer key forward, but never creates or alters one", async () => {
+    await fs.writeFile(
+      path.join(root, "billing.md"),
+      "---\ntype: API\nowner:\n  team: payments\n---\nBody.\n\n# Notes\n\nold\n"
+    );
+    const patched = await kb.patchConcept(
+      "/billing.md",
+      {
+        frontmatter: { description: "Charges" },
+        replaceSection: { heading: "Notes", content: "new" },
+      },
+      "patch"
+    );
+    expect(patched.frontmatter.owner).toEqual({ team: "payments" });
+    await expect(
+      kb.patchConcept("/billing.md", { frontmatter: { owner: { team: "other" } } }, "patch")
+    ).rejects.toMatchObject({ code: "INVALID_FRONTMATTER" });
+    await expect(
+      kb.writeConcept("/new.md", { type: "T", owner: { team: "x" } }, "body", "add")
+    ).rejects.toMatchObject({ code: "INVALID_FRONTMATTER" });
+  });
+
+  it("does not let an object already in a spec key ride along", async () => {
+    await fs.writeFile(path.join(root, "broken.md"), "---\ntype: T\ndescription: {}\n---\nBody.\n");
+    await expect(kb.patchConcept("/broken.md", { replaceBody: "x" }, "patch")).rejects.toThrow(
+      /description/
+    );
+    const repaired = await kb.patchConcept(
+      "/broken.md",
+      { frontmatter: { description: "Fixed" }, replaceBody: "x" },
+      "repair"
+    );
+    expect(repaired.frontmatter.description).toBe("Fixed");
+  });
+});
+
+describe("OKF v0.2 families (spec §5, §10)", () => {
+  it("accepts well-formed families and a bare verified mapping", () => {
+    expect(
+      familyIssues("/a.md", {
+        type: "Metric",
+        status: "stable",
+        stale_after: "2026-12-31T00:00:00Z",
+        generated: { by: "reference_agent/gemini-2.5-pro", at: "2026-06-20T22:53:05Z" },
+        verified: { by: "human:ana", at: "2026-06-25T09:00:00+02:00" },
+        sources: [
+          {
+            id: "s",
+            resource: "https://x",
+            author: "team:fpa",
+            last_modified: "2026-04-02T00:00:00Z",
+          },
+        ],
+        usage_window: { from: "2026-06-01T00:00:00Z", to: "2026-06-30T00:00:00Z" },
+      })
+    ).toEqual([]);
+  });
+
+  it("warns about malformed families", () => {
+    const messages = familyIssues("/a.md", {
+      type: "Attested Computation",
+      status: "done",
+      stale_after: "2026-12-31",
+      generated: { at: "yesterday" },
+      verified: [{ by: "ana", at: "2026-06-25T09:00:00Z" }, "nope"],
+      sources: [{ title: "no resource" }, { resource: "x", last_modified: "soon" }],
+      usage_window: "June",
+    }).map((i) => i.message);
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/"status" should be one of draft, stable, deprecated/),
+        expect.stringMatching(/"stale_after" should be an ISO 8601 datetime/),
+        expect.stringMatching(/generated.by should be an actor/),
+        expect.stringMatching(/generated.at should be an ISO 8601 datetime/),
+        expect.stringMatching(/verified\[0\].by should be an actor/),
+        expect.stringMatching(/verified\[1\] should be a \{ by, at \} mapping/),
+        expect.stringMatching(/sources\[0\] needs a "resource"/),
+        expect.stringMatching(/sources\[1\].last_modified/),
+        expect.stringMatching(/"usage_window" should be a \{ from, to \} mapping/),
+        expect.stringMatching(/needs a "runtime"/),
+      ])
+    );
+    expect(
+      familyIssues("/a.md", { type: "T", sources: "x", generated: "me" }).map((i) => i.message)
+    ).toEqual([
+      expect.stringMatching(/"sources" should be a list/),
+      expect.stringMatching(/"generated" should be a \{ by, at \} mapping/),
+    ]);
+  });
+
+  it("recognizes datetimes with offsets and the three actor forms", () => {
+    expect(isOkfDatetime("2026-06-30T14:00:00Z")).toBe(true);
+    expect(isOkfDatetime("2026-06-30T14:00:00.123+02:00")).toBe(true);
+    expect(isOkfDatetime("2026-06-30T14:00:00")).toBe(false);
+    expect(isOkfDatetime("2026-13-45T99:00:00Z")).toBe(false);
+    for (const actor of ["myzel/deepseek-chat", "human:ana", "process:nightly"]) {
+      expect(isActor(actor)).toBe(true);
+    }
+    for (const actor of ["ana", "human:", "two words/x", 3]) expect(isActor(actor)).toBe(false);
+  });
+
+  it("keeps a bundle conformant while it warns about families", async () => {
+    await fs.writeFile(path.join(root, "a.md"), "---\ntype: T\nstatus: done\n---\nBody.\n");
+    const report = await validateBundle(kb.bundle);
+    expect(report.conformant).toBe(true);
+    expect(report.issues.some((i) => i.message.includes('"status"'))).toBe(true);
+  });
+});
+
 describe("search", () => {
   it("tolerates a non-string type when filtering by type", async () => {
     await fs.writeFile(path.join(root, "odd.md"), "---\ntype: 123\n---\nbody\n");
@@ -506,7 +719,7 @@ describe("search", () => {
   });
 });
 
-describe("conformance (spec §9)", () => {
+describe("conformance (spec §11)", () => {
   it("valid bundle passes; missing type is an error; broken link is only a warning", async () => {
     await kb.writeConcept(
       "/good.md",

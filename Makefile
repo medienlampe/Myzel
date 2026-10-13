@@ -32,6 +32,13 @@ PROFILES_HOME := $(patsubst ~/%,$(HOME)/%,$(PROFILES_ROOT))
 PROFILES_PATH := $(if $(PROFILES_HOME),$(abspath $(if $(filter /%,$(PROFILES_HOME)),$(PROFILES_HOME),$(ROOT)/$(PROFILES_HOME))))
 PROFILES_ENV := $(if $(PROFILES_PATH),PROFILES_ROOT="$(PROFILES_PATH)")
 
+# Where the settings page (ADMIN_TOKEN) saves its changes: a gitignored file in
+# the repository root unless SETTINGS_FILE says otherwise. Resolved like BUNDLE_ROOT.
+ENV_SETTINGS_FILE := $(shell node $(NODE_ENV_FILE) -p 'process.env.SETTINGS_FILE || ""' 2>/dev/null)
+SETTINGS_FILE ?= $(or $(ENV_SETTINGS_FILE),.myzel-settings.json)
+SETTINGS_HOME := $(patsubst ~/%,$(HOME)/%,$(SETTINGS_FILE))
+SETTINGS_ENV := SETTINGS_FILE="$(abspath $(if $(filter /%,$(SETTINGS_HOME)),$(SETTINGS_HOME),$(ROOT)/$(SETTINGS_HOME)))"
+
 IMAGE ?= myzel:local
 IMAGE_CHECK_PORT ?= 3899
 
@@ -69,15 +76,15 @@ dev: node_modules bundle ## Run everything with live reload: server :3800, web U
 _dev-core:
 	@pnpm --filter @myzel/core dev
 _dev-server:
-	@cd packages/server && BUNDLE_ROOT="$(BUNDLE_PATH)" $(PROFILES_ENV) node_modules/.bin/tsx watch $(NODE_ENV_FILE) src/index.ts
+	@cd packages/server && BUNDLE_ROOT="$(BUNDLE_PATH)" $(PROFILES_ENV) $(SETTINGS_ENV) node_modules/.bin/tsx watch $(NODE_ENV_FILE) src/index.ts
 _dev-web:
 	@pnpm --filter @myzel/web dev
 
 start: build bundle ## Build, then serve the web UI, /api and /mcp on :3800
-	@BUNDLE_ROOT="$(BUNDLE_PATH)" $(PROFILES_ENV) node $(NODE_ENV_FILE) packages/server/dist/index.js
+	@BUNDLE_ROOT="$(BUNDLE_PATH)" $(PROFILES_ENV) $(SETTINGS_ENV) node $(NODE_ENV_FILE) packages/server/dist/index.js
 
 mcp-stdio: bundle ## Serve MCP over stdio (run `make build` first; for MCP client configs)
-	@BUNDLE_ROOT="$(BUNDLE_PATH)" exec node $(NODE_ENV_FILE) packages/server/dist/mcp/stdio.js
+	@BUNDLE_ROOT="$(BUNDLE_PATH)" $(SETTINGS_ENV) exec node $(NODE_ENV_FILE) packages/server/dist/mcp/stdio.js
 
 profiles: node_modules ## Manage profiles (PROFILES_ROOT): make profiles ARGS="create work"
 	@[ -n "$(PROFILES_PATH)" ] || { echo "Set PROFILES_ROOT (environment, .env or make PROFILES_ROOT=…)" >&2; exit 2; }

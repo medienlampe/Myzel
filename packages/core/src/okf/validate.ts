@@ -1,12 +1,13 @@
 import { parseDoc, hasNonEmptyType } from "./frontmatter.js";
 import type { Bundle } from "./bundle.js";
+import { familyIssues } from "./families.js";
 import { BUNDLE_LINK_RE } from "./graph.js";
 import type { ConformanceIssue, ConformanceReport } from "./types.js";
 
 /**
- * Conformance check per spec §9. Errors make the bundle non-conformant;
- * warnings (broken links, missing recommended fields) never do — the spec
- * requires consumers to tolerate them.
+ * Conformance check per spec §11. Errors make the bundle non-conformant;
+ * warnings (broken links, missing recommended fields, malformed §5/§10
+ * families) never do — the spec requires consumers to tolerate them.
  */
 export async function validateBundle(bundle: Bundle): Promise<ConformanceReport> {
   const issues: ConformanceIssue[] = [];
@@ -35,7 +36,7 @@ export async function validateBundle(bundle: Bundle): Promise<ConformanceReport>
       issues.push({
         path: conceptPath,
         severity: "error",
-        message: "Frontmatter is not parseable YAML (spec §9.1)",
+        message: "Frontmatter is not parseable YAML (spec §11.1)",
       });
       continue;
     }
@@ -43,7 +44,7 @@ export async function validateBundle(bundle: Bundle): Promise<ConformanceReport>
       issues.push({
         path: conceptPath,
         severity: "error",
-        message: 'Missing non-empty "type" frontmatter field (spec §9.2)',
+        message: 'Missing non-empty "type" frontmatter field (spec §11.2)',
       });
     }
     if (!frontmatter.title) {
@@ -60,6 +61,7 @@ export async function validateBundle(bundle: Bundle): Promise<ConformanceReport>
         message: 'Missing recommended "description" field',
       });
     }
+    issues.push(...familyIssues(conceptPath, frontmatter));
     // Broken bundle-relative links → warnings only (spec: MUST tolerate).
     for (const match of body.matchAll(BUNDLE_LINK_RE)) {
       if (!known.has(match[1])) {

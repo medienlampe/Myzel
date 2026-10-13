@@ -12,7 +12,7 @@ configuration, how it works) plus architecture, security model and dependency ma
 ## 1. What this project is
 
 Myzel is an **LLM-managed knowledge base** stored as plain markdown, conforming to the
-[Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+[Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 
 This repository **started as a fork of [thecodacus/understory](https://github.com/thecodacus/understory)**
 by [@thecodacus](https://github.com/thecodacus), was renamed to Myzel and develops independently
@@ -49,11 +49,12 @@ packages/core/          # zero-server, zero-express. Reusable library.
   src/okf/              # DETERMINISTIC layer — no LLM anywhere in this directory
     bundle.ts           #   sandboxed filesystem access to one bundle
     knowledge-base.ts   #   THE write path: mutation queue + index + log + optional git commit
-    frontmatter.ts      #   `---` fence + `yaml` parse/serialize (permissive per spec §9, YAML only)
+    frontmatter.ts      #   `---` fence + `yaml` parse/serialize (permissive per spec §11, YAML only)
     git.ts              #   hardened GIT_AUTOCOMMIT (the bundle's own .git is untrusted)
-    indexer.ts          #   index.md regeneration (spec §6)
-    logger.ts           #   log.md append, newest-first (spec §7)
-    validate.ts         #   conformance report (spec §9)
+    indexer.ts          #   index.md regeneration (spec §8)
+    logger.ts           #   log.md append, newest-first (spec §9)
+    validate.ts         #   conformance report (spec §11)
+    families.ts         #   v0.2 vocabulary: scalar vs structured keys, §5/§10 soft checks
     lint.ts / graph.ts  #   orphans, broken links, link graph
     atomic.ts           #   writeFileAtomic — temp file + rename, used by every writer
     search.ts           #   naive keyword scan (fine into low thousands of concepts)
@@ -77,7 +78,8 @@ packages/server/        # Express 5 + MCP SDK
   src/host.ts           # MemoryHost: which memory a request reaches (single bundle or profile key)
   src/auth.ts           # bearer parsing, constant-time compare, FailureThrottle
   src/profiles.ts       # ProfileRegistry: profiles.json, hashed keys, cross-process lock
-  src/admin.ts          # /admin profile API (ADMIN_TOKEN)
+  src/admin.ts          # /admin: profiles and settings (ADMIN_TOKEN)
+  src/settings.ts       # the settings page's catalog + SettingsStore (SETTINGS_FILE over process.env)
   src/profiles-commands.ts # the profiles CLI's commands · src/profiles-cli.ts: process wiring
   src/env.ts            # numeric env parsing (blank = unset), ALLOWED_MODELS
   src/dreamer.ts        # scheduled dreaming over every hosted memory
@@ -171,8 +173,13 @@ dummy `LLM_*` values are enough to exercise the UI.
    `bundle.root`. If you add a method taking a caller-supplied path, sandbox it there — see §8.
 3. **`index.md` and `log.md` are reserved** (`RESERVED_FILENAMES`). They are generated (never
    authored) and are excluded from concept listings, the graph and search.
-4. **`type` is the only required frontmatter field** (spec §5). Reading is permissive — unknown
-   keys and types must round-trip untouched (spec §9). Writing enforces non-empty `type`.
+4. **`type` is the only required frontmatter field** (spec §4.1). Reading is permissive — unknown
+   keys and types must round-trip untouched (spec §4.1, §11). Writing enforces non-empty `type`,
+   stamps `generated: { by, at }` (v0.2 §5.2; it replaces v0.1's `timestamp`) and refuses a
+   mapping in a key that holds strings (`families.ts`: only the structured v0.2 families may hold
+   one, and a producer-defined structured key only when carried forward unchanged).
+   `generated` and `verified` are never the model's to set — the tool schemas refuse them, and
+   `write_concept` carries an existing `verified` forward.
 5. **Frontmatter is YAML only, parsed with the YAML 1.2 core schema** (`frontmatter.ts`, on the
    `yaml` package). Fences naming another language (`---js`) are refused — general-purpose
    frontmatter libraries `eval` those. Values keep their written type (an unquoted date stays a
@@ -248,7 +255,8 @@ dummy `LLM_*` values are enough to exercise the UI.
   statements, branches, functions or lines in any package (`vitest.config.ts`). Only process
   entry points are excluded from coverage, each with the reason in its config.
 - `packages/core/test/` — vitest, no mocking of the filesystem: tests build real temp bundles.
-  The OKF suite is organized by spec section (§5 frontmatter, §6 index, §7 log, §9 conformance)
+  The OKF suite is organized by spec section (§4.1 frontmatter, §8 index, §9 log, §11 conformance,
+  §5/§10 families)
   plus sandbox, search, graph/lint, pruning and mutation-concurrency cases.
 - **Model calls never reach a real provider.** Agent tests run against a scripted
   OpenAI-compatible server (`test/support/fake-llm.ts`: tool calls, text, HTTP errors, hangs,
@@ -322,6 +330,11 @@ dummy `LLM_*` values are enough to exercise the UI.
   the image (`make image-check`).
 - **Agent runs are cancellable.** `AgentOptions.signal` is combined with the `LLM_TIMEOUT` ceiling;
   `/api/chat` aborts on client disconnect. Pass a signal from any new long-running entry point.
+- **The settings page writes `process.env` at runtime** (`server/src/settings.ts`). A setting is
+  "live" only if the code reads it where it is used, not once at startup — mark it `live: false`
+  in the catalog otherwise. Adding a setting to the catalog means adding it to the page: never add
+  network or access settings (`HOST`, tokens, `ALLOWED_*`, `TRUST_PROXY`, bundle paths); the
+  file must not be able to set them either.
 - **Module-level caches**: `query-cache.ts` and `hot-memory.ts` hold process-global state so it
   survives the per-request `McpServer` instances of the stateless HTTP transport. Both are
   **partitioned by bundle root**. Within one bundle the state is shared by all callers;
@@ -333,7 +346,7 @@ dummy `LLM_*` values are enough to exercise the UI.
   is clamped to a 5-minute minimum. It is opt-in; unset means zero background token spend.
 - **`log.md` is parsed and re-rendered on every append**, not patched with string replacement, and
   anything not matching the heading/bullet grammar is dropped. That is deliberate: the file is
-  generated (spec §7), and an LLM-written summary must not be able to steer where the next bullet
+  generated (spec §9), and an LLM-written summary must not be able to steer where the next bullet
   lands. Concept, index and log writes all go through `writeFileAtomic` (temp file + rename).
 - **Web `MarkdownRenderer` uses `dangerouslySetInnerHTML`** for Shiki output. That is safe only
   because Shiki escapes its input; don't route any other HTML through that path. Its
@@ -361,7 +374,8 @@ worth knowing:
 | `LLM_FALLBACK_*` | Optional second model, used on retryable failures. `LLM_FALLBACK_ALLOW_FOR=query` restricts it to read-only ops. |
 | `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, … | **Deprecated** legacy path in `providers/index.ts`. Still supported; don't extend it. |
 | `AUTH_TOKEN` | Bearer token for `/mcp` + `/api`. Unset = open. |
-| `PROFILES_ROOT` / `ADMIN_TOKEN` | Profile mode: one bundle per API key (takes precedence over `BUNDLE_ROOT`); `ADMIN_TOKEN` enables `/admin`. |
+| `PROFILES_ROOT` / `ADMIN_TOKEN` | Profile mode: one bundle per API key (takes precedence over `BUNDLE_ROOT`); `ADMIN_TOKEN` enables `/admin` (profiles, settings page). |
+| `SETTINGS_FILE` | Where the settings page saves; overrides the environment. Only keys in `settings.ts`'s catalog — never network/access settings. |
 | `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Per-client brake on `/mcp` + `/api/chat` (default 60/1m, `0` disables). |
 | `RATE_LIMIT_BROWSE` | Separate brake on the `/api` browse routes (default 600 per window, `0` disables). |
 | `TRUST_PROXY` | Express `trust proxy` (hop count or addresses) so rate limits see real clients behind a proxy. |

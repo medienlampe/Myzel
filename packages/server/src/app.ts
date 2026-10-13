@@ -21,7 +21,7 @@ export interface AppOptions {
   browseLimit: number;
   /** Built web UI to serve, when present. */
   webDist?: string;
-  /** Profile management, mounted at /admin (profile mode with ADMIN_TOKEN only). */
+  /** Administration (profiles, settings), mounted at /admin when ADMIN_TOKEN is set. */
   admin?: AdminRouter;
 }
 

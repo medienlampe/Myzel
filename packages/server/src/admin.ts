@@ -1,6 +1,7 @@
 import express, { type Response, type Router } from "express";
 import { bearerAuth, DEFAULT_FAILURE_LIMIT, type FailureLimit } from "./auth.js";
 import { ProfileError, type ProfileRegistry } from "./profiles.js";
+import { SettingsError, type SettingsStore } from "./settings.js";
 
 const STATUS: Record<ProfileError["code"], number> = {
   INVALID_NAME: 400,
@@ -24,17 +25,20 @@ export interface AdminRouter extends Router {
 }
 
 /**
- * Profile management over HTTP, guarded by ADMIN_TOKEN — a credential separate
- * from every profile key. The admin token manages profiles; it cannot read or
- * write any memory, and a profile key cannot reach /admin.
- * (Ported from upstream understory.)
+ * Server administration over HTTP, guarded by ADMIN_TOKEN — a credential
+ * separate from every profile key and from AUTH_TOKEN. It manages profiles
+ * (profile mode) and the settings the UI may change; it cannot read or write
+ * any memory, and a memory's key cannot reach /admin.
+ * (Profile management ported from upstream understory.)
  */
 export function adminRouter(
-  registry: ProfileRegistry,
+  /** null outside profile mode: no profile routes. */
+  registry: ProfileRegistry | null,
   adminToken: string,
   /** Run when a profile is created, before its key is handed out. */
   onCreated: (name: string) => Promise<void>,
-  failures: FailureLimit = DEFAULT_FAILURE_LIMIT
+  failures: FailureLimit = DEFAULT_FAILURE_LIMIT,
+  settings?: SettingsStore
 ): AdminRouter {
   const router = express.Router() as AdminRouter;
   // Same check and failure throttle as AUTH_TOKEN, with its own budget.
@@ -44,6 +48,31 @@ export function adminRouter(
   });
   router.stopThrottle = () => guard.stop();
   router.use(guard);
+
+  if (settings) {
+    router.get("/settings", (_req, res) => {
+      res.json({ writable: settings.writable, settings: settings.describe() });
+    });
+    router.put("/settings", async (req, res) => {
+      const changes: unknown = req.body?.changes;
+      if (!changes || typeof changes !== "object" || Array.isArray(changes)) {
+        res.status(400).json({ error: "expected { changes: { KEY: value | null } }" });
+        return;
+      }
+      try {
+        const result = await settings.update(changes as Record<string, unknown>);
+        // Names only: values may be secrets.
+        const changed = [...result.applied, ...result.restart];
+        if (changed.length) console.log(`[myzel] settings changed: ${changed.join(", ")}`);
+        res.json({ ...result, settings: settings.describe() });
+      } catch (err) {
+        if (!(err instanceof SettingsError)) throw err;
+        res.status(err.status).json({ error: err.message });
+      }
+    });
+  }
+
+  if (!registry) return router;
 
   router.get("/profiles", async (_req, res) => {
     try {

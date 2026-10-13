@@ -3,7 +3,7 @@ import type { KnowledgeBase } from "../okf/index.js";
 import { publicErrorMessage } from "../providers/errors.js";
 import { parseDuration } from "../util/duration.js";
 import { buildSystemPrompt } from "./system-prompt.js";
-import { buildReadTools, buildWriteTools, formatTree } from "./tools.js";
+import { agentActor, buildReadTools, buildWriteTools, formatTree } from "./tools.js";
 import { sumUsage, TraceRecorder, TraceStore } from "./trace.js";
 import { resolveAgentModel, type AgentOptions } from "./model.js";
 
@@ -129,7 +129,10 @@ export async function runMutation(
       model: resolved.model,
       system: buildSystemPrompt(ctx),
       prompt: instruction,
-      tools: { ...buildReadTools(kb, recorder), ...buildWriteTools(kb, filesChanged, recorder) },
+      tools: {
+        ...buildReadTools(kb, recorder),
+        ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId)),
+      },
       stopWhen: stepCountIs(maxSteps()),
       abortSignal: runSignal(options),
       temperature: 0.2,
@@ -211,7 +214,10 @@ export async function streamChat(
       model: resolved.model,
       system: buildSystemPrompt(ctx),
       messages,
-      tools: { ...buildReadTools(kb, recorder), ...buildWriteTools(kb, filesChanged, recorder) },
+      tools: {
+        ...buildReadTools(kb, recorder),
+        ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId)),
+      },
       stopWhen: stepCountIs(maxSteps()),
       abortSignal: runSignal(options),
       onEnd: async ({ text, steps }) => {

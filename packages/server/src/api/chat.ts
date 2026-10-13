@@ -42,7 +42,6 @@ function newestUserTurnLength(messages: Array<{ role: string; parts: unknown[] }
  */
 export function chatRouter(kb: KnowledgeBase): Router {
   const router = express.Router();
-  const allowedModels = parseAllowedModels(process.env.ALLOWED_MODELS);
 
   router.post("/chat", async (req, res) => {
     const parsed = chatBodySchema.safeParse(req.body);
@@ -76,6 +75,8 @@ export function chatRouter(kb: KnowledgeBase): Router {
       return;
     }
 
+    // Read per request: the setting can change at runtime (the settings page).
+    const allowedModels = parseAllowedModels(process.env.ALLOWED_MODELS);
     if (model && !allowedModels.includes("*") && !allowedModels.includes(model)) {
       res.status(400).json({
         error: allowedModels.length

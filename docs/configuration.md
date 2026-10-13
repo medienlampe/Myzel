@@ -5,6 +5,7 @@ per [profile](running.md#profiles-several-memories-on-one-server)) is the only r
 annotated template is [.env.example](../.env.example).
 
 - [With Docker Compose](#with-docker-compose)
+- [The settings page](#the-settings-page)
 - [Model providers](#model-providers)
 - [All variables](#all-variables)
 
@@ -17,6 +18,29 @@ line under `environment:` for anything else you set.
 
 Profile settings are left out on purpose: see
 [Profiles](running.md#profiles-several-memories-on-one-server) for the volume and variables to add.
+
+## The settings page
+
+With `ADMIN_TOKEN` set, **Settings** in the web UI's top bar changes the model and behaviour
+settings without editing files: the primary and fallback model, `ALLOWED_MODELS`, run limits and
+timeouts, the query cache and hot memory, dreaming, git autocommit and the rate limits. The page
+asks for the admin token and keeps it only until the page is reloaded.
+
+- **Where changes go:** `SETTINGS_FILE`, a JSON file whose values override the environment and
+  `.env`. The Docker image uses `/config/settings.json` (the compose files mount a volume there);
+  `make` uses `.myzel-settings.json` in the repository root (gitignored). Without `SETTINGS_FILE`
+  the page is read-only. The file holds API keys and is written readable by its owner only.
+- **When they apply:** most settings on the next request. Those marked **restart** (dreaming, git
+  autocommit, rate limits) are saved at once and take effect when Myzel restarts. A stdio MCP
+  process reads the file when it starts.
+- **What is checked:** a save is all-or-nothing. Every value is validated, and the resulting model
+  setup must still resolve, before anything is written. API keys are never sent back to the
+  browser; the page only shows whether one is set.
+- **What is not there:** network and access settings (`HOST`, `PORT`, `AUTH_TOKEN`,
+  `ADMIN_TOKEN`, `ALLOWED_ORIGINS` / `ALLOWED_HOSTS`, `TRUST_PROXY`, `BUNDLE_ROOT`,
+  `PROFILES_ROOT`) stay in the environment, so a change in the UI can't lock you out or open the
+  server wider. The settings file is ignored for them too.
+- **Reset** on a setting drops the saved value, and the environment's applies again.
 
 ## Model providers
 
@@ -82,7 +106,9 @@ old ones are ignored.
 | Variable | Effect |
 |---|---|
 | `BUNDLE_ROOT` | The folder holding the memory. **Required** unless `PROFILES_ROOT` is set. |
-| `PROFILES_ROOT` / `ADMIN_TOKEN` | Host one memory per API key instead of a single bundle; optional admin API. See [Profiles](running.md#profiles-several-memories-on-one-server). |
+| `PROFILES_ROOT` | Host one memory per API key instead of a single bundle. See [Profiles](running.md#profiles-several-memories-on-one-server). |
+| `ADMIN_TOKEN` | Enables `/admin`: the [settings page](#the-settings-page) and, in profile mode, profile management. Unset: no `/admin`. |
+| `SETTINGS_FILE` | Where the settings page saves; its values override the environment. Unset: the page is read-only. |
 | `LLM_API_BASE_URL` / `LLM_API_KEY` / `LLM_API_FORMAT` / `LLM_MODEL` | The model Myzel uses. `LLM_MODEL` may stay empty for OpenAI-compatible endpoints that list their models; it is then discovered. |
 | `LLM_FALLBACK_*` | Optional [backup model](#fallback-model), used when the primary fails with a retryable error. |
 | `PORT` | Default `3800`. |

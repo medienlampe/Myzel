@@ -7,6 +7,7 @@ import { runMutation, runQuery, streamChat } from "../src/agent/agent.js";
 import { clearQueryCache, runQueryCached } from "../src/agent/query-cache.js";
 import { clearHotMemory, recordHotWrite } from "../src/agent/hot-memory.js";
 import { TraceStore } from "../src/agent/trace.js";
+import { agentActor, frontmatterPatchSchema } from "../src/agent/tools.js";
 import { fakeLlmEnv, startFakeLlm, type FakeLlm } from "./support/fake-llm.js";
 
 let llm: FakeLlm;
@@ -101,6 +102,71 @@ describe("runMutation", () => {
     const outcome = await runMutation(kb, "Dana is on call");
     expect(outcome).toMatchObject({ ok: true, result: { filesChanged: ["/people/dana.md"] } });
     expect((await kb.readConcept("/people/dana.md")).body).toContain("On call");
+  });
+
+  it("records the model as the writer and keeps an existing verification (OKF v0.2)", async () => {
+    await fs.writeFile(
+      path.join(root, "apis/billing.md"),
+      "---\ntype: API\nverified: { by: 'human:ana', at: '2026-06-25T09:00:00Z' }\n---\nOld.\n"
+    );
+    llm.script([
+      {
+        toolCalls: [
+          {
+            name: "write_concept",
+            args: {
+              path: "/apis/billing.md",
+              frontmatter: {
+                type: "API",
+                title: "Billing API",
+                sources: [{ id: "runbook", resource: "https://wiki.example/billing" }],
+              },
+              body: "Charges settle nightly.[^runbook]\n\n[^runbook]: Billing runbook",
+              log_summary: "Rewrote [billing](/apis/billing.md).",
+            },
+          },
+        ],
+      },
+      { text: "Rewritten." },
+    ]);
+    expect((await runMutation(kb, "Rewrite billing")).ok).toBe(true);
+    const fm = (await kb.readConcept("/apis/billing.md")).frontmatter;
+    expect(fm.generated?.by).toBe("myzel/fake-model");
+    expect(fm.verified).toEqual({ by: "human:ana", at: "2026-06-25T09:00:00Z" });
+    expect(fm.sources).toEqual([{ id: "runbook", resource: "https://wiki.example/billing" }]);
+  });
+
+  it("does not let the model set generated or verified, or hand objects for strings", async () => {
+    llm.script([
+      {
+        toolCalls: [
+          {
+            name: "write_concept",
+            args: {
+              path: "/x.md",
+              frontmatter: { type: "T", verified: { by: "human:me", at: "2026-01-01T00:00:00Z" } },
+              body: "x",
+              log_summary: "Added x.",
+            },
+          },
+          {
+            name: "patch_concept",
+            args: {
+              path: "/apis/billing.md",
+              frontmatter: { description: { __type: "string", __value: "x" } },
+              log_summary: "Patched.",
+            },
+          },
+        ],
+      },
+      { text: "Could not." },
+    ]);
+    await runMutation(kb, "try it");
+    await expect(kb.readConcept("/x.md")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await kb.readConcept("/apis/billing.md")).frontmatter.description).toBe(
+      "Charges customers"
+    );
+    expect(lastToolOutputs()).toContain("recorded by the system");
   });
 
   it("patches, reads, lists, lints and deletes through the tools", async () => {
@@ -296,5 +362,46 @@ describe("query layers with a real model call", () => {
     const result = await runQueryCached(kb, "what does billing do?");
     expect(result.source).toBe("hot");
     expect(llm.requests.at(-1)?.tools).toBeUndefined();
+  });
+});
+
+// Adapted from upstream understory, thecodacus/understory#41 by @Piggidragon.
+describe("patch_concept frontmatter schema", () => {
+  it("accepts strings, lists, numbers, null and the v0.2 families", () => {
+    for (const value of [
+      { description: "Homelab documentation" },
+      { tags: ["homelab", "llm"] },
+      { title: null, status: "deprecated" },
+      { type: "API Endpoint", resource: "https://example.com/x", custom_key: 42 },
+      { sources: [{ id: "a", resource: "https://example.com" }] },
+      { stale_after: "2026-12-31T00:00:00Z" },
+    ]) {
+      expect(frontmatterPatchSchema.safeParse(value).success, JSON.stringify(value)).toBe(true);
+    }
+  });
+
+  it("refuses the shapes models corrupt frontmatter with", () => {
+    for (const value of [
+      { description: { __type: "string", __value: "text" } },
+      { description: {} },
+      { tags: { homelab: true } },
+      { tags: ["ok", { nested: true }] },
+      { owner: { team: "x" } },
+      { type: "" },
+      { status: "done" },
+      { stale_after: "next year" },
+      { sources: [{ title: "no resource" }] },
+      { generated: { by: "human:me", at: "2026-01-01T00:00:00Z" } },
+      { verified: null },
+      { timestamp: "2026-01-01T00:00:00Z" },
+    ]) {
+      expect(frontmatterPatchSchema.safeParse(value).success, JSON.stringify(value)).toBe(false);
+    }
+  });
+
+  it("builds the actor from the model id", () => {
+    expect(agentActor("deepseek-chat")).toBe("myzel/deepseek-chat");
+    expect(agentActor("my model\nid")).toBe("myzel/my-model-id");
+    expect(agentActor(undefined)).toBe("myzel/agent");
   });
 });

@@ -13,14 +13,14 @@ interface LogSection {
 }
 
 /**
- * Append an entry to the root log.md per spec §7: newest-first, grouped under
+ * Append an entry to the root log.md per spec §9: newest-first, grouped under
  * `## YYYY-MM-DD` headings.
  *
  * The log is parsed into sections and re-rendered rather than patched with
  * string replacement. Summaries are written by the LLM from user-supplied
  * knowledge, so one containing something that looks like a date heading used to
  * be able to steer where the next bullet landed. Re-rendering also normalizes
- * spacing instead of accumulating it. log.md is a generated file (spec §7), so
+ * spacing instead of accumulating it. log.md is a generated file (spec §9), so
  * regenerating it is allowed; anything not matching the grammar below is not
  * part of the log and is dropped.
  */

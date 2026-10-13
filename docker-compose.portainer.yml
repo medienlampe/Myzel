@@ -18,9 +18,14 @@ services:
       # Persistent OKF bundle. Swap for a bind mount (e.g. /srv/okf-bundle:/bundle)
       # if you want to edit the markdown from the host / sync it with git.
       - okf-bundle:/bundle
+      # Settings saved from the web UI (SETTINGS_FILE=/config/settings.json).
+      - myzel-config:/config
     environment:
       BUNDLE_ROOT: /bundle
       AUTH_TOKEN: ${AUTH_TOKEN:-}
+      # Enables /admin: the settings page in the web UI (and profile management
+      # in profile mode). Changes are saved to /config — keep it on a volume.
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       # Profiles (one memory per API key): not passed through on purpose — a
       # host path from .env would point the container at an unmounted
       # directory. See "Profiles" in docs/running.md for the volume and settings.
@@ -63,3 +68,4 @@ services:
 
 volumes:
   okf-bundle:
+  myzel-config:

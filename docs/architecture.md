@@ -1,7 +1,7 @@
 # Architecture
 
 Myzel keeps an AI assistant's long-term memory as a folder of markdown files (a **bundle**)
-that follows the [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+that follows the [Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 Clients talk to it over MCP. Internally, a small agent decides what to read and write, and a
 plain-code layer guarantees that every write leaves a valid bundle.
 
@@ -105,8 +105,12 @@ set its memory resolved to. The middleware order in `buildApp()` matters:
 8. routers, per memory: `/mcp` (a stateless MCP server per request, with the seed cached by
    bundle fingerprint), `GET /api/profile` (which memory the key opened), `/api` browse (no LLM),
    `/api/chat` (streaming, aborted when the client disconnects)
-9. `/admin` (profile mode with `ADMIN_TOKEN` only), behind the network guard and its own token
-   check with its own failure throttle (no rate limit beyond that)
+9. `/admin` (with `ADMIN_TOKEN` only), behind the network guard and its own token check with its
+   own failure throttle (no rate limit beyond that): `/admin/settings` always, the profile routes
+   in profile mode. Settings live in `src/settings.ts`: a catalog of the editable settings, and a
+   `SettingsStore` that applies `SETTINGS_FILE` over `process.env` at startup (both entry
+   points) and writes changes to the file and to `process.env`, which most settings are read from
+   on every use.
 10. the static web UI (`index.html` at `/` plus its assets; any other path is a 404)
 11. a final error handler that logs the error and returns `{ "error": "internal error" }` with no
     stack trace

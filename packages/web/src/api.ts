@@ -193,3 +193,71 @@ export const api = {
   config: () => get<AppConfig>("/api/config"),
   profile: () => get<SessionInfo>("/api/profile"),
 };
+
+/** A setting the settings page can change; mirrors the server's catalog. */
+export interface SettingView {
+  key: string;
+  group: string;
+  label: string;
+  description: string;
+  kind: "text" | "secret" | "url" | "boolean" | "count" | "duration" | "choice";
+  /** Applied on the next request; otherwise after a restart. */
+  live: boolean;
+  fallback?: string;
+  choices?: string[];
+  source: "settings" | "environment" | "default";
+  /** Absent for secrets, which never leave the server. */
+  value?: string;
+  isSet?: boolean;
+}
+
+export interface SettingsData {
+  /** False without SETTINGS_FILE: the page is read-only. */
+  writable: boolean;
+  settings: SettingView[];
+}
+
+export interface SettingsSaved extends SettingsData {
+  applied: string[];
+  restart: string[];
+}
+
+/**
+ * The admin token is kept in memory only: it can change what the server runs
+ * on, so unlike the memory's token it is not stored at all — a reload asks
+ * for it again.
+ */
+let adminToken = "";
+export const getAdminToken = () => adminToken;
+export const setAdminToken = (token: string) => {
+  adminToken = token;
+};
+
+async function admin<T>(method: "GET" | "PUT", path: string, body?: unknown): Promise<T> {
+  const res = await fetch(apiUrl(path), {
+    method,
+    headers: {
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let message = `${res.status}`;
+    try {
+      const error = (await res.json()) as { error?: unknown };
+      if (typeof error.error === "string") message = error.error;
+    } catch {
+      // Not JSON: the status has to do.
+    }
+    throw new ApiError(res.status, message);
+  }
+  return res.json();
+}
+
+export const adminApi = {
+  settings: () => admin<SettingsData>("GET", "/admin/settings"),
+  /** A string sets a value; null goes back to the environment's. */
+  saveSettings: (changes: Record<string, string | null>) =>
+    admin<SettingsSaved>("PUT", "/admin/settings", { changes }),
+};

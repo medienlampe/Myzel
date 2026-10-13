@@ -1,12 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "./atomic.js";
+import { OKF_VERSION } from "./families.js";
 import { parseDoc } from "./frontmatter.js";
 import { RESERVED_FILENAMES } from "./types.js";
 import { isHiddenOrLink, type Bundle } from "./bundle.js";
 
 /**
- * Regenerate a directory's index.md per spec §6:
+ * Regenerate a directory's index.md per spec §8:
  * bullet list of `[Title](relative-url) - description`, subdirectories included.
  * The root index.md carries the only frontmatter allowed in an index: okf_version.
  */
@@ -45,7 +46,8 @@ export async function regenerateIndex(bundle: Bundle, dir = "/"): Promise<string
 
   const dirName = isRoot ? "Knowledge Base" : path.basename(absDir);
   const sections: string[] = [];
-  if (isRoot) sections.push(`---\nokf_version: "0.1"\n---\n`);
+  // The bundle declares the spec version it targets (spec §12).
+  if (isRoot) sections.push(`---\nokf_version: "${OKF_VERSION}"\n---\n`);
   sections.push(`# ${capitalize(dirName)}\n`);
   if (conceptLines.length > 0) sections.push(conceptLines.join("\n") + "\n");
   if (dirLines.length > 0) {
@@ -81,7 +83,7 @@ export async function regenerateIndexChain(bundle: Bundle, dir: string): Promise
 }
 
 /**
- * index.md is a bullet list (spec §6): one entry per line. Frontmatter values
+ * index.md is a bullet list (spec §8): one entry per line. Frontmatter values
  * can span lines (`description: |`) or contain "]", either of which would
  * break the list or the link, so both are normalized here.
  */

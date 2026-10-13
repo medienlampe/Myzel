@@ -10,10 +10,22 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { KnowledgeBase } from "@myzel/core";
 import { buildMcpServer } from "./server.js";
 import { checkModelConfig, requireGitReady } from "../startup.js";
+import { SettingsStore } from "../settings.js";
 
 const bundleRoot = process.env.BUNDLE_ROOT;
 if (!bundleRoot) {
   console.error("BUNDLE_ROOT env var is required");
+  process.exit(1);
+}
+
+// The settings saved from the web UI apply here too — read once, at start.
+// Warnings go to stderr: stdout is the MCP protocol stream.
+try {
+  await SettingsStore.load(process.env.SETTINGS_FILE || null, process.env, (line) =>
+    console.error(line)
+  );
+} catch (err) {
+  console.error(`[myzel] ${(err as Error).message}`);
   process.exit(1);
 }
 

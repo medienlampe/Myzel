@@ -17,6 +17,7 @@ import { ConceptView } from "./components/ConceptView";
 import { LogView } from "./components/LogView";
 import { ChatPanel, createChat } from "./components/ChatPanel";
 import { GraphView } from "./components/GraphView";
+import { SettingsView } from "./components/SettingsView";
 import { Workspace, type PanelSpec } from "./components/Workspace";
 import {
   DEFAULT_LAYOUT,
@@ -29,7 +30,11 @@ import {
 } from "./layout";
 
 type View =
-  { kind: "concept"; path: string } | { kind: "log" } | { kind: "graph" } | { kind: "empty" };
+  | { kind: "concept"; path: string }
+  | { kind: "log" }
+  | { kind: "graph" }
+  | { kind: "settings" }
+  | { kind: "empty" };
 
 export default function App() {
   const [tree, setTree] = useState<TreeNode | null>(null);
@@ -75,17 +80,22 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    refresh();
+  // The chat shows the model; a saved setting may have changed it.
+  const loadConfig = useCallback(() => {
     api
       .config()
       .then(setConfig)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    loadConfig();
     api
       .profile()
       .then(setProfile)
       .catch(() => {});
-  }, [refresh]);
+  }, [refresh, loadConfig]);
 
   useEffect(() => {
     if (view.kind !== "concept") return;
@@ -222,7 +232,9 @@ export default function App() {
         ? "Graph"
         : view.kind === "concept"
           ? "Concept"
-          : "View";
+          : view.kind === "settings"
+            ? "Settings"
+            : "View";
 
   const explorer = (
     <div className="flex h-full flex-col">
@@ -298,6 +310,7 @@ export default function App() {
       {!error && view.kind === "graph" && (
         <GraphView refreshKey={graphRefreshKey} onNavigate={openConcept} />
       )}
+      {!error && view.kind === "settings" && <SettingsView onSaved={loadConfig} />}
     </div>
   );
 
@@ -350,6 +363,17 @@ export default function App() {
               </button>
             );
           })}
+          <button
+            onClick={() => {
+              // Settings open in the View panel; bring it back if it is closed.
+              if (layout.hidden.includes("content")) updateLayout(togglePanel(layout, "content"));
+              showView({ kind: "settings" });
+            }}
+            aria-pressed={view.kind === "settings"}
+            className={`ml-1 rounded-lg px-2 py-1 transition-colors ${view.kind === "settings" ? "bg-blue/15 text-blue" : "text-muted hover:bg-raised hover:text-strong"}`}
+          >
+            Settings
+          </button>
           <button
             onClick={() => updateLayout(DEFAULT_LAYOUT)}
             title="Restore the default panel arrangement"

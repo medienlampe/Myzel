@@ -10,6 +10,7 @@ import { envCount } from "./env.js";
 import { ProfileRegistry } from "./profiles.js";
 import { checkModelConfig, requireGitReady } from "./startup.js";
 import { startDreamer } from "./dreamer.js";
+import { SettingsStore } from "./settings.js";
 
 /** Below Docker's 10s grace period between SIGTERM and SIGKILL. */
 const SHUTDOWN_DEADLINE_MS = 8_000;
@@ -21,7 +22,17 @@ if (!profilesRoot && !bundleRoot) {
   console.error("BUNDLE_ROOT (one memory) or PROFILES_ROOT (one memory per profile) is required");
   process.exit(1);
 }
+// Settings saved from the UI override the environment, so they are applied
+// before anything below reads it.
+let settings: SettingsStore;
+try {
+  settings = await SettingsStore.load(process.env.SETTINGS_FILE || null);
+} catch (err) {
+  console.error(`[myzel] ${(err as Error).message}`);
+  process.exit(1);
+}
 const gitAutocommit = process.env.GIT_AUTOCOMMIT === "true";
+const adminToken = process.env.ADMIN_TOKEN;
 
 checkModelConfig((line) => console.log(line));
 
@@ -44,16 +55,18 @@ try {
     if (process.env.AUTH_TOKEN) {
       console.warn("[myzel] AUTH_TOKEN is ignored in profile mode — each profile has its own key");
     }
-    const adminToken = process.env.ADMIN_TOKEN;
     if (adminToken) {
-      admin = adminRouter(registry, adminToken, async (name) => {
-        if (!gitAutocommit) return;
-        const created = (await registry.memories()).find((m) => m.name === name);
-        if (created) await requireGitReady(created.kb, `profile "${name}"`);
-      });
-      console.log("[myzel] admin: profile management enabled at /admin (ADMIN_TOKEN)");
-    } else {
-      console.log("[myzel] admin: /admin disabled (set ADMIN_TOKEN, or use the profiles CLI)");
+      admin = adminRouter(
+        registry,
+        adminToken,
+        async (name) => {
+          if (!gitAutocommit) return;
+          const created = (await registry.memories()).find((m) => m.name === name);
+          if (created) await requireGitReady(created.kb, `profile "${name}"`);
+        },
+        undefined,
+        settings
+      );
     }
   } else {
     const kb = new KnowledgeBase(bundleRoot!, { gitAutocommit });
@@ -73,6 +86,17 @@ try {
   process.exit(1);
 }
 if (gitAutocommit) console.log("[myzel] git autocommit: enabled");
+if (adminToken) {
+  admin ??= adminRouter(null, adminToken, async () => {}, undefined, settings);
+  console.log(
+    `[myzel] admin: /admin enabled (ADMIN_TOKEN) — ${profilesRoot ? "profiles and " : ""}settings` +
+      (settings.writable ? ` saved to ${settings.file}` : " read-only (set SETTINGS_FILE to save)")
+  );
+} else {
+  console.log(
+    `[myzel] admin: /admin disabled (set ADMIN_TOKEN${profilesRoot ? ", or use the profiles CLI" : ""} to manage ${profilesRoot ? "profiles and " : ""}settings in the UI)`
+  );
+}
 
 const stopDreamer = startDreamer(async () =>
   (await memoryHost.memories()).map(({ kb, profile }) => ({ kb, label: profile }))

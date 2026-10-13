@@ -1,10 +1,13 @@
-/** Frontmatter of an OKF concept. `type` is the only required field (spec §5). */
+/** Frontmatter of an OKF concept. `type` is the only required field (spec §4.1). */
 export interface ConceptFrontmatter {
   type: string;
   title?: string;
   description?: string;
   resource?: string;
   tags?: string[];
+  /** Who wrote the current content, and when (spec §5.2). Set by the write path. */
+  generated?: { by: string; at: string };
+  /** v0.1's last-change stamp, superseded by generated.at; read as a fallback. */
   timestamp?: string;
   /** Producer-defined keys are permitted and preserved. */
   [key: string]: unknown;

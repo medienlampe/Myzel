@@ -1,5 +1,6 @@
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import type { Concept } from "../api";
+import { isStale, lastChange, SHOWN_KEYS, sources, status, trustTier, type Source } from "../okf";
 
 function decodeSegment(segment: string): string {
   try {
@@ -9,7 +10,7 @@ function decodeSegment(segment: string): string {
   }
 }
 
-/** Resolve a spec-§6 relative href (e.g. "billing-api.md", "tables/") against the doc's directory. */
+/** Resolve a spec-§6.1 relative href (e.g. "billing-api.md", "tables/") against the doc's directory. */
 function resolveHref(rawHref: string, docPath: string): string | null {
   if (/^[a-z]+:/i.test(rawHref) || rawHref.startsWith("#")) return null; // external / anchor
   const href = rawHref.replace(/[?#].*$/, ""); // the view has no anchors to jump to
@@ -44,9 +45,12 @@ export function ConceptView({
 }) {
   const fm = concept.frontmatter;
   const isReserved = /(^|\/)(index|log)\.md$/.test(concept.path);
-  const extraKeys = Object.entries(fm).filter(
-    ([k]) => !["type", "title", "description", "resource", "tags", "timestamp"].includes(k)
-  );
+  const extraKeys = Object.entries(fm).filter(([k]) => !SHOWN_KEYS.has(k));
+  const lifecycle = status(fm);
+  const tier = trustTier(fm);
+  const change = lastChange(fm);
+  const provenance = sources(fm);
+  const navigate = (href: string) => resolveHref(href, concept.path);
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -68,9 +72,34 @@ export function ConceptView({
                   #{display(t)}
                 </span>
               ))}
-            {typeof fm.timestamp === "string" && (
+            {lifecycle !== "stable" && (
+              <span
+                className={`chip ${lifecycle === "deprecated" ? "bg-red/15 text-red" : "bg-yellow/15 text-yellow"}`}
+              >
+                {lifecycle}
+              </span>
+            )}
+            {isStale(fm) && (
+              <span
+                title={`Stale since ${String(fm.stale_after)}`}
+                className="chip bg-orange/15 text-orange"
+              >
+                stale
+              </span>
+            )}
+            {tier !== "unverified" && (
+              <span
+                title="Trust tier, from who verified it (OKF §5.3)"
+                className={`chip ${tier === "human-reviewed" ? "bg-green/15 text-green" : "bg-cyan/15 text-cyan"}`}
+              >
+                {tier}
+              </span>
+            )}
+            {change && (
               <span className="ml-auto text-xs text-muted">
-                {new Date(fm.timestamp).toLocaleString()}
+                {change.by && <span className="font-mono">{change.by}</span>}
+                {change.by && change.at && " · "}
+                {change.at && <time dateTime={change.at}>{formatDate(change.at)}</time>}
               </span>
             )}
           </div>
@@ -92,17 +121,78 @@ export function ConceptView({
               ))}
             </div>
           )}
+          {provenance.length > 0 && (
+            <div className="mt-3 border-t border-line pt-2">
+              <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">Sources</h2>
+              <ul className="mt-1 space-y-0.5 text-sm">
+                {provenance.map((source, i) => (
+                  <li key={source.id ?? i} className="flex flex-wrap items-baseline gap-x-2">
+                    <SourceLink source={source} navigate={navigate} onNavigate={onNavigate} />
+                    {source.author && <span className="text-xs text-muted">{source.author}</span>}
+                    {source.id && (
+                      <span className="font-mono text-[11px] text-faint">[^{source.id}]</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p className="mt-2 font-mono text-xs text-faint">{concept.path}</p>
         </div>
       )}
 
-      <MarkdownRenderer
-        className="markdown"
-        onNavigate={(href) => resolveHref(href, concept.path)}
-        onNavigateClick={onNavigate}
-      >
+      <MarkdownRenderer className="markdown" onNavigate={navigate} onNavigateClick={onNavigate}>
         {concept.body}
       </MarkdownRenderer>
     </div>
   );
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+/**
+ * A source's resource (OKF §5.1, §6.2): a URL opens in a new tab, a bundle
+ * path in the app; a scope descriptor ("all queries in project X") is text.
+ */
+function SourceLink({
+  source,
+  navigate,
+  onNavigate,
+}: {
+  source: Source;
+  navigate: (href: string) => string | null;
+  onNavigate: (path: string) => void;
+}) {
+  const label = source.title ?? source.resource;
+  if (/^https?:\/\//i.test(source.resource)) {
+    return (
+      <a
+        href={source.resource}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue underline-offset-2 hover:underline"
+      >
+        {label}
+      </a>
+    );
+  }
+  const inBundle = /^[./]|\.md$/.test(source.resource) ? navigate(source.resource) : null;
+  if (inBundle) {
+    return (
+      <a
+        href={inBundle}
+        onClick={(e) => {
+          e.preventDefault();
+          onNavigate(inBundle);
+        }}
+        className="text-blue underline-offset-2 hover:underline"
+      >
+        {label}
+      </a>
+    );
+  }
+  return <span className="text-fg">{label}</span>;
 }

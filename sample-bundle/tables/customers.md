@@ -6,7 +6,12 @@ resource: 'bq://acme-prod.crm.customers'
 tags:
   - crm
   - pii
-timestamp: '2026-07-09T15:10:01.684Z'
+generated:
+  by: human:maintainers
+  at: '2026-07-09T15:10:01Z'
+verified:
+  by: human:data-eng
+  at: '2026-07-10T09:00:00Z'
 ---
 The canonical customer record. Downstream marts join on `customer_id`.
 Billing events reference this table from the [Billing API](/apis/billing-api.md).

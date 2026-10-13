@@ -12,7 +12,7 @@ A self-organizing knowledge network for your AI tools, kept as plain markdown yo
 <br>
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.12-339933.svg)](package.json)
-[![Spec](https://img.shields.io/badge/spec-OKF%20v0.1-8b5cf6.svg)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+[![Spec](https://img.shields.io/badge/spec-OKF%20v0.2-8b5cf6.svg)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20%2B%20HTTP-f59e0b.svg)](#connect-your-assistant)
 [![Forked from thecodacus/understory](https://img.shields.io/badge/forked%20from-thecodacus%2Funderstory-8957e5.svg?logo=github)](https://github.com/thecodacus/understory)
 
@@ -61,16 +61,19 @@ services:
       - "127.0.0.1:3800:3800" # this machine only
     volumes:
       - myzel-memory:/bundle # or a folder you can see: ./my-memory:/bundle
+      - myzel-config:/config # settings changed in the web UI
     environment:
       BUNDLE_ROOT: /bundle
       LLM_API_BASE_URL: ${LLM_API_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_API_FORMAT: openai
       LLM_MODEL: ${LLM_MODEL:-}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-} # optional: enables the settings page
     restart: unless-stopped
 
 volumes:
   myzel-memory:
+  myzel-config:
 ```
 
 **2.** Next to it, save your model settings as `.env` (this example uses
@@ -156,6 +159,11 @@ Drag a panel's title bar to rearrange the panels (put the chat in the middle, sa
 to resize and close or reopen panels from the top bar. The **←** / **→** buttons move a panel from
 the keyboard and **Reset layout** restores the default. The arrangement is remembered per browser.
 The UI uses Solarized colors and follows your system's light or dark setting.
+
+With `ADMIN_TOKEN` set, **Settings** in the top bar changes the model and behaviour settings (model,
+fallback, timeouts, caches, dreaming, rate limits) without touching files; most apply on the next
+request. Network and access settings stay in the environment.
+[The settings page](docs/configuration.md#the-settings-page) has the details.
 
 ## How it works
 
@@ -275,7 +283,7 @@ Started as a fork of [thecodacus/understory](https://github.com/thecodacus/under
 from. Development continues independently here.
 
 The bundle format is the
-[Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
+[Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
 an open standard published by Google Cloud Platform.
 
 Licensed [Apache 2.0](LICENSE), the same licence it was forked under.

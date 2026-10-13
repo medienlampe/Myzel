@@ -5,7 +5,10 @@ description: What to do when billing charge failures spike.
 tags:
   - billing
   - oncall
-timestamp: "2026-07-09T00:00:00.000Z"
+status: stable
+generated:
+  by: human:maintainers
+  at: '2026-07-09T00:00:00Z'
 ---
 
 When the `billing_charge_failures` alert fires:

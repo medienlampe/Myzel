@@ -22,6 +22,8 @@ export interface AgentOptions {
 export interface ResolvedAgentModel {
   model: LanguageModel;
   modelChain: string[];
+  /** The primary model's id (discovered, if it was not configured). */
+  modelId: string;
 }
 
 export async function resolveAgentModel(
@@ -31,15 +33,16 @@ export async function resolveAgentModel(
 ): Promise<ResolvedAgentModel> {
   const primaryConfig = withModelOverride(resolveModelConfig(env), options.model);
   const primary = await createModel(primaryConfig);
+  const modelId = primary.modelId;
   const fallbackConfig = resolveFallbackConfig(env);
 
   if (!fallbackConfig) {
-    return { model: primary, modelChain: [modelLabel(primaryConfig)] };
+    return { model: primary, modelChain: [modelLabel(primaryConfig)], modelId };
   }
 
   const allowFor = resolveAllowFor(env.LLM_FALLBACK_ALLOW_FOR);
   if (allowFor && !allowFor.has(mode)) {
-    return { model: primary, modelChain: [modelLabel(primaryConfig)] };
+    return { model: primary, modelChain: [modelLabel(primaryConfig)], modelId };
   }
 
   const fallback = await createModel(fallbackConfig);
@@ -48,6 +51,7 @@ export async function resolveAgentModel(
       retry429: env.LLM_FALLBACK_RETRY_429 === "true",
     }),
     modelChain: [modelLabel(primaryConfig), modelLabel(fallbackConfig)],
+    modelId,
   };
 }
 

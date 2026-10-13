@@ -16,12 +16,12 @@ export interface ParsedDoc {
  * Parsing uses the YAML 1.2 core schema, so values keep the type they were
  * written with: an unquoted `2026-01-01` stays the string it was rather than
  * becoming a Date that would be re-serialized as `2026-01-01T00:00:00.000Z`
- * (spec §9 — unknown keys round-trip untouched).
+ * (spec §4.1 — unknown keys round-trip untouched).
  */
 const CLOSING_FENCE = /^---[ \t]*\r?$/m;
 
 /**
- * Permissive parse (spec §9: consumers must not reject unknown keys/types).
+ * Permissive parse (spec §11: consumers must not reject unknown keys/types).
  * Throws only if the frontmatter itself is unusable: not YAML, not a mapping
  * or never closed.
  */

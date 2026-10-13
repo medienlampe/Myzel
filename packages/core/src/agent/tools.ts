@@ -1,5 +1,6 @@
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
+import { FAMILY_KEYS, findPlainObjectKeys, STATUSES, SYSTEM_KEYS } from "../okf/index.js";
 import type { KnowledgeBase } from "../okf/index.js";
 import type { TreeNode } from "../okf/types.js";
 import type { TraceRecorder } from "./trace.js";
@@ -14,15 +15,93 @@ const conceptPathSchema = z
   .string()
   .describe('Bundle-relative path starting with "/", ending in .md');
 
+const datetime = z.iso
+  .datetime({ offset: true })
+  .describe("ISO 8601 datetime with a UTC offset, e.g. 2026-06-30T14:00:00Z");
+
+/** One provenance entry (OKF v0.2 §5.1). */
+const sourceSchema = z.looseObject({
+  id: z
+    .string()
+    .optional()
+    .describe("Stable key. A footnote [^id] in the body attributes a claim to this source."),
+  resource: z
+    .string()
+    .min(1)
+    .describe("Absolute URL, bundle path (/…) or a scope descriptor. Required."),
+  title: z.string().optional(),
+  author: z.string().optional().describe("Who produced the source, e.g. team:payments"),
+  usage_count: z.number().int().nonnegative().optional(),
+  last_modified: datetime.optional(),
+});
+
+// The spec's own keys, typed: a model must not hand a mapping where a string
+// belongs (thecodacus/understory#41).
+const fields = {
+  type: z.string().min(1).describe("Concept kind, e.g. 'API Endpoint'"),
+  title: z.string(),
+  description: z.string().describe("One-line summary"),
+  resource: z.string().describe("Canonical URI of the underlying asset"),
+  tags: z.array(z.string()),
+  status: z.enum(STATUSES).describe("Lifecycle; absent means stable"),
+  stale_after: datetime.describe("Instant from which the content counts as stale"),
+  sources: z.array(sourceSchema).describe("Provenance: what this concept derives from"),
+};
+
+const SYSTEM_KEYS_MESSAGE = `${[...SYSTEM_KEYS].join(", ")} are recorded by the system — leave them out.`;
+const noSystemKeys = (fm: Record<string, unknown>) =>
+  !Object.keys(fm).some((key) => SYSTEM_KEYS.has(key));
+
 const frontmatterSchema = z
   .looseObject({
-    type: z.string().min(1).describe("Concept kind, e.g. 'API Endpoint'. Required."),
-    title: z.string().optional(),
-    description: z.string().optional().describe("One-line summary"),
-    resource: z.string().optional().describe("Canonical URI of the underlying asset"),
-    tags: z.array(z.string()).optional(),
+    ...fields,
+    type: fields.type.describe("Concept kind, e.g. 'API Endpoint'. Required."),
+    title: fields.title.optional(),
+    description: fields.description.optional(),
+    resource: fields.resource.optional(),
+    tags: fields.tags.optional(),
+    status: fields.status.optional(),
+    stale_after: fields.stale_after.optional(),
+    sources: fields.sources.optional(),
   })
-  .describe("YAML frontmatter. Additional producer-defined keys are allowed.");
+  .refine(noSystemKeys, SYSTEM_KEYS_MESSAGE)
+  .describe("YAML frontmatter (OKF v0.2). Additional producer-defined keys are allowed.");
+
+/**
+ * patch_concept's merge: each key typed as above, or null to delete it. A
+ * mapping is accepted only in the structured v0.2 families (sources, …) —
+ * models otherwise produce `{ __type, __value }` placeholders and tag maps.
+ * (Adapted from upstream understory, thecodacus/understory#41 by @Piggidragon.)
+ */
+export const frontmatterPatchSchema = z
+  .looseObject({
+    type: fields.type.nullable().optional(),
+    title: fields.title.nullable().optional(),
+    description: fields.description.nullable().optional(),
+    resource: fields.resource.nullable().optional(),
+    tags: fields.tags.nullable().optional(),
+    status: fields.status.nullable().optional(),
+    stale_after: fields.stale_after.nullable().optional(),
+    sources: fields.sources.nullable().optional(),
+  })
+  .refine(noSystemKeys, SYSTEM_KEYS_MESSAGE)
+  .refine(
+    (fm) => findPlainObjectKeys(fm).every((key) => FAMILY_KEYS.has(key)),
+    "Frontmatter values must be strings, numbers or lists of strings — never objects (pass 'Description text', not { __type: 'string', __value: … }). Set a key to null to remove it."
+  )
+  .describe(
+    "Frontmatter keys to merge; null removes a key. Producer-defined keys are allowed with the same value rules."
+  );
+
+/**
+ * The actor recorded as generated.by for agent writes (spec §7:
+ * `<producer>/<version>`). The model id can come from endpoint discovery, so
+ * it is reduced to one short token.
+ */
+export function agentActor(modelId: string | undefined): string {
+  const id = (modelId ?? "").replace(/\s+/g, "-").slice(0, 100);
+  return `myzel/${id || "agent"}`;
+}
 
 const logSummary = z
   .string()
@@ -100,12 +179,14 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSe
 export function buildWriteTools(
   kb: KnowledgeBase,
   filesChanged: Set<string>,
-  trace?: TraceRecorder
+  trace?: TraceRecorder,
+  /** Recorded as generated.by; see agentActor. */
+  actor = agentActor(undefined)
 ): ToolSet {
   return {
     write_concept: tool({
       description:
-        "Create a new concept or fully overwrite an existing one. Frontmatter must include a non-empty 'type'. index.md and log.md maintenance is automatic — never write those.",
+        "Create a new concept or fully overwrite an existing one. Frontmatter must include a non-empty 'type'. index.md and log.md maintenance is automatic — never write those. Who wrote it and when (generated) is recorded automatically; an existing verification (verified) is kept.",
       inputSchema: z.object({
         path: conceptPathSchema,
         frontmatter: frontmatterSchema,
@@ -113,7 +194,17 @@ export function buildWriteTools(
         log_summary: logSummary,
       }),
       execute: async ({ path: conceptPath, frontmatter, body, log_summary }) => {
-        const c = await kb.writeConcept(conceptPath, frontmatter, body, log_summary);
+        // Verification is independent of the content (spec §5.2): a rewrite
+        // keeps who confirmed it, and the model cannot add or drop that.
+        const existing = await kb.readConcept(conceptPath).catch(() => null);
+        const verified = existing?.frontmatter.verified;
+        const c = await kb.writeConcept(
+          conceptPath,
+          verified === undefined ? frontmatter : { ...frontmatter, verified },
+          body,
+          log_summary,
+          actor
+        );
         filesChanged.add(c.path);
         recordHotWrite(kb.bundle.root, c.path);
         trace?.record("write_concept", c.path, [c.path], true);
@@ -122,20 +213,17 @@ export function buildWriteTools(
     }),
     patch_concept: tool({
       description:
-        "Targeted update of an existing concept: merge frontmatter keys (null deletes a key) and/or replace one top-level '# Section' body section. Prefer this over write_concept for small edits.",
+        "Targeted update of an existing concept: merge frontmatter keys (null deletes a key) and/or replace one body section under a heading of any level (# to ######). Prefer this over write_concept for small edits.",
       inputSchema: z.object({
         path: conceptPathSchema,
-        frontmatter: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Frontmatter keys to merge; set a key to null to remove it"),
+        frontmatter: frontmatterPatchSchema.optional(),
         replace_section: z
           .object({
             heading: z
               .string()
               .min(1)
               .describe(
-                "Top-level heading name, e.g. 'Schema'. Must be non-empty — to replace the whole body use replace_body instead."
+                "Heading name (any level), e.g. 'Schema'. Must be non-empty — to replace the whole body use replace_body instead."
               ),
             content: z.string().describe("New content for that section"),
           })
@@ -164,7 +252,8 @@ export function buildWriteTools(
               : undefined,
             replaceBody: replace_body,
           },
-          log_summary
+          log_summary,
+          actor
         );
         filesChanged.add(c.path);
         recordHotWrite(kb.bundle.root, c.path);
@@ -174,7 +263,7 @@ export function buildWriteTools(
     }),
     delete_concept: tool({
       description:
-        "Permanently delete a concept file. Prefer deprecation (tag 'deprecated' via patch_concept) unless content is wrong/harmful or deletion was explicitly requested.",
+        "Permanently delete a concept file. Prefer deprecation (status: deprecated via patch_concept) unless content is wrong/harmful or deletion was explicitly requested.",
       inputSchema: z.object({
         path: conceptPathSchema,
         log_summary: logSummary,

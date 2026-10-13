@@ -60,12 +60,33 @@ Untrusted input arrives in five ways:
 - **Removing a profile stops its memory.** Its `KnowledgeBase` is closed — requests still holding
   it can no longer write — and running writes finish before a purge deletes the data. A profile
   re-created under the same name gets a fresh instance with empty caches.
-- **`/admin` uses a separate `ADMIN_TOKEN`**, which manages profiles but opens no memory; a profile
-  key cannot reach `/admin`. `/admin` sits behind the same network guard, and has a failure
-  throttle of its own (same limits, separate budget).
+- **`/admin` uses a separate `ADMIN_TOKEN`**, which manages profiles and settings but opens no
+  memory; neither `AUTH_TOKEN` nor a profile key can reach `/admin`. `/admin` sits behind the same
+  network guard, and has a failure throttle of its own (same limits, separate budget).
   Without `ADMIN_TOKEN`, it does not exist.
 - Profile names are restricted to `[a-z0-9][a-z0-9_-]{0,62}` — no dots or slashes — because a name
   is used as a directory.
+
+### The settings page
+
+`ADMIN_TOKEN` can change which model Myzel talks to. Whoever holds it can point
+`LLM_API_BASE_URL` at a server of their own, and every agent run then sends that server the memory
+content it reads. Treat the admin token like the model API key, or stronger.
+
+- **Only model and behaviour settings** are editable. Network and access settings (`HOST`,
+  `AUTH_TOKEN`, `ADMIN_TOKEN`, `ALLOWED_*`, `TRUST_PROXY`, the bundle paths) are not in the
+  catalog, and `SETTINGS_FILE` entries for them are ignored at startup with a warning.
+- **Secrets stay on the server.** API keys are write-only: the API reports whether one is set,
+  never its value, and the log names changed settings without values.
+- **Values are validated** before anything is written: URLs must be `http(s)`, durations and counts
+  must parse, and no value may contain a line break or control character (they end up in
+  environment variables and request headers). A batch whose model setup would not resolve is
+  refused as a whole.
+- **The file is private and written atomically:** mode `0600`, a random temp name created
+  exclusively, then a rename. An unreadable or invalid file stops the server at startup instead of
+  being skipped.
+- The browser keeps the admin token in memory only, not in `sessionStorage` like the memory's
+  token: a reload asks for it again.
 
 ### Bundle files
 

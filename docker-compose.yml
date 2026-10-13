@@ -13,9 +13,14 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./sample-bundle:/bundle
+      # Settings saved from the web UI (SETTINGS_FILE=/config/settings.json).
+      - myzel-config:/config
     environment:
       BUNDLE_ROOT: /bundle
       AUTH_TOKEN: ${AUTH_TOKEN:-}
+      # Enables /admin: the settings page in the web UI (and profile management
+      # in profile mode). Changes are saved to /config — keep it on a volume.
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       # Profiles (one memory per API key): not passed through on purpose — a
       # host path from .env would point the container at an unmounted
       # directory. See "Profiles" in docs/running.md for the volume and settings.
@@ -55,3 +60,6 @@ services:
       HOT_MEMORY_RECALL_QA: ${HOT_MEMORY_RECALL_QA:-}
       DREAM_INTERVAL: ${DREAM_INTERVAL:-}
     restart: unless-stopped
+
+volumes:
+  myzel-config:
