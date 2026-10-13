@@ -10,7 +10,7 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 // for web apps to avoid WASM loading issues and reduce bundle size.
 // Fine-grained imports keep bundle size minimal.
 const highlighterPromise = createHighlighterCore({
-  themes: [import("@shikijs/themes/github-dark-dimmed")],
+  themes: [import("@shikijs/themes/solarized-dark"), import("@shikijs/themes/solarized-light")],
   langs: [
     import("@shikijs/langs/javascript"),
     import("@shikijs/langs/typescript"),
@@ -103,15 +103,20 @@ function escapeHtml(text: string): string {
 function highlightCode(highlighter: Highlighter, code: string, language: string): string {
   try {
     if (highlighter.getLoadedLanguages().includes(language)) {
-      return highlighter.codeToHtml(code, { lang: language, theme: "github-dark-dimmed" });
+      // Both themes as CSS variables; index.css picks the one for the color scheme.
+      return highlighter.codeToHtml(code, {
+        lang: language,
+        themes: { dark: "solarized-dark", light: "solarized-light" },
+        defaultColor: false,
+      });
     }
   } catch {
     // Fall back to unhighlighted code
   }
-  return `<pre class="shiki shiki-themes github-dark-dimmed code-block" tabindex="0"><code>${escapeHtml(code)}</code></pre>`;
+  return `<pre class="shiki code-block" tabindex="0"><code>${escapeHtml(code)}</code></pre>`;
 }
 
-const LINK_CLASS = "text-cyan-400 hover:underline";
+const LINK_CLASS = "text-blue underline-offset-2 hover:underline";
 
 function Link({ href, children }: React.ComponentProps<"a">) {
   const { onNavigate, onNavigateClick } = useContext(RenderContext);
@@ -161,7 +166,7 @@ function Code({
   // Inline code — no highlighting
   return (
     <code
-      className="bg-zinc-800 px-1 py-0.5 rounded-sm text-sm text-amber-300 font-mono"
+      className="rounded-md bg-raised px-1 py-0.5 font-mono text-[0.9em] text-orange"
       {...props}
     >
       {children}
@@ -173,22 +178,25 @@ const COMPONENTS: Parameters<typeof ReactMarkdown>[0]["components"] = {
   a: Link,
   code: Code,
   table: ({ node: _node, ...props }) => (
-    <div className="overflow-x-auto my-4 rounded-lg border border-zinc-700">
+    <div className="my-4 overflow-x-auto rounded-xl border border-line">
       <table className="min-w-full border-collapse" {...props} />
     </div>
   ),
-  thead: ({ node: _node, ...props }) => <thead className="bg-zinc-800" {...props} />,
+  thead: ({ node: _node, ...props }) => <thead className="bg-raised" {...props} />,
   th: ({ node: _node, ...props }) => (
     <th
-      className="border border-zinc-700 px-3 py-2 text-left font-semibold text-zinc-200 bg-zinc-800/50"
+      className="border-b border-line px-3 py-2 text-left font-semibold text-strong [&:not(:first-child)]:border-l"
       {...props}
     />
   ),
   td: ({ node: _node, ...props }) => (
-    <td className="border border-zinc-700 px-3 py-2 text-sm text-zinc-300" {...props} />
+    <td
+      className="border-t border-line px-3 py-2 text-sm text-fg [&:not(:first-child)]:border-l"
+      {...props}
+    />
   ),
   pre: ({ children }) => (
-    <pre className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto">
+    <pre className="my-3 overflow-x-auto rounded-xl border border-line bg-backdrop/60 p-3 text-sm">
       {children}
     </pre>
   ),

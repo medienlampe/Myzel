@@ -135,11 +135,14 @@ Untrusted input arrives in five ways:
   | `memory_add` content | 100,000 characters |
   | `memory_update` instruction | 20,000 characters |
   | newest chat turn | 20,000 characters |
+  | text attached to the newest chat turn | 100,000 characters |
   | whole chat conversation (re-sent with every turn) | 200,000 characters |
   | concept body returned by `read_concept` | 20,000 characters |
   | JSON body | 1 MB |
 
-  Chat requests may only carry `user` and `assistant` messages.
+  Chat requests may only carry `user` and `assistant` messages. Chat attachments must be text,
+  sent inline as `data:` URLs; the server decodes them into the prompt, so a model provider is
+  never handed a URL to fetch.
 
 - Clients cannot choose a model unless it is listed in `ALLOWED_MODELS`.
 - Agent runs have a step cap (`LLM_MAX_STEPS`) and a time limit (`LLM_TIMEOUT`), and stop when

@@ -1,8 +1,99 @@
 @import "tailwindcss";
 
 /*
-  Tailwind v4 compatibility: v3 defaulted borders to gray-200 and buttons to a
-  pointer cursor; keep both so the upgrade does not change the UI.
+  Design language: Solarized, dark or light following the system setting —
+  the light mode on Solarized's cream base, the dark mode on neutral greys.
+
+  Only the tokens below exist as colors — Tailwind's default palette is
+  switched off, so a stray `zinc-800` does nothing instead of drifting from the
+  theme. Surfaces stack backdrop → surface (panels) → raised (cards, inputs,
+  hovers). Text: fg for content, strong for headings, muted for secondary text
+  (≥ 4.5:1 on every surface), faint only for placeholders and hints.
+
+  The accents are Solarized's hues, nudged per mode so they also read as text:
+  ≥ 4.6:1 on raised, ≥ 5.2:1 on surface. Text on a filled accent uses
+  on-accent. Roles: blue = action, link, selection, focus · green = created, ok
+  · yellow = writes, warnings · red = errors, deletions · violet = concept
+  types · cyan = tags · orange = inline code · magenta = graph only.
+
+  Radii: rounded-md for chips, badges and inline code; rounded-lg for buttons,
+  inputs and list rows; rounded-xl for panels, cards, code blocks and the
+  composer.
+*/
+@theme {
+  --color-*: initial;
+}
+@theme inline {
+  --color-backdrop: var(--backdrop);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-strong: var(--strong);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-on-accent: var(--on-accent);
+  --color-blue: var(--blue);
+  --color-cyan: var(--cyan);
+  --color-green: var(--green);
+  --color-yellow: var(--yellow);
+  --color-orange: var(--orange);
+  --color-red: var(--red);
+  --color-magenta: var(--magenta);
+  --color-violet: var(--violet);
+}
+
+:root {
+  color-scheme: dark;
+  /* Dark mode is neutral grey (not Solarized's blue base) under the Solarized accents. */
+  --backdrop: #181818;
+  --surface: #212121;
+  --raised: #2c2c2c;
+  --line: #404040;
+  --line-strong: #5e5e5e;
+  --fg: #cfcdc6;
+  --strong: #eee8d5; /* base2 */
+  --muted: #a8a6a0;
+  --faint: #8f8d88;
+  --on-accent: #212121;
+  --blue: #4a9cd3;
+  --cyan: #34a59b;
+  --green: #8b9e0d;
+  --yellow: #b88f0d;
+  --orange: #d67d53;
+  --red: #e2746b;
+  --magenta: #dc739e;
+  --violet: #8e90c8;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --backdrop: #f5eedb;
+    --surface: #fdf6e3; /* base3 */
+    --raised: #eee8d5; /* base2 */
+    --line: #c5c8be;
+    --line-strong: #93a1a1; /* base1 */
+    --fg: #073642; /* base02 */
+    --strong: #002b36; /* base03 */
+    --muted: #4c666d;
+    --faint: #657b83; /* base00 */
+    --on-accent: #fdf6e3;
+    --blue: #1a6ca0;
+    --cyan: #197271;
+    --green: #547014;
+    --yellow: #746713;
+    --orange: #ad461b;
+    --red: #bf3130;
+    --magenta: #b53477;
+    --violet: #5562a6;
+  }
+}
+
+/*
+  Tailwind v4 compatibility: v3 defaulted buttons to a pointer cursor; keep it.
+  Borders default to the theme's line color.
 */
 @layer base {
   *,
@@ -10,43 +101,181 @@
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
+    border-color: var(--line);
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+  body {
+    @apply bg-backdrop text-fg antialiased;
+  }
+  ::selection {
+    @apply bg-blue/30;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-1 outline-blue;
+  }
 }
 
-body {
-  @apply bg-zinc-950 text-zinc-100 antialiased;
+/* The shared building blocks — use these before composing new utility sets. */
+@utility card {
+  @apply rounded-xl border border-line bg-raised/40;
+}
+@utility input {
+  @apply rounded-lg border border-line-strong/70 bg-surface px-3 py-1.5 text-sm text-strong outline-hidden placeholder:text-faint focus:border-blue;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg transition-colors disabled:cursor-default disabled:opacity-40;
+}
+@utility btn-primary {
+  @apply btn bg-blue px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-blue/85;
+}
+@utility btn-secondary {
+  @apply btn border border-line-strong/70 px-3 py-1.5 text-sm font-medium text-fg hover:bg-raised hover:text-strong;
+}
+@utility btn-ghost {
+  @apply btn px-2 py-1 text-xs text-muted hover:bg-raised hover:text-strong;
+}
+@utility icon-btn {
+  @apply inline-flex h-7 min-w-7 items-center justify-center rounded-lg px-1.5 text-muted transition-colors hover:bg-raised hover:text-strong disabled:pointer-events-none disabled:opacity-30;
+}
+@utility chip {
+  @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4 font-medium;
+}
+@utility row {
+  @apply rounded-lg px-2 py-1 text-left transition-colors hover:bg-raised;
 }
 
+.markdown {
+  @apply leading-relaxed text-fg;
+}
 .markdown h1 {
-  @apply text-xl font-bold mt-6 mb-2 text-cyan-300;
+  @apply mt-6 mb-2 text-xl font-bold text-strong;
 }
 .markdown h2 {
-  @apply text-lg font-semibold mt-5 mb-2;
+  @apply mt-5 mb-2 text-lg font-semibold text-strong;
+}
+.markdown h3,
+.markdown h4 {
+  @apply mt-4 mb-1 font-semibold text-strong;
 }
 .markdown p {
-  @apply my-2 leading-relaxed;
+  @apply my-2;
 }
-.markdown ul,
-.markdown ol {
+.markdown ul {
   @apply my-2 ml-5 list-disc space-y-1;
 }
-.markdown code {
-  @apply bg-zinc-800 px-1 py-0.5 rounded-sm text-sm text-amber-300;
+.markdown ol {
+  @apply my-2 ml-5 list-decimal space-y-1;
 }
-.markdown pre {
-  @apply bg-zinc-900 border border-zinc-800 rounded-lg p-3 my-3 overflow-x-auto;
+.markdown blockquote {
+  @apply my-3 border-l-2 border-line-strong pl-3 text-muted;
 }
-.markdown pre code {
-  @apply bg-transparent p-0 text-zinc-200;
+.markdown hr {
+  @apply my-4 border-line;
 }
-.markdown a {
-  @apply text-cyan-400 hover:underline;
+.markdown strong {
+  @apply text-strong;
 }
-.markdown table {
-  @apply my-3 text-sm;
+
+/*
+  Shiki renders both Solarized themes as CSS variables; pick the one matching
+  the color scheme. The block's own background gives way to the theme surface.
+*/
+.shiki,
+.shiki span {
+  color: var(--shiki-dark);
+}
+@media (prefers-color-scheme: light) {
+  .shiki,
+  .shiki span {
+    color: var(--shiki-light);
+  }
+}
+.shiki {
+  background-color: transparent !important;
+}
+
+/*
+  ProseMirror's required base rules (the chat composer). TipTap would inject
+  them as a <style> element; with injectCSS off they live here instead.
+*/
+.ProseMirror {
+  position: relative;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0;
+}
+.ProseMirror [contenteditable="false"] {
+  white-space: normal;
+}
+.ProseMirror pre {
+  white-space: pre-wrap;
+}
+img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+}
+.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}
+.ProseMirror-hideselection *::selection {
+  background: transparent;
+}
+
+/* Formatting inside the composer: the same look as the chat, but compact. */
+.composer p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  @apply text-faint;
+}
+.composer h1 {
+  @apply text-lg font-bold text-strong;
+}
+.composer h2,
+.composer h3,
+.composer h4,
+.composer h5,
+.composer h6 {
+  @apply font-semibold text-strong;
+}
+.composer strong {
+  @apply text-strong;
+}
+.composer ul {
+  @apply ml-5 list-disc;
+}
+.composer ol {
+  @apply ml-5 list-decimal;
+}
+.composer blockquote {
+  @apply border-l-2 border-line-strong pl-3 text-muted;
+}
+.composer code {
+  @apply rounded-md bg-surface px-1 py-0.5 font-mono text-[0.9em] text-orange;
+}
+.composer pre {
+  @apply my-1 rounded-xl border border-line bg-surface px-3 py-2 font-mono text-xs;
+}
+.composer pre code {
+  @apply bg-transparent p-0 text-fg;
+}
+.composer a {
+  @apply text-blue underline;
+}
+.composer hr {
+  @apply my-2 border-line;
 }

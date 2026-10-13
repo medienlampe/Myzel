@@ -16,6 +16,8 @@ export const LIMITS = {
   path: 300,
   /** Newest user turn in /api/chat. */
   chatTurn: 20_000,
+  /** Text of the files attached to the newest /api/chat turn — as much as memory_add takes. */
+  chatAttachments: 100_000,
   /** Whole /api/chat conversation as sent (JSON characters, tool results included). */
   chatConversation: 200_000,
   /** Messages per /api/chat request. */

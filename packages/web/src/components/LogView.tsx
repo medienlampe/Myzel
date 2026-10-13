@@ -2,9 +2,9 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 import type { LogEntry } from "../api";
 
 const ACTION_STYLES: Record<LogEntry["action"], string> = {
-  Creation: "bg-emerald-900/60 text-emerald-300",
-  Update: "bg-cyan-900/60 text-cyan-300",
-  Deletion: "bg-red-900/60 text-red-300",
+  Creation: "bg-green/15 text-green",
+  Update: "bg-blue/15 text-blue",
+  Deletion: "bg-red/15 text-red",
 };
 
 export function LogView({
@@ -15,23 +15,21 @@ export function LogView({
   onNavigate: (path: string) => void;
 }) {
   if (entries.length === 0) {
-    return <p className="p-6 text-sm text-zinc-500">No log entries yet.</p>;
+    return <p className="p-6 text-sm text-muted">No log entries yet.</p>;
   }
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-4 text-2xl font-bold">Update Log</h1>
+      <h1 className="mb-4 text-2xl font-bold text-strong">Update Log</h1>
       <div className="space-y-2">
         {entries.map((e, i) => {
           const showDate = e.date !== entries[i - 1]?.date;
           return (
             <div key={i}>
               {showDate && (
-                <div className="mb-1 mt-4 text-sm font-semibold text-zinc-400">{e.date}</div>
+                <div className="mt-4 mb-1 text-sm font-semibold text-muted">{e.date}</div>
               )}
-              <div className="flex items-start gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
-                <span
-                  className={`mt-0.5 shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${ACTION_STYLES[e.action]}`}
-                >
+              <div className="card flex items-start gap-2 px-3 py-2">
+                <span className={`chip mt-0.5 shrink-0 ${ACTION_STYLES[e.action]}`}>
                   {e.action}
                 </span>
                 <div className="markdown text-sm [&_p]:my-0">

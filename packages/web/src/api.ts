@@ -79,6 +79,8 @@ export interface AppConfig {
   fallbackConfigured: boolean;
   /** False when the server refuses client-chosen models (ALLOWED_MODELS unset). */
   modelOverride?: boolean;
+  /** Characters of attached text the server accepts per message. */
+  attachmentLimit?: number;
 }
 
 const TOKEN_KEY = "myzel-token";

@@ -22,6 +22,12 @@ window.matchMedia ??= ((query: string) => ({
 Element.prototype.setPointerCapture ??= () => {};
 Element.prototype.releasePointerCapture ??= () => {};
 Element.prototype.hasPointerCapture ??= () => false;
+// ProseMirror (the chat composer) measures the selection to scroll it into view.
+const emptyRects = () => Object.assign([], { item: () => null }) as unknown as DOMRectList;
+Element.prototype.getClientRects ??= emptyRects;
+Range.prototype.getClientRects ??= emptyRects;
+Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+document.elementFromPoint ??= () => null;
 
 afterEach(() => {
   cleanup();

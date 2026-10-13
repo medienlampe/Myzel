@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChatPanel, createChat } from "../src/components/ChatPanel";
+import { ChatPanel, chatErrorText, createChat } from "../src/components/ChatPanel";
 import type { AppConfig } from "../src/api";
 import { installFakeApi, json, uiStream } from "./support/fake-api";
+import { typeMessage } from "./support/composer";
 
 const CONFIG: AppConfig = { model: "fake-model", format: "openai", fallbackConfigured: true };
 
@@ -31,8 +32,8 @@ const answer = (text: string) =>
     { type: "finish" },
   ]);
 
-function send(text: string) {
-  fireEvent.change(screen.getByLabelText("Message the agent"), { target: { value: text } });
+async function send(text: string) {
+  await typeMessage(text);
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
 }
 
@@ -45,7 +46,7 @@ describe("ChatPanel", () => {
     expect(screen.getByText(/Test the knowledge agent here/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
 
-    send("Dana is on call");
+    await send("Dana is on call");
     expect(await screen.findByText("Recorded Dana.")).toBeInTheDocument();
     expect(screen.getByText("Dana is on call")).toBeInTheDocument();
     expect(screen.getByText('"on call"')).toBeInTheDocument();
@@ -66,16 +67,80 @@ describe("ChatPanel", () => {
       />
     );
     fireEvent.change(screen.getByLabelText("Model override"), { target: { value: "other" } });
-    send("hi");
+    await send("hi");
     await screen.findByText("ok");
     expect(JSON.parse(String(fake.calls[0].init?.body)).model).toBe("other");
   });
 
-  it("shows an error when the request fails", async () => {
+  it("shows the server's error text when the request fails", async () => {
     installFakeApi({ "/api/chat": json({ error: "message too long" }, 413) });
     render(<ChatPanel chat={createChat(() => {})} config={CONFIG} onOpenConcept={() => {}} />);
-    send("x");
-    expect(await screen.findByRole("alert")).toHaveTextContent("message too long");
+    await send("x");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/^message too long$/);
+  });
+
+  it("retries a failed request with the same message and model", async () => {
+    let attempt = 0;
+    const fake = installFakeApi({
+      "/api/chat": () =>
+        ++attempt === 1 ? json({ error: "model discovery failed" }, 502) : answer("Back again."),
+    });
+    render(
+      <ChatPanel
+        chat={createChat(() => {})}
+        config={{ ...CONFIG, modelOverride: true }}
+        onOpenConcept={() => {}}
+      />
+    );
+    fireEvent.change(screen.getByLabelText("Model override"), { target: { value: "other" } });
+    await send("Dana is on call");
+    expect(await screen.findByRole("alert")).toHaveTextContent("model discovery failed");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Back again.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Dana is on call")).toHaveLength(1);
+    const retried = JSON.parse(String(fake.calls[1].init?.body));
+    expect(retried.model).toBe("other");
+    expect(retried.messages).toHaveLength(1);
+  });
+
+  it("falls back to the raw message when the error is not JSON", () => {
+    expect(chatErrorText(new Error("fetch failed"))).toBe("fetch failed");
+    expect(chatErrorText(new Error('{"other":1}'))).toBe('{"other":1}');
+    expect(chatErrorText(new Error(""))).toBe("The request failed.");
+  });
+
+  it("stops a running agent by aborting the request", async () => {
+    let signal: AbortSignal | undefined;
+    installFakeApi({
+      "/api/chat": (_url: URL, init?: RequestInit) => {
+        signal = init?.signal ?? undefined;
+        // A run that never finishes on its own: only the abort ends it.
+        const body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('data: {"type":"start"}\n\n'));
+            signal?.addEventListener("abort", () =>
+              controller.error(new DOMException("aborted", "AbortError"))
+            );
+          },
+        });
+        return new Response(body, {
+          headers: { "content-type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1" },
+        });
+      },
+    });
+    const onRunEnd = vi.fn();
+    render(<ChatPanel chat={createChat(onRunEnd)} config={CONFIG} onOpenConcept={() => {}} />);
+    await send("take your time");
+    fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+
+    expect(await screen.findByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(signal?.aborted).toBe(true);
+    expect(screen.getByRole("alert")).toHaveTextContent("No answer");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    await waitFor(() => expect(onRunEnd).toHaveBeenCalled());
   });
 
   it("explains a run that ended without an answer", async () => {
@@ -83,7 +148,7 @@ describe("ChatPanel", () => {
       "/api/chat": () => uiStream([{ type: "start" }, { type: "abort", reason: "TimeoutError" }]),
     });
     render(<ChatPanel chat={createChat(() => {})} config={CONFIG} onOpenConcept={() => {}} />);
-    send("x");
+    await send("x");
     expect(await screen.findByRole("alert")).toHaveTextContent("No answer");
   });
 });

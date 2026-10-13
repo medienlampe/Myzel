@@ -1,5 +1,6 @@
 import express, { type Router } from "express";
 import { parseAllowedModels } from "../env.js";
+import { LIMITS } from "../limits.js";
 import {
   BundleError,
   TraceStore,
@@ -89,6 +90,8 @@ export function browseRouter(kb: KnowledgeBase): Router {
       fallbackConfigured: fallback !== null,
       // Lets the UI hide its model picker when the server refuses overrides.
       modelOverride: parseAllowedModels(process.env.ALLOWED_MODELS).length > 0,
+      // Lets the UI turn away an oversized file before sending it.
+      attachmentLimit: LIMITS.chatAttachments,
     });
   });
 

@@ -177,10 +177,10 @@ export default function App() {
             setTokenError(null);
             void submitKey(tokenInput.trim());
           }}
-          className="w-80 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5"
+          className="card w-80 bg-surface p-5 shadow-lg shadow-backdrop"
         >
-          <h1 className="text-sm font-bold tracking-wide text-cyan-300">Myzel 🍄</h1>
-          <p className="mt-2 text-sm text-zinc-400">
+          <h1 className="text-sm font-bold tracking-wide text-strong">Myzel 🍄</h1>
+          <p className="mt-2 text-sm text-muted">
             {authMode === "profiles" ? (
               <>
                 This server hosts several memories. Enter your profile&apos;s API key — it decides
@@ -189,12 +189,12 @@ export default function App() {
             ) : (
               <>
                 This server requires an access token (its{" "}
-                <code className="text-zinc-300">AUTH_TOKEN</code>).
+                <code className="font-mono text-orange">AUTH_TOKEN</code>).
               </>
             )}
           </p>
           {tokenError && (
-            <p role="alert" className="mt-2 text-sm text-red-400">
+            <p role="alert" className="mt-2 text-sm text-red">
               {tokenError}
             </p>
           )}
@@ -205,12 +205,9 @@ export default function App() {
             placeholder={authMode === "profiles" ? "Profile API key" : "Access token"}
             aria-label={authMode === "profiles" ? "Profile API key" : "Access token"}
             autoFocus
-            className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-hidden focus:border-cyan-600"
+            className="input mt-3 w-full py-2"
           />
-          <button
-            type="submit"
-            className="mt-3 w-full rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-600"
-          >
+          <button type="submit" className="btn-primary mt-3 w-full py-2">
             Unlock
           </button>
         </form>
@@ -229,28 +226,28 @@ export default function App() {
 
   const explorer = (
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-800 p-2">
+      <div className="border-b border-line p-2">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search…"
           aria-label="Search concepts"
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm outline-hidden focus:border-cyan-600"
+          className="input w-full px-2.5 py-1"
         />
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
         {shownHits ? (
           <div className="space-y-1">
-            {shownHits.length === 0 && <p className="px-2 text-xs text-zinc-500">No matches.</p>}
+            {shownHits.length === 0 && <p className="px-2 text-xs text-muted">No matches.</p>}
             {shownHits.map((h) => (
               <button
                 key={h.path}
                 onClick={() => openConcept(h.path)}
-                className="block w-full rounded-sm px-2 py-1.5 text-left hover:bg-zinc-800"
+                className="row block w-full py-1.5"
               >
-                <div className="text-sm text-zinc-200">{h.title ?? h.path}</div>
-                {h.snippet && <div className="truncate text-xs text-zinc-500">{h.snippet}</div>}
+                <div className="text-sm text-strong">{h.title ?? h.path}</div>
+                {h.snippet && <div className="truncate text-xs text-muted">{h.snippet}</div>}
               </button>
             ))}
           </div>
@@ -261,20 +258,22 @@ export default function App() {
             onSelect={openConcept}
           />
         ) : (
-          <p className="px-2 text-xs text-zinc-500">Loading…</p>
+          <p className="px-2 text-xs text-muted">Loading…</p>
         )}
       </div>
 
-      <div className="flex border-t border-zinc-800 text-xs">
+      <div className="flex gap-1 border-t border-line p-1.5 text-xs">
         <button
           onClick={() => showView({ kind: "log" })}
-          className={`flex-1 px-3 py-2 hover:bg-zinc-800 ${view.kind === "log" ? "text-cyan-300" : "text-zinc-400"}`}
+          aria-pressed={view.kind === "log"}
+          className={`flex-1 rounded-lg px-3 py-1.5 transition-colors ${view.kind === "log" ? "bg-blue/15 text-blue" : "text-muted hover:bg-raised hover:text-strong"}`}
         >
           Log
         </button>
         <button
           onClick={() => showView({ kind: "graph" })}
-          className={`flex-1 border-l border-zinc-800 px-3 py-2 hover:bg-zinc-800 ${view.kind === "graph" ? "text-cyan-300" : "text-zinc-400"}`}
+          aria-pressed={view.kind === "graph"}
+          className={`flex-1 rounded-lg px-3 py-1.5 transition-colors ${view.kind === "graph" ? "bg-blue/15 text-blue" : "text-muted hover:bg-raised hover:text-strong"}`}
         >
           Graph
         </button>
@@ -286,9 +285,9 @@ export default function App() {
     <div
       className={`h-full min-w-0 ${view.kind === "graph" ? "overflow-hidden" : "overflow-y-auto"}`}
     >
-      {error && <p className="p-6 text-sm text-red-400">{error}</p>}
+      {error && <p className="p-6 text-sm text-red">{error}</p>}
       {!error && view.kind === "empty" && (
-        <div className="flex h-full items-center justify-center p-6 text-center text-zinc-600">
+        <div className="flex h-full items-center justify-center p-6 text-center text-faint">
           <p>Select a concept, or ask the agent.</p>
         </div>
       )}
@@ -314,16 +313,16 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-3 py-1.5">
-        <h1 className="text-sm font-bold tracking-wide text-cyan-300">Myzel 🍄</h1>
+      <header className="flex shrink-0 items-center gap-2 px-3 pt-2 pb-1">
+        <h1 className="text-sm font-bold tracking-wide text-strong">Myzel 🍄</h1>
         {profile?.profile && (
           <span className="flex items-center gap-1 text-xs">
-            <span className="text-zinc-500">profile</span>
-            <span className="font-medium text-zinc-200">{profile.profile}</span>
+            <span className="text-muted">profile</span>
+            <span className="font-medium text-strong">{profile.profile}</span>
             <button
               onClick={switchProfile}
               title="Forget this key and open a different profile"
-              className="rounded-sm px-1.5 py-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              className="btn-ghost px-1.5 py-0.5"
             >
               switch
             </button>
@@ -332,11 +331,7 @@ export default function App() {
         {report && (
           <span
             title={`${report.conceptCount} concepts, ${report.issues.length} issues`}
-            className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${
-              report.conformant
-                ? "bg-emerald-900/60 text-emerald-300"
-                : "bg-red-900/60 text-red-300"
-            }`}
+            className={`chip ${report.conformant ? "bg-green/15 text-green" : "bg-red/15 text-red"}`}
           >
             {report.conformant ? "conformant" : "non-conformant"}
           </span>
@@ -349,7 +344,7 @@ export default function App() {
                 key={id}
                 aria-pressed={open}
                 onClick={() => updateLayout(togglePanel(layout, id))}
-                className={`rounded-sm px-2 py-1 hover:bg-zinc-800 ${open ? "text-cyan-300" : "text-zinc-500"}`}
+                className={`rounded-lg px-2 py-1 transition-colors ${open ? "bg-blue/15 text-blue" : "text-muted hover:bg-raised hover:text-strong"}`}
               >
                 {PANEL_LABELS[id]}
               </button>
@@ -358,7 +353,7 @@ export default function App() {
           <button
             onClick={() => updateLayout(DEFAULT_LAYOUT)}
             title="Restore the default panel arrangement"
-            className="ml-1 rounded-sm border border-zinc-800 px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            className="btn-secondary ml-1 px-2 py-1 text-xs font-normal"
           >
             Reset layout
           </button>

@@ -51,7 +51,7 @@ export function ConceptView({
   return (
     <div className="mx-auto max-w-3xl p-6">
       {isReserved ? (
-        <p className="mb-4 font-mono text-xs text-zinc-500">
+        <p className="mb-4 font-mono text-xs text-muted">
           {concept.path}{" "}
           <span className="italic">
             (generated {concept.path.endsWith("index.md") ? "directory index" : "log"} — maintained
@@ -59,40 +59,40 @@ export function ConceptView({
           </span>
         </p>
       ) : (
-        <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+        <div className="card mb-4 p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-sm bg-purple-900/60 px-2 py-0.5 text-xs font-medium text-purple-300">
-              {display(fm.type)}
-            </span>
+            <span className="chip bg-violet/15 text-violet">{display(fm.type)}</span>
             {Array.isArray(fm.tags) &&
               fm.tags.map((t, i) => (
-                <span key={i} className="rounded-sm bg-zinc-800 px-2 py-0.5 text-xs text-cyan-300">
+                <span key={i} className="chip bg-cyan/15 font-normal text-cyan">
                   #{display(t)}
                 </span>
               ))}
             {typeof fm.timestamp === "string" && (
-              <span className="ml-auto text-xs text-zinc-500">
+              <span className="ml-auto text-xs text-muted">
                 {new Date(fm.timestamp).toLocaleString()}
               </span>
             )}
           </div>
-          <h1 className="mt-2 text-2xl font-bold">{display(fm.title ?? concept.path)}</h1>
+          <h1 className="mt-2 text-2xl font-bold text-strong">
+            {display(fm.title ?? concept.path)}
+          </h1>
           {typeof fm.description === "string" && (
-            <p className="mt-1 text-sm text-zinc-400">{fm.description}</p>
+            <p className="mt-1 text-sm text-muted">{fm.description}</p>
           )}
           {typeof fm.resource === "string" && (
-            <p className="mt-1 truncate font-mono text-xs text-zinc-500">{fm.resource}</p>
+            <p className="mt-1 truncate font-mono text-xs text-muted">{fm.resource}</p>
           )}
           {extraKeys.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
               {extraKeys.map(([k, v]) => (
                 <span key={k}>
-                  <span className="text-zinc-400">{k}:</span> {JSON.stringify(v)}
+                  <span className="text-fg">{k}:</span> {JSON.stringify(v)}
                 </span>
               ))}
             </div>
           )}
-          <p className="mt-2 font-mono text-xs text-zinc-600">{concept.path}</p>
+          <p className="mt-2 font-mono text-xs text-faint">{concept.path}</p>
         </div>
       )}
 

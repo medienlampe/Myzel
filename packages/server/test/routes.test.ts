@@ -220,6 +220,90 @@ describe("chat over HTTP", () => {
     expect(await res.text()).toContain("Hello from the agent.");
   });
 
+  it("reports why a run could not start instead of a bare internal error", async () => {
+    vi.stubEnv("LLM_MODEL", "");
+    vi.stubEnv("LLM_API_BASE_URL", "http://127.0.0.1:1/v1");
+    const base = await serve();
+    const res = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+      }),
+    });
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/LLM_MODEL is not set and could not be discovered/);
+  });
+
+  it("reports a model failure during the run with its public reason", async () => {
+    const base = await serve();
+    llm.script([{ status: 500, error: "secret upstream detail" }]);
+    const res = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+      }),
+    });
+    const body = await res.text();
+    expect(body).toContain("the model provider returned HTTP 500");
+    expect(body).not.toContain("secret upstream detail");
+    expect(body).not.toContain("An error occurred.");
+  });
+
+  it("hands attached text to the model and refuses what it cannot take", async () => {
+    const base = await serve();
+    const post = (parts: object[]) =>
+      fetch(`${base}/api/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: [{ id: "1", role: "user", parts }] }),
+      });
+    const data = (text: string) =>
+      `data:text/markdown;base64,${Buffer.from(text).toString("base64")}`;
+
+    llm.script([{ text: "Got the runbook." }]);
+    const ok = await post([
+      { type: "file", mediaType: "text/markdown", filename: "runbook.md", url: data("Restart X.") },
+      { type: "text", text: "remember this" },
+    ]);
+    expect(await ok.text()).toContain("Got the runbook.");
+    expect(JSON.stringify(llm.requests[0].messages)).toContain(
+      '<attachment name=\\"runbook.md\\">\\nRestart X.\\n</attachment>'
+    );
+
+    const image = await post([
+      { type: "file", mediaType: "image/png", url: "data:image/png;base64,AA" },
+    ]);
+    expect(image.status).toBe(415);
+    expect((await image.json()).error).toMatch(/only text files/);
+
+    const big = await post([
+      { type: "file", mediaType: "text/plain", url: data("x".repeat(100_001)) },
+    ]);
+    expect(big.status).toBe(413);
+    expect((await big.json()).error).toMatch(/attachments too large/);
+  });
+
+  it("aborts the agent run when the client goes away (the chat's Stop)", async () => {
+    const base = await serve();
+    llm.script([{ hang: true }]);
+    const stop = new AbortController();
+    const res = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+      }),
+      signal: stop.signal,
+    });
+    const reading = res.text().catch(() => "aborted");
+    await vi.waitFor(() => expect(llm.requests).toHaveLength(1));
+    stop.abort();
+    expect(await reading).toBe("aborted");
+    await llm.hangUp(); // the provider request was cancelled, not left running
+  });
+
   it("rejects messages the SDK cannot convert", async () => {
     const base = await serve();
     const res = await fetch(`${base}/api/chat`, {

@@ -28,14 +28,18 @@ export function Tree({
             key={child.path}
             onClick={() => onSelect(child.path)}
             title={child.description}
-            className={`flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-zinc-800 ${
-              selected === child.path ? "bg-zinc-800 text-cyan-300" : "text-zinc-300"
-            } ${child.kind === "reserved" ? "italic text-zinc-500" : ""}`}
+            className={`row flex w-full items-center gap-2 text-sm ${
+              selected === child.path
+                ? "bg-blue/15 text-blue hover:bg-blue/20"
+                : child.kind === "reserved"
+                  ? "text-muted italic"
+                  : "text-fg"
+            }`}
             style={{ paddingLeft: `${depth * 14 + 8}px` }}
           >
             <span className="truncate">{child.title ?? child.name}</span>
             {child.type && (
-              <span className="ml-auto shrink-0 rounded-sm bg-zinc-800 px-1.5 py-0.5 text-[10px] text-purple-300">
+              <span className="chip ml-auto shrink-0 bg-violet/15 font-normal text-violet">
                 {child.type}
               </span>
             )}
@@ -63,7 +67,7 @@ function DirNode({
       <button
         onClick={() => setOpen(!open)}
         aria-expanded={open}
-        className="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-medium text-zinc-400 hover:text-zinc-200"
+        className="row flex w-full items-center gap-1 text-sm font-medium text-muted hover:text-strong"
         style={{ paddingLeft: `${depth * 14 + 8}px` }}
       >
         <span aria-hidden className="text-xs">

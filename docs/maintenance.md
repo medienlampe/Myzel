@@ -10,6 +10,7 @@ for when upgrading. Day-to-day commands are in [AGENTS.md](../AGENTS.md) §3.
 | Node | `engines: >=22.12`; Docker and CI use 24 (LTS) | AI SDK 7, Vite 8 and Vitest 5 need 22.12. |
 | `@types/node` | `^22` | It follows the *oldest* supported runtime, so code cannot use APIs that Node 22 lacks. |
 | TypeScript | `~6.0` | `typescript-eslint` supports `<6.1`. Move to 7 once it supports it. |
+| TipTap (`@tiptap/*`, the chat composer) | one exact version for every package | Each package requires its siblings at that exact version; update them together. |
 | pnpm | `packageManager` field (exact version) | `corepack enable` gets everyone the same version. |
 | GitHub Actions | full commit SHA, with the release in a comment | A tag can be moved to different code. |
 | Base image | `node:24-alpine@sha256:…` | The tag stays for readability; the digest decides what is used. |

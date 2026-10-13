@@ -25,23 +25,27 @@ interface SimLink {
   target: SimNode;
 }
 
-// Channel palette, assigned to types in first-seen order.
+// The Solarized accents (index.css), assigned to types in first-seen order.
+// They are CSS variables, so SVG takes them through `style`, not attributes.
 const PALETTE = [
-  "#64c8ff",
-  "#a78bfa",
-  "#34d399",
-  "#fbbf24",
-  "#f87171",
-  "#f472b6",
-  "#2dd4bf",
-  "#a3e635",
+  "var(--blue)",
+  "var(--violet)",
+  "var(--green)",
+  "var(--yellow)",
+  "var(--magenta)",
+  "var(--cyan)",
+  "var(--orange)",
+  "var(--red)",
 ];
 
 const KIND_COLOR: Record<TraceSummary["kind"], string> = {
-  query: "#64c8ff",
-  chat: "#34d399",
-  mutation: "#fbbf24",
+  query: "var(--blue)",
+  chat: "var(--green)",
+  mutation: "var(--yellow)",
 };
+
+const tint = (color: string, percent: number) =>
+  `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 
 const radius = (n: SimNode) => 5 + Math.sqrt(n.links) * 3.5;
 
@@ -295,7 +299,7 @@ export function GraphView({
   const resetCamera = () => setView({ x: 0, y: 0, k: 1 });
 
   const showAllLabels = nodes.length <= 60;
-  const pathColor = activeTrace ? KIND_COLOR[activeTrace.kind] : "#64c8ff";
+  const pathColor = activeTrace ? KIND_COLOR[activeTrace.kind] : KIND_COLOR.query;
   const hopCount = Math.max(0, visits.length - 1);
   // Scrubber position mapped onto the hop chain: hop i draws over [i, i+1].
   const hopProgress = (progress / 100) * hopCount;
@@ -308,36 +312,36 @@ export function GraphView({
   };
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-zinc-950">
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-surface">
       {/* Legend */}
-      <div className="absolute left-3 top-3 z-10 space-y-1 rounded-lg border border-zinc-800 bg-zinc-900/80 p-2 text-xs">
+      <div className="card absolute top-3 left-3 z-10 space-y-1 bg-surface/90 p-2.5 text-xs backdrop-blur-sm">
         {[...typeColors.entries()].map(([t, c]) => (
           <div key={t} className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />
-            <span className="text-zinc-300">{t}</span>
+            <span className="text-fg">{t}</span>
           </div>
         ))}
         {nodes.some((n) => n.links === 0) && (
-          <div className="flex items-center gap-2 border-t border-zinc-800 pt-1">
-            <span className="h-2.5 w-2.5 rounded-full border border-red-500" />
-            <span className="text-zinc-400">orphan (unlinked)</span>
+          <div className="flex items-center gap-2 border-t border-line pt-1">
+            <span className="h-2.5 w-2.5 rounded-full border border-red" />
+            <span className="text-muted">orphan (unlinked)</span>
           </div>
         )}
       </div>
 
       {/* Query paths panel */}
-      <div className="absolute right-3 top-3 z-10 w-72 rounded-lg border border-zinc-800 bg-zinc-900/90 text-xs">
+      <div className="card absolute top-3 right-3 z-10 w-72 bg-surface/90 text-xs backdrop-blur-sm">
         <button
           onClick={() => setPathsOpen(!pathsOpen)}
-          className="flex w-full items-center px-3 py-2 font-semibold text-zinc-300 hover:text-zinc-100"
+          className="flex w-full items-center rounded-xl px-3 py-2 font-semibold text-fg hover:text-strong"
         >
           Query paths
-          <span className="ml-auto text-zinc-500">{pathsOpen ? "▾" : "▸"}</span>
+          <span className="ml-auto text-muted">{pathsOpen ? "▾" : "▸"}</span>
         </button>
         {pathsOpen && (
-          <div className="max-h-72 space-y-1 overflow-y-auto border-t border-zinc-800 p-2">
+          <div className="max-h-72 space-y-1 overflow-y-auto border-t border-line p-2">
             {traces.length === 0 && (
-              <p className="p-2 text-zinc-500">
+              <p className="p-2 text-muted">
                 No recorded runs yet — ask the agent something and its traversal will appear here.
               </p>
             )}
@@ -345,8 +349,8 @@ export function GraphView({
               <button
                 key={t.id}
                 onClick={() => (activeTrace?.id === t.id ? closeTrace() : selectTrace(t.id))}
-                className={`block w-full rounded-sm px-2 py-1.5 text-left hover:bg-zinc-800 ${
-                  activeTrace?.id === t.id ? "bg-zinc-800 ring-1 ring-zinc-700" : ""
+                className={`row block w-full py-1.5 ${
+                  activeTrace?.id === t.id ? "bg-blue/15 ring-1 ring-blue/40" : ""
                 }`}
               >
                 <div className="flex items-center gap-1.5">
@@ -355,12 +359,12 @@ export function GraphView({
                     style={{ background: KIND_COLOR[t.kind] }}
                     title={t.kind}
                   />
-                  <span className="truncate text-zinc-200">{t.input}</span>
+                  <span className="truncate text-strong">{t.input}</span>
                 </div>
                 <div className="mt-0.5 flex items-baseline gap-2 font-mono text-[10px]">
-                  <span className="truncate text-zinc-500">{t.notation}</span>
+                  <span className="truncate text-muted">{t.notation}</span>
                   {usageLabel(t.usage) && (
-                    <span className="ml-auto shrink-0 text-zinc-600">{usageLabel(t.usage)}</span>
+                    <span className="ml-auto shrink-0 text-faint">{usageLabel(t.usage)}</span>
                   )}
                 </div>
               </button>
@@ -371,17 +375,17 @@ export function GraphView({
 
       {/* Active path strip */}
       {activeTrace && (
-        <div className="absolute bottom-3 left-1/2 z-10 w-[min(90%,800px)] -translate-x-1/2 rounded-lg border border-zinc-800 bg-zinc-900/95 px-3 py-2">
+        <div className="card absolute bottom-3 left-1/2 z-10 w-[min(90%,800px)] -translate-x-1/2 bg-surface/95 px-3 py-2 backdrop-blur-sm">
           <div className="flex items-center gap-2 text-xs">
             <span
-              className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase"
-              style={{ background: `${pathColor}22`, color: pathColor }}
+              className="chip font-semibold uppercase"
+              style={{ background: tint(pathColor, 15), color: pathColor }}
             >
               {activeTrace.kind}
             </span>
-            <span className="truncate text-zinc-200">{activeTrace.input}</span>
+            <span className="truncate text-strong">{activeTrace.input}</span>
             {usageLabel(activeTrace.usage) && (
-              <span className="shrink-0 rounded-sm bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+              <span className="chip shrink-0 bg-raised font-mono font-normal text-muted">
                 {usageLabel(activeTrace.usage)}
               </span>
             )}
@@ -389,12 +393,12 @@ export function GraphView({
               onClick={closeTrace}
               aria-label="Close path replay"
               title="Close path replay"
-              className="ml-auto shrink-0 rounded-sm px-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              className="icon-btn ml-auto shrink-0"
             >
               ✕
             </button>
           </div>
-          <div className="mt-1 overflow-x-auto whitespace-nowrap font-mono text-[11px] text-zinc-400">
+          <div className="mt-1 overflow-x-auto font-mono text-[11px] whitespace-nowrap text-muted">
             {activeTrace.notation}
           </div>
           {hopCount > 0 && (
@@ -404,7 +408,7 @@ export function GraphView({
                   if (progress >= 100) setProgress(0);
                   setPlaying(!playing);
                 }}
-                className="shrink-0 rounded-sm px-1 text-sm hover:bg-zinc-800"
+                className="icon-btn shrink-0 text-sm"
                 style={{ color: pathColor }}
                 title={playing ? "Pause" : "Play the traversal"}
               >
@@ -420,10 +424,10 @@ export function GraphView({
                   setPlaying(false);
                   setProgress(Number(e.target.value));
                 }}
-                className="h-1 w-full cursor-pointer appearance-none rounded-sm bg-zinc-700"
+                className="h-1 w-full cursor-pointer appearance-none rounded-full bg-raised"
                 style={{ accentColor: pathColor }}
               />
-              <span className="w-14 shrink-0 text-right font-mono text-[10px] text-zinc-500">
+              <span className="w-14 shrink-0 text-right font-mono text-[10px] text-muted">
                 {Math.min(hopCount, hopProgress).toFixed(1)}/{hopCount} hops
               </span>
             </div>
@@ -432,33 +436,21 @@ export function GraphView({
       )}
 
       {!activeTrace && (
-        <div className="absolute bottom-3 left-3 z-10 text-[11px] text-zinc-600">
+        <div className="absolute bottom-3 left-3 z-10 text-[11px] text-muted">
           {nodes.length} concepts · {links.length} links — drag background to pan · scroll to zoom ·
           click to open
         </div>
       )}
 
       {/* Camera controls */}
-      <div className="absolute bottom-3 right-3 z-10 flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/90 text-sm">
-        <button
-          onClick={() => zoomBy(1.3)}
-          title="Zoom in"
-          className="px-2.5 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-        >
+      <div className="card absolute right-3 bottom-3 z-10 flex flex-col gap-0.5 bg-surface/90 p-1 text-sm backdrop-blur-sm">
+        <button onClick={() => zoomBy(1.3)} title="Zoom in" className="icon-btn h-8 min-w-8">
           +
         </button>
-        <button
-          onClick={() => zoomBy(1 / 1.3)}
-          title="Zoom out"
-          className="border-t border-zinc-800 px-2.5 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-        >
+        <button onClick={() => zoomBy(1 / 1.3)} title="Zoom out" className="icon-btn h-8 min-w-8">
           −
         </button>
-        <button
-          onClick={resetCamera}
-          title="Reset camera"
-          className="border-t border-zinc-800 px-2.5 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-        >
+        <button onClick={resetCamera} title="Reset camera" className="icon-btn h-8 min-w-8">
           ⌖
         </button>
       </div>
@@ -480,7 +472,7 @@ export function GraphView({
             markerHeight="7"
             orient="auto-start-reverse"
           >
-            <path d="M 0 1 L 9 5 L 0 9 z" fill={pathColor} />
+            <path d="M 0 1 L 9 5 L 0 9 z" style={{ fill: pathColor }} />
           </marker>
         </defs>
         <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
@@ -495,7 +487,7 @@ export function GraphView({
                 y1={l.source.y}
                 x2={l.target.x}
                 y2={l.target.y}
-                stroke="#3f3f46"
+                style={{ stroke: "var(--line-strong)" }}
                 strokeWidth={1.2 / view.k}
                 opacity={dim ? 0.1 : 0.7}
               />
@@ -524,7 +516,7 @@ export function GraphView({
                 <path
                   d={`M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`}
                   fill="none"
-                  stroke={pathColor}
+                  style={{ stroke: pathColor }}
                   strokeWidth={2 / view.k}
                   // Partial hops draw along the curve (pathLength-normalized reveal);
                   // completed hops keep the dashed style + arrowhead.
@@ -539,15 +531,14 @@ export function GraphView({
                       cx={cx}
                       cy={cy}
                       r={9 / view.k}
-                      fill="#18181b"
-                      stroke={pathColor}
+                      style={{ fill: "var(--surface)", stroke: pathColor }}
                       strokeWidth={1.5 / view.k}
                     />
                     <text
                       x={cx}
                       y={cy + 3.5 / view.k}
                       textAnchor="middle"
-                      fill={pathColor}
+                      style={{ fill: pathColor }}
                       fontSize={10 / view.k}
                       fontWeight={700}
                     >
@@ -560,7 +551,7 @@ export function GraphView({
           })}
 
           {nodes.map((n) => {
-            const color = typeColors.get(n.type ?? "unknown") ?? "#64c8ff";
+            const color = typeColors.get(n.type ?? "unknown") ?? PALETTE[0];
             const dim = dimmedBy(n.path);
             const onPath = pathSet.has(n.path);
             // Ring lights up once the scrubber reaches this node's first visit.
@@ -586,7 +577,7 @@ export function GraphView({
                   <circle
                     r={r + 3}
                     fill="none"
-                    stroke="#ef4444"
+                    style={{ stroke: "var(--red)" }}
                     strokeWidth={1.5 / view.k}
                     opacity={0.8}
                   />
@@ -595,7 +586,7 @@ export function GraphView({
                   <circle
                     r={r + 5}
                     fill="none"
-                    stroke={pathColor}
+                    style={{ stroke: pathColor }}
                     strokeWidth={2 / view.k}
                     opacity={0.9}
                   />
@@ -604,14 +595,14 @@ export function GraphView({
                   <circle
                     r={r + 4}
                     fill="none"
-                    stroke={pathColor}
+                    style={{ stroke: pathColor }}
                     strokeWidth={1 / view.k}
                     strokeDasharray={`${3 / view.k} ${3 / view.k}`}
                     opacity={0.5}
                   />
                 )}
-                <circle r={r + 5} fill={color} opacity={hovered === n.path ? 0.25 : 0} />
-                <circle r={r} fill={color} stroke="#18181b" strokeWidth={1.5} />
+                <circle r={r + 5} style={{ fill: color }} opacity={hovered === n.path ? 0.25 : 0} />
+                <circle r={r} style={{ fill: color, stroke: "var(--surface)" }} strokeWidth={1.5} />
                 {(showAllLabels ||
                   hovered === n.path ||
                   onPath ||
@@ -619,9 +610,8 @@ export function GraphView({
                   <text
                     y={r + 14 / view.k}
                     textAnchor="middle"
-                    fill="#d4d4d8"
                     fontSize={12 / view.k}
-                    style={{ pointerEvents: "none", userSelect: "none" }}
+                    style={{ fill: "var(--fg)", pointerEvents: "none", userSelect: "none" }}
                   >
                     {n.title ?? n.path.split("/").pop()}
                   </text>

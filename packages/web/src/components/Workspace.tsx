@@ -85,7 +85,7 @@ export function Workspace({
           sizes: { ...layout.sizes, ...(meta.requestedLayout ?? sizes) },
         });
       }}
-      className="min-h-0 flex-1"
+      className="min-h-0 flex-1 px-2 pb-2"
     >
       {visible.map((id, index) => {
         const spec = panels[id];
@@ -93,10 +93,14 @@ export function Workspace({
         return (
           <Fragment key={id}>
             {index > 0 && (
-              <Separator className="w-px bg-zinc-800 outline-hidden transition-colors focus-visible:bg-cyan-500 data-[separator=active]:bg-cyan-500 data-[separator=hover]:bg-cyan-700" />
+              // The gap between two panel cards is the resize handle.
+              <Separator className="mx-0.5 w-1.5 rounded-full outline-hidden transition-colors focus-visible:bg-blue/50 data-[separator=active]:bg-blue/50 data-[separator=hover]:bg-blue/30" />
             )}
             <Panel id={id} minSize={spec.minWidth} className="relative flex h-full flex-col">
-              <section aria-label={spec.title} className="flex h-full min-h-0 flex-col">
+              <section
+                aria-label={spec.title}
+                className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-surface"
+              >
                 <header
                   draggable
                   onDragStart={(e) => {
@@ -106,16 +110,14 @@ export function Workspace({
                   }}
                   onDragEnd={endDrag}
                   title="Drag to move this panel"
-                  className={`flex shrink-0 cursor-grab items-center gap-1.5 border-b border-zinc-800 bg-zinc-900/40 px-2 py-1 text-xs select-none active:cursor-grabbing ${
+                  className={`flex shrink-0 cursor-grab items-center gap-1.5 border-b border-line bg-raised/40 py-1 pr-1 pl-2.5 text-xs select-none active:cursor-grabbing ${
                     dragging === id ? "opacity-50" : ""
                   }`}
                 >
-                  <span aria-hidden className="text-zinc-600">
+                  <span aria-hidden className="text-faint">
                     ⠿
                   </span>
-                  <h2 className="font-semibold tracking-wide text-zinc-400 uppercase">
-                    {spec.title}
-                  </h2>
+                  <h2 className="font-semibold tracking-wide text-muted uppercase">{spec.title}</h2>
                   <div className="ml-auto flex items-center">
                     <PanelButton
                       label={`Move ${spec.title} left`}
@@ -159,8 +161,10 @@ export function Workspace({
                 >
                   {isTarget && (
                     <div
-                      className={`pointer-events-none absolute inset-y-0 w-1/2 border-cyan-400 bg-cyan-500/15 ${
-                        dropTarget?.side === "before" ? "left-0 border-l-4" : "right-0 border-r-4"
+                      className={`pointer-events-none absolute inset-y-0 w-1/2 border-blue bg-blue/15 ${
+                        dropTarget?.side === "before"
+                          ? "left-0 rounded-l-xl border-l-4"
+                          : "right-0 rounded-r-xl border-r-4"
                       }`}
                     />
                   )}
@@ -195,7 +199,7 @@ function PanelButton({
       // The title bar is draggable; keep clicks on its buttons from starting a drag.
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
-      className="rounded-sm px-1.5 py-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 disabled:pointer-events-none disabled:opacity-30"
+      className="icon-btn h-6 min-w-6 text-xs"
     >
       {children}
     </button>

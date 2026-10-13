@@ -28,6 +28,8 @@ export interface FakeLlm {
   script(steps: FakeStep[]): void;
   /** Models listed at /v1/models (for discovery); default: none. */
   models(list: Array<{ id: string; status?: { value: string } }>): void;
+  /** Resolves when the client gives up on a hanging request (cancellation reached the provider). */
+  hangUp(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -38,6 +40,8 @@ export async function startFakeLlm(steps: FakeStep[] = [{ text: "ok" }]): Promis
   let next = 0;
   let modelList: Array<{ id: string; status?: { value: string } }> = [];
   const requests: Array<Record<string, unknown>> = [];
+  let hungUp: () => void = () => {};
+  let hangUp = new Promise<void>((resolve) => (hungUp = resolve));
 
   const server: Server = createServer((req, res) => {
     let raw = "";
@@ -51,7 +55,10 @@ export async function startFakeLlm(steps: FakeStep[] = [{ text: "ok" }]): Promis
       const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
       requests.push(body);
       const step = script[Math.min(next++, script.length - 1)];
-      if ("hang" in step) return; // leave the request open
+      if ("hang" in step) {
+        res.on("close", () => hungUp()); // leave the request open
+        return;
+      }
       if ("status" in step) {
         // retry-after-ms keeps the SDK's own retries (exponential backoff) fast.
         res.writeHead(step.status, { "content-type": "application/json", "retry-after-ms": "1" });
@@ -117,7 +124,9 @@ export async function startFakeLlm(steps: FakeStep[] = [{ text: "ok" }]): Promis
       script = steps;
       next = 0;
       requests.length = 0;
+      hangUp = new Promise<void>((resolve) => (hungUp = resolve));
     },
+    hangUp: () => hangUp,
     models(list) {
       modelList = list;
     },

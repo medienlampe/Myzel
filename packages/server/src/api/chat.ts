@@ -1,9 +1,10 @@
 import express, { type Router } from "express";
 import { z } from "zod";
 import { convertToModelMessages, type UIMessage } from "ai";
-import { streamChat, type KnowledgeBase } from "@myzel/core";
+import { publicErrorMessage, streamChat, type KnowledgeBase } from "@myzel/core";
 import { parseAllowedModels } from "../env.js";
 import { LIMITS } from "../limits.js";
+import { AttachmentError, inlineAttachments } from "./attachments.js";
 
 /**
  * The client sends AI SDK UIMessages. Their internal shape is the SDK's
@@ -54,9 +55,23 @@ export function chatRouter(kb: KnowledgeBase): Router {
       res.status(413).json({ error: `message too long (max ${LIMITS.chatTurn} characters)` });
       return;
     }
+    let inlined;
+    try {
+      inlined = inlineAttachments(messages);
+    } catch (err) {
+      if (!(err instanceof AttachmentError)) throw err;
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    if (inlined.newestTurnChars > LIMITS.chatAttachments) {
+      res.status(413).json({
+        error: `attachments too large (max ${LIMITS.chatAttachments} characters per message)`,
+      });
+      return;
+    }
     // The server is stateless: every request re-sends the whole conversation,
-    // tool results included, and all of it goes to the model.
-    if (JSON.stringify(messages).length > LIMITS.chatConversation) {
+    // tool results and attachments included, and all of it goes to the model.
+    if (JSON.stringify(inlined.messages).length > LIMITS.chatConversation) {
       res.status(413).json({ error: "conversation too long — start a new chat" });
       return;
     }
@@ -72,7 +87,7 @@ export function chatRouter(kb: KnowledgeBase): Router {
 
     let modelMessages;
     try {
-      modelMessages = await convertToModelMessages(messages as unknown as UIMessage[]);
+      modelMessages = await convertToModelMessages(inlined.messages as unknown as UIMessage[]);
     } catch (err) {
       res.status(400).json({ error: `unreadable messages: ${(err as Error).message}` });
       return;
@@ -85,8 +100,19 @@ export function chatRouter(kb: KnowledgeBase): Router {
       if (!res.writableFinished) disconnect.abort();
     });
 
-    const { result } = await streamChat(kb, modelMessages, { model, signal: disconnect.signal });
-    result.pipeUIMessageStreamToResponse(res);
+    // A run that cannot start (endpoint down, model discovery failing) must
+    // reach the UI with its reason — the generic error handler would only say
+    // "internal error". streamChat has already logged the full error.
+    let result;
+    try {
+      ({ result } = await streamChat(kb, modelMessages, { model, signal: disconnect.signal }));
+    } catch (err) {
+      res.status(502).json({ error: publicErrorMessage(err) });
+      return;
+    }
+    // A run can also fail mid-stream (endpoint gone, provider error). The SDK
+    // would show "An error occurred."; send the same public reason instead.
+    result.pipeUIMessageStreamToResponse(res, { onError: (err) => publicErrorMessage(err) });
   });
 
   return router;

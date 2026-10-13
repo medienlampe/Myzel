@@ -2,9 +2,9 @@
 
 # Myzel 🍄
 
-**Memory that grows.**
+**Your assistants forget. Myzel remembers.**
 
-Long-term memory for your AI assistants, stored as plain markdown files you own.
+A self-organizing knowledge network for your AI tools, kept as plain markdown you own.
 
 [![CI](https://github.com/medienlampe/Myzel/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/medienlampe/Myzel/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmedienlampe%2FMyzel%2Fbadges%2Fcoverage.json)](https://github.com/medienlampe/Myzel/actions/workflows/ci.yml)
@@ -22,17 +22,23 @@ Long-term memory for your AI assistants, stored as plain markdown files you own.
 
 ---
 
-Your AI assistant forgets everything when the session ends. Explain your deploy process on Monday
-and you explain it again on Tuesday.
+_Myzel_ is German for mycelium: the network under the forest floor that connects the trees and
+carries what they need from one to the next. This is that network for your AI tools. Every
+assistant you connect writes into the same web of linked notes, and every one can draw from it, so
+what you explained to Claude Code yesterday is something Cursor already knows today.
 
-Myzel gives it a place to write things down and look them up later:
+- **One memory, every client:** anything that speaks MCP can connect: Claude Code, Claude Desktop,
+  Cursor and more.
+- **Files, not a database:** each fact is a markdown file. Open it in your editor, `grep` it, review
+  changes in git. If you ever stop using Myzel, nothing is locked in.
+- **It does the filing:** say _"remember this"_ and Myzel finds where the fact belongs, links it to
+  what it relates to and replaces what it contradicts.
+- **Runs on a model you pick:** the bookkeeping happens on a model of your choice, so a cheap API or
+  a local model on your own machine is plenty.
 
-- **Works with any MCP client:** Claude Code, Claude Desktop, Cursor and others.
-- **Plain markdown on disk:** read it, edit it, `grep` it, keep it in git. Delete Myzel tomorrow and
-  your knowledge is still there.
-- **Organizes itself:** your assistant just says _"remember this"_; Myzel decides where the fact
-  belongs and links it to related ones.
-- **Cheap to run:** the work happens on a model of your choice, and a local one is fine.
+<p align="center">
+  <img src="docs/images/myzel-dark.png" alt="The Myzel web UI in dark mode: the explorer tree on the left, a concept in the middle, and the agent chat on the right answering a question with the tools it used" width="100%">
+</p>
 
 > [!NOTE]
 > Myzel started as a fork of [**thecodacus/understory**](https://github.com/thecodacus/understory)
@@ -142,11 +148,14 @@ Three panels side by side:
   what the View panel shows.
 - **View:** the open file, the log or the **graph**, where every concept is a dot and every link a
   line. Dots ringed in red are orphans that nothing links to yet.
-- **Agent chat:** talk to Myzel's agent directly and watch each step it takes.
+- **Agent chat:** talk to Myzel's agent directly and watch each step it takes. Markdown is
+  formatted as you type (Enter sends, Shift+Enter starts a new line), text files can be attached
+  by drag and drop, and a run can be stopped or retried.
 
 Drag a panel's title bar to rearrange the panels (put the chat in the middle, say), drag the borders
 to resize and close or reopen panels from the top bar. The **←** / **→** buttons move a panel from
 the keyboard and **Reset layout** restores the default. The arrangement is remembered per browser.
+The UI uses Solarized colors and follows your system's light or dark setting.
 
 ## How it works
 
@@ -228,7 +237,7 @@ pnpm --filter @myzel/web dev
 ### Tests
 
 ```bash
-make test       # 335 tests: core 149, server 130, web 56
+make test       # 362 tests: core 149, server 137, web 76
 make coverage   # the same with coverage; fails if any package drops below 80%
                 # (statements, branches, functions, lines); reports in packages/*/coverage/
 ```

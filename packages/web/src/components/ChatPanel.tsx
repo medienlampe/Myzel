@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Chat, useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { MarkdownRenderer } from "../components/MarkdownRenderer";
+import { ChatInput, FileIcon } from "./ChatInput";
 import { apiUrl, authHeaders } from "../api";
 import type { AppConfig } from "../api";
 
@@ -22,6 +23,26 @@ export function createChat(onRunEnd: () => void): Chat<UIMessage> {
 const WRITE_TOOLS = new Set(["write_concept", "patch_concept", "delete_concept"]);
 
 /**
+ * The transport puts the raw response body into the error message; the server
+ * answers failures with `{ error }`, so show just that text.
+ */
+export function chatErrorText(error: Error): string {
+  try {
+    const body: unknown = JSON.parse(error.message);
+    if (
+      body &&
+      typeof body === "object" &&
+      typeof (body as { error?: unknown }).error === "string"
+    ) {
+      return (body as { error: string }).error;
+    }
+  } catch {
+    // Not JSON — a network error or a plain-text body.
+  }
+  return error.message || "The request failed.";
+}
+
+/**
  * Chat with the same agent the MCP server runs. Tool calls render inline —
  * watching which tools fire on which files is how we test the agent.
  */
@@ -34,11 +55,10 @@ export function ChatPanel({
   config: AppConfig | null;
   onOpenConcept: (path: string) => void;
 }) {
-  const [input, setInput] = useState("");
   const [model, setModel] = useState("");
   // The transport is fixed when the chat is created, so per-request values
   // (the model choice) travel with each sendMessage call.
-  const { messages, sendMessage, status, error } = useChat({ chat });
+  const { messages, sendMessage, regenerate, stop, status, error } = useChat({ chat });
   const busy = status === "submitted" || status === "streaming";
   // A run that times out or is cancelled ends with an "abort", not an error:
   // without this the chat would just stop, with no answer and no explanation.
@@ -53,7 +73,7 @@ export function ChatPanel({
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {messages.length === 0 && (
-          <p className="p-4 text-sm text-zinc-500">
+          <p className="p-4 text-sm text-muted">
             Test the knowledge agent here — ask a question, or tell it something worth remembering.
             Tool calls show inline so you can watch it work.
           </p>
@@ -66,10 +86,21 @@ export function ChatPanel({
                   <div
                     key={i}
                     className={`markdown inline-block max-w-[95%] rounded-xl px-3 py-2 text-left text-sm ${
-                      m.role === "user" ? "bg-cyan-900/50" : "bg-zinc-900 border border-zinc-800"
+                      m.role === "user" ? "bg-raised text-strong" : "border border-line"
                     }`}
                   >
                     <MarkdownRenderer>{part.text}</MarkdownRenderer>
+                  </div>
+                );
+              }
+              if (part.type === "file") {
+                return (
+                  <div
+                    key={i}
+                    className="my-1 inline-flex max-w-[95%] items-center gap-1.5 rounded-lg border border-line bg-raised/50 px-2 py-1 text-xs text-fg"
+                  >
+                    <FileIcon />
+                    <span className="truncate">{part.filename ?? "attachment"}</span>
                   </div>
                 );
               }
@@ -87,8 +118,8 @@ export function ChatPanel({
                     key={i}
                     className={`my-1 flex items-center gap-2 rounded-lg border px-2 py-1 font-mono text-xs ${
                       WRITE_TOOLS.has(toolName)
-                        ? "border-amber-800/60 bg-amber-950/30 text-amber-300"
-                        : "border-zinc-800 bg-zinc-900/60 text-zinc-400"
+                        ? "border-yellow/40 bg-yellow/10 text-yellow"
+                        : "border-line bg-raised/50 text-muted"
                     }`}
                   >
                     <span>{p.state === "output-available" ? "✓" : "…"}</span>
@@ -96,13 +127,13 @@ export function ChatPanel({
                     {filePath && (
                       <button
                         onClick={() => onOpenConcept(filePath)}
-                        className="truncate text-cyan-400 hover:underline"
+                        className="truncate text-blue underline-offset-2 hover:underline"
                       >
                         {filePath}
                       </button>
                     )}
                     {!filePath && typeof p.input?.query === "string" && (
-                      <span className="truncate text-zinc-500">"{String(p.input.query)}"</span>
+                      <span className="truncate text-muted">"{String(p.input.query)}"</span>
                     )}
                   </div>
                 );
@@ -111,75 +142,44 @@ export function ChatPanel({
             })}
           </div>
         ))}
-        <div aria-live="polite" className="text-xs text-zinc-500">
+        <div aria-live="polite" className="text-xs text-muted">
           {busy && <span className="animate-pulse">agent working…</span>}
         </div>
         {error && !busy && (
-          <p role="alert" className="text-xs text-red-400">
-            {error.message || "The request failed."}
+          <p role="alert" className="text-xs text-red">
+            {chatErrorText(error)}
           </p>
         )}
         {unanswered && (
-          <p role="alert" className="text-xs text-amber-400">
+          <p role="alert" className="text-xs text-yellow">
             No answer — the run was stopped, timed out (LLM_TIMEOUT) or used up its step budget
             (LLM_MAX_STEPS).
           </p>
         )}
+        {(error || unanswered) && !busy && (
+          // Resends the last user turn; a partial assistant answer is replaced.
+          <button
+            onClick={() => void regenerate({ body: { model: model || undefined } })}
+            className="btn-ghost border border-line-strong/70"
+          >
+            Retry
+          </button>
+        )}
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!input.trim() || busy) return;
-          sendMessage({ text: input }, { body: { model: model || undefined } });
-          setInput("");
+      <ChatInput
+        busy={busy}
+        config={config}
+        model={model}
+        onModelChange={setModel}
+        // Aborting the request closes the connection; the server then aborts the run.
+        onStop={() => void stop()}
+        onSend={(text, files) => {
+          const body = { model: model || undefined };
+          if (text.trim()) sendMessage({ text, files }, { body });
+          else sendMessage({ files }, { body });
         }}
-        className="border-t border-zinc-800 p-3"
-      >
-        <div className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask or teach the knowledge base…"
-            aria-label="Message the agent"
-            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-hidden focus:border-cyan-600"
-          />
-          <button
-            type="submit"
-            disabled={busy || !input.trim()}
-            className="rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-600 disabled:opacity-40"
-          >
-            Send
-          </button>
-        </div>
-        {config && (
-          <div className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-500">
-            <span>model</span>
-            {config.modelOverride ? (
-              <input
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder={config.model}
-                aria-label="Model override"
-                className="w-40 rounded-sm border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-zinc-300 outline-hidden focus:border-cyan-600"
-              />
-            ) : (
-              <span
-                title="The server decides the model. Set ALLOWED_MODELS to pick one here."
-                className="text-zinc-400"
-              >
-                {config.model || "auto"}
-              </span>
-            )}
-            {config.fallbackConfigured && (
-              <span
-                title="Fallback model configured"
-                className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400"
-              />
-            )}
-          </div>
-        )}
-      </form>
+      />
     </div>
   );
 }
