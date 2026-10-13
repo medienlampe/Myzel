@@ -178,6 +178,25 @@
 .markdown strong {
   @apply text-strong;
 }
+/* GFM footnotes (OKF v0.2 attributes claims to sources with them). */
+.markdown section[data-footnotes] {
+  @apply mt-6 border-t border-line pt-2 text-sm text-muted;
+}
+.markdown section[data-footnotes] ol {
+  @apply list-decimal;
+}
+/* The "Footnotes" heading is for screen readers, as GitHub renders it. */
+.markdown section[data-footnotes] > h2 {
+  @apply sr-only;
+}
+.markdown [data-footnote-ref] {
+  @apply px-0.5;
+}
+/* "↩" would otherwise be drawn as a colour emoji on some systems. */
+.markdown [data-footnote-backref] {
+  font-variant-emoji: text;
+  @apply no-underline;
+}
 
 /*
   Shiki renders both Solarized themes as CSS variables; pick the one matching

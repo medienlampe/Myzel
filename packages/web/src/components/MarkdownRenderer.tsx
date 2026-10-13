@@ -53,6 +53,11 @@ const sanitizeSchema = {
     th: [...(defaultSchema.attributes?.th || []), "className"],
     td: [...(defaultSchema.attributes?.td || []), "className"],
   },
+  // remark-rehype already prefixes the only ids markdown can produce
+  // (footnotes) with "user-content-", hrefs included; prefixing ids a second
+  // time here would leave every footnote link pointing nowhere. Raw HTML is
+  // not parsed, so no other id can reach the page.
+  clobberPrefix: "",
   // A flat list: hast-util-sanitize compares entries as strings, so a nested
   // array silently matches nothing and strips every external link.
   protocols: {
@@ -118,12 +123,19 @@ function highlightCode(highlighter: Highlighter, code: string, language: string)
 
 const LINK_CLASS = "text-blue underline-offset-2 hover:underline";
 
-function Link({ href, children }: React.ComponentProps<"a">) {
+function Link({
+  href,
+  children,
+  node: _node,
+  // Footnote links carry their id and data-footnote-* attributes in here.
+  ...rest
+}: React.ComponentProps<"a"> & { node?: unknown }) {
   const { onNavigate, onNavigateClick } = useContext(RenderContext);
   const resolved = href && onNavigate ? onNavigate(href) : null;
   if (resolved !== null) {
     return (
       <a
+        {...rest}
         href={resolved}
         onClick={(e) => {
           e.preventDefault();
@@ -138,13 +150,13 @@ function Link({ href, children }: React.ComponentProps<"a">) {
   // An in-page anchor stays in the page; anything else leaves the app.
   if (href?.startsWith("#")) {
     return (
-      <a href={href} className={LINK_CLASS}>
+      <a {...rest} href={href} className={LINK_CLASS}>
         {children}
       </a>
     );
   }
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+    <a {...rest} href={href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
       {children}
     </a>
   );

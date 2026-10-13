@@ -40,6 +40,23 @@ describe("LogView", () => {
   });
 });
 
+describe("footnotes", () => {
+  it("links each footnote reference to its note and back (OKF v0.2 per-claim attribution)", async () => {
+    const { container } = render(
+      <MarkdownRenderer>
+        {"Charges settle nightly.[^runbook]\n\n[^runbook]: Billing runbook"}
+      </MarkdownRenderer>
+    );
+    const ref = await screen.findByText("1");
+    const note = container.querySelector(ref.getAttribute("href")!);
+    expect(note).toHaveTextContent("Billing runbook");
+    const back = container.querySelector("[data-footnote-backref]")!;
+    expect(container.querySelector(back.getAttribute("href")!)).toBe(ref);
+    expect(ref).toHaveAttribute("data-footnote-ref");
+    expect(ref).not.toHaveAttribute("target");
+  });
+});
+
 describe("ConceptView", () => {
   it("shows the frontmatter, survives odd values and resolves relative links", async () => {
     const onNavigate = vi.fn();
