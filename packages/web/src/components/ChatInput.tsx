@@ -36,6 +36,11 @@ export function ChatInput({
   onStop: () => void;
 }) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Characters attached or being read. A ref, not derived from state: two
+  // overlapping drops or pastes must both count against the limit.
+  const attachedChars = useRef(0);
+  // Files still being read; sending meanwhile would leave them for the next message.
+  const [reading, setReading] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
@@ -96,26 +101,27 @@ export function ChatInput({
     editor,
     selector: ({ editor }) => !editor || editor.getText().trim() === "",
   });
-  const canSend = !busy && (!empty || attachments.length > 0);
+  const canSend = !busy && reading === 0 && (!empty || attachments.length > 0);
 
   async function addFiles(files: File[]) {
     if (files.length === 0) return;
     const added: Attachment[] = [];
     const problems: string[] = [];
-    let total = attachments.reduce((sum, a) => sum + a.chars, 0);
+    setReading((n) => n + 1);
     for (const file of files) {
       try {
         const attachment = await readAttachment(file, limit);
-        if (total + attachment.chars > limit) {
+        if (attachedChars.current + attachment.chars > limit) {
           problems.push(`${file.name} would exceed ${formatChars(limit)} of attachments`);
           continue;
         }
-        total += attachment.chars;
+        attachedChars.current += attachment.chars;
         added.push(attachment);
       } catch (err) {
         problems.push((err as Error).message);
       }
     }
+    setReading((n) => n - 1);
     setAttachments((current) => [...current, ...added]);
     setNotice(problems.length ? `${problems.join("; ")} — only text files can be attached.` : null);
   }
@@ -128,6 +134,7 @@ export function ChatInput({
     );
     editor.commands.clearContent(true);
     setAttachments([]);
+    attachedChars.current = 0;
     setNotice(null);
   }
 
@@ -183,7 +190,10 @@ export function ChatInput({
                 <span className="shrink-0 text-muted">{formatChars(a.chars)}</span>
                 <button
                   type="button"
-                  onClick={() => setAttachments((current) => current.filter((_, j) => j !== i))}
+                  onClick={() => {
+                    attachedChars.current -= a.chars;
+                    setAttachments((current) => current.filter((_, j) => j !== i));
+                  }}
                   aria-label={`Remove ${a.part.filename}`}
                   className="icon-btn h-5 min-w-5 px-1"
                 >

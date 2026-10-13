@@ -42,7 +42,9 @@ export default function App() {
   const [report, setReport] = useState<ConformanceReport | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [view, setView] = useState<View>({ kind: "empty" });
-  const [concept, setConcept] = useState<Concept | null>(null);
+  // Tagged with the path it was requested for (the server returns the canonical
+  // one), so the previous concept is not shown while the next one loads.
+  const [loaded, setLoaded] = useState<{ path: string; concept: Concept } | null>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [layout, setLayout] = useState<LayoutState>(loadLayout);
@@ -103,7 +105,7 @@ export default function App() {
     let current = true;
     api
       .concept(view.path)
-      .then((c) => current && setConcept(c))
+      .then((c) => current && setLoaded({ path: view.path, concept: c }))
       .catch((e) => current && setError(String(e)));
     return () => {
       current = false;
@@ -120,6 +122,7 @@ export default function App() {
 
   // Created once, after onMutation (stable: its only dependency never changes).
   const [chat] = useState(() => createChat(onMutation));
+  const [chatModel, setChatModel] = useState("");
 
   // Results for a cleared query are simply not shown, rather than reset from
   // inside the effect (which would cost an extra render per keystroke).
@@ -303,9 +306,13 @@ export default function App() {
           <p>Select a concept, or ask the agent.</p>
         </div>
       )}
-      {!error && view.kind === "concept" && concept && (
-        <ConceptView concept={concept} onNavigate={openConcept} />
-      )}
+      {!error &&
+        view.kind === "concept" &&
+        (loaded?.path === view.path ? (
+          <ConceptView concept={loaded.concept} onNavigate={openConcept} />
+        ) : (
+          <p className="p-6 text-sm text-faint">Loading…</p>
+        ))}
       {!error && view.kind === "log" && <LogView entries={log} onNavigate={openConcept} />}
       {!error && view.kind === "graph" && (
         <GraphView refreshKey={graphRefreshKey} onNavigate={openConcept} />
@@ -320,7 +327,15 @@ export default function App() {
     chat: {
       title: "Agent chat",
       minWidth: 280,
-      content: <ChatPanel chat={chat} config={config} onOpenConcept={openConcept} />,
+      content: (
+        <ChatPanel
+          chat={chat}
+          config={config}
+          model={chatModel}
+          onModelChange={setChatModel}
+          onOpenConcept={openConcept}
+        />
+      ),
     },
   };
 

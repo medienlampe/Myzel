@@ -35,16 +35,18 @@ export async function searchBundle(
     // Frontmatter is user data: `type: 123` parses as a number, not a string.
     const type = typeof fm.type === "string" ? fm.type : undefined;
     if (options.type && type?.toLowerCase() !== options.type.toLowerCase()) continue;
+    // Only strings: `title: {toString: 1}` would otherwise throw and fail the whole search.
+    const tagList = Array.isArray(fm.tags)
+      ? fm.tags.filter((t): t is string => typeof t === "string")
+      : [];
     if (options.tags?.length) {
-      const conceptTags = (Array.isArray(fm.tags) ? fm.tags : []).map((t) =>
-        String(t).toLowerCase()
-      );
+      const conceptTags = tagList.map((t) => t.toLowerCase());
       if (!options.tags.every((t) => conceptTags.includes(t.toLowerCase()))) continue;
     }
 
-    const title = (fm.title ?? "").toString().toLowerCase();
-    const description = (fm.description ?? "").toString().toLowerCase();
-    const tags = (Array.isArray(fm.tags) ? fm.tags : []).join(" ").toLowerCase();
+    const title = (typeof fm.title === "string" ? fm.title : "").toLowerCase();
+    const description = (typeof fm.description === "string" ? fm.description : "").toLowerCase();
+    const tags = tagList.join(" ").toLowerCase();
     const body = concept.body.toLowerCase();
     const pathLower = conceptPath.toLowerCase();
 

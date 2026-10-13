@@ -3,7 +3,7 @@ import type { CorsOptions } from "cors";
 import type { NextFunction, Request, Response } from "express";
 
 /**
- * Network-level guards for /mcp and /api.
+ * Network-level guards for /mcp, /api and /admin.
  *
  * The threat these close: Myzel holds a personal memory and, by default,
  * needs no credentials. Without an Origin check, any web page the user happens
@@ -98,7 +98,7 @@ export function isAllowedOrigin(origin: string, hostHeader: string, allowed: str
   }
 }
 
-/** Express middleware enforcing the policy above. Mount on /mcp and /api. */
+/** Express middleware enforcing the policy above. Mount on /mcp, /api and /admin. */
 export function netGuard(config: NetGuardConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const host = String(req.headers.host ?? "");
@@ -135,7 +135,7 @@ const CORS_BASE: CorsOptions = {
     "Mcp-Protocol-Version",
     "Last-Event-ID",
   ],
-  methods: ["GET", "POST", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 };
 
 /**

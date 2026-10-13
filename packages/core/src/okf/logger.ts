@@ -64,7 +64,7 @@ async function readRaw(logPath: string): Promise<string> {
 function parseSections(raw: string): LogSection[] {
   const sections: LogSection[] = [];
   let current: LogSection | null = null;
-  for (const line of raw.split("\n")) {
+  for (const line of raw.split(/\r?\n/)) {
     const heading = line.match(DATE_HEADING);
     if (heading) {
       current = { date: heading[1], entries: [] };

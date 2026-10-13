@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+import { setAdminToken, setAuthToken } from "../src/api";
 
 // jsdom lacks a few browser APIs the UI relies on.
 class ResizeObserverStub {
@@ -33,6 +34,9 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  // The tokens also live in module state, which outlasts a single test.
+  setAuthToken("");
+  setAdminToken("");
   sessionStorage.clear();
   localStorage.clear();
 });

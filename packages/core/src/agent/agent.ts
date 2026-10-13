@@ -238,7 +238,7 @@ export async function streamChat(
         if (recorder.steps.length === 0) return; // same rule as onEnd
         const outcome = filesChanged.size > 0 ? "partial" : "failed";
         await traceStore(kb).save(
-          recorder.finalize("chat", input, errorMessage(error), outcome, modelChain)
+          recorder.finalize("chat", input, publicErrorMessage(error), outcome, modelChain)
         );
       },
       onAbort: async () => {
@@ -249,10 +249,12 @@ export async function streamChat(
     });
     return { result, filesChanged };
   } catch (err) {
-    const outcome = filesChanged.size > 0 ? "partial" : "failed";
-    await traceStore(kb).save(
-      recorder.finalize("chat", input, errorMessage(err), outcome, modelChain)
-    );
+    if (recorder.steps.length > 0) {
+      const outcome = filesChanged.size > 0 ? "partial" : "failed";
+      await traceStore(kb).save(
+        recorder.finalize("chat", input, errorMessage(err), outcome, modelChain)
+      );
+    }
     throw err;
   }
 }

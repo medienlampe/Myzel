@@ -75,16 +75,6 @@ export interface MarkdownRendererProps {
   onNavigateClick?: (path: string) => void;
 }
 
-/**
- * Shared markdown renderer with:
- * - GFM (tables, strikethrough, task lists) via remark-gfm
- * - XSS sanitization via rehype-sanitize
- * - Syntax highlighting via Shiki (used directly in code component, NOT rehypeShiki)
- * - Custom table styling
- *
- * Uses createHighlighterCore with the JavaScript regex engine (no WASM)
- * per Shiki best practices for web applications.
- */
 type Highlighter = Awaited<typeof highlighterPromise>;
 
 /**
@@ -219,6 +209,16 @@ const REHYPE_PLUGINS: Parameters<typeof ReactMarkdown>[0]["rehypePlugins"] = [
   [rehypeSanitize, sanitizeSchema],
 ];
 
+/**
+ * Shared markdown renderer with:
+ * - GFM (tables, strikethrough, task lists) via remark-gfm
+ * - XSS sanitization via rehype-sanitize
+ * - Syntax highlighting via Shiki (used directly in code component, NOT rehypeShiki)
+ * - Custom table styling
+ *
+ * Uses createHighlighterCore with the JavaScript regex engine (no WASM)
+ * per Shiki best practices for web applications.
+ */
 export function MarkdownRenderer({
   children,
   className,

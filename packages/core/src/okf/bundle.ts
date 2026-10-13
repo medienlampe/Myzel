@@ -164,7 +164,8 @@ export class Bundle {
   private assertConceptPath(bundlePath: string): void {
     this.assertMarkdown(bundlePath);
     const base = path.posix.basename(bundlePath);
-    if (RESERVED_FILENAMES.has(base)) {
+    // Case-insensitive: on macOS and Windows "/LOG.md" is the same file as log.md.
+    if (RESERVED_FILENAMES.has(base.toLowerCase())) {
       throw new BundleError(
         `"${base}" is a reserved filename (index.md/log.md) and cannot be a concept`,
         "RESERVED_NAME"

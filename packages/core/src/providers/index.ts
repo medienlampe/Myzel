@@ -192,18 +192,25 @@ export async function discoverModel(baseURL: string, apiKey?: string): Promise<s
         signal: AbortSignal.timeout(discoveryTimeoutMs()),
       });
     } catch (err) {
-      const reason = (err as Error).name === "TimeoutError" ? "timed out" : (err as Error).message;
-      throw new Error(`Model discovery failed: ${reason} at ${redactUrl(url)}`, { cause: err });
+      const reason = (err as Error).name === "TimeoutError" ? "timed out" : "unreachable";
+      // The endpoint goes to the server log only: this message reaches clients
+      // and traces, which must not reveal internal hosts.
+      console.error(`[myzel] model discovery at ${redactUrl(url)} failed:`, err);
+      throw new Error(`Model discovery failed: endpoint ${reason}`, { cause: err });
     }
     if (!res.ok) {
-      throw new Error(`Model discovery failed: HTTP ${res.status} at ${redactUrl(url)}`);
+      console.error(`[myzel] model discovery at ${redactUrl(url)} failed: HTTP ${res.status}`);
+      throw new Error(`Model discovery failed: HTTP ${res.status}`);
     }
-    const body = (await res.json()) as {
-      data?: { id: string; status?: { value?: string } }[];
-    };
+    let body: { data?: { id: string; status?: { value?: string } }[] };
+    try {
+      body = (await res.json()) as typeof body;
+    } catch (err) {
+      throw new Error("Model discovery failed: the endpoint did not return JSON", { cause: err });
+    }
     const models = body.data ?? [];
     if (models.length === 0) {
-      throw new Error(`No models listed at ${redactUrl(url)}`);
+      throw new Error("Model discovery failed: no models listed");
     }
     const loaded = models.find((m) => m.status?.value === "loaded");
     return (loaded ?? models[0]).id;

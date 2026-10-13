@@ -1,4 +1,4 @@
-import { parse, stringify } from "yaml";
+import { Document, parse, visit } from "yaml";
 import type { ConceptFrontmatter } from "./types.js";
 
 export interface ParsedDoc {
@@ -57,15 +57,32 @@ export function parseDoc(raw: string): ParsedDoc {
 /**
  * Written in YAML 1.1 style: strings that a 1.1 reader would turn into
  * something else (`yes`, `012`, timestamps) are quoted, so other OKF tools
- * read back exactly what was stored.
+ * read back exactly what was stored. Strings that only the 1.2 core schema
+ * reads differently (`0o17`) are quoted too, so parseDoc gets them back.
  */
 export function serializeDoc(frontmatter: ConceptFrontmatter, body: string): string {
-  const yaml = stringify(frontmatter, { version: "1.1", singleQuote: true });
+  const doc = new Document(frontmatter, { version: "1.1" });
+  visit(doc, {
+    Scalar(_key, node) {
+      if (typeof node.value === "string" && !readsAsString(node.value)) {
+        node.type = "QUOTE_SINGLE";
+      }
+    },
+  });
+  const yaml = doc.toString({ singleQuote: true });
   // parseDoc drops one blank line after the fence as formatting; a body that
   // really starts with a blank line gets one extra so it survives the round trip.
   const content = body.endsWith("\n") ? body : body + "\n";
   const keepBlank = content.trim() !== "" && /^\r?\n/.test(content);
   return `---\n${yaml}---\n${keepBlank ? "\n" : ""}${content}`;
+}
+
+function readsAsString(value: string): boolean {
+  try {
+    return typeof parse(value, { schema: "core" }) === "string";
+  } catch {
+    return false;
+  }
 }
 
 export function hasNonEmptyType(frontmatter: Record<string, unknown>): boolean {

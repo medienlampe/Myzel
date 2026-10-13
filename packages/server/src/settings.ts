@@ -281,6 +281,12 @@ export const SETTINGS: readonly SettingSpec[] = [
 
 const SPEC = new Map(SETTINGS.map((s) => [s.key, s]));
 
+/** Endpoint settings and the key each one is sent. */
+const ENDPOINT_KEYS = [
+  ["LLM_API_BASE_URL", "LLM_API_KEY"],
+  ["LLM_FALLBACK_API_BASE_URL", "LLM_FALLBACK_API_KEY"],
+] as const;
+
 /** A setting as the UI sees it. Secrets never leave the server. */
 export interface SettingView extends SettingSpec {
   /** Where the effective value comes from. */
@@ -455,6 +461,14 @@ export class SettingsStore {
       if (key in next) candidate[key] = next[key];
       else if (this.base[key] === undefined) delete candidate[key];
       else candidate[key] = this.base[key];
+    }
+    // An endpoint other than the environment's must use a key set here too:
+    // otherwise an admin could point the URL at their own host and receive the
+    // environment's key, which was never shown to them.
+    for (const [url, key] of ENDPOINT_KEYS) {
+      if (candidate[url] && candidate[url] !== this.base[url] && !(key in next)) {
+        throw new SettingsError(`changing ${url} requires setting ${key} as well`, 400);
+      }
     }
     try {
       resolveModelConfig(candidate);

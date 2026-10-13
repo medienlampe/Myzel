@@ -74,7 +74,7 @@ export function isRetryableError(err: unknown, retry429?: boolean): boolean {
   const statusCode = getStatusCode(err);
   if (statusCode != null) return isRetryableStatusCode(statusCode, retry429);
 
-  // AI SDK wraps transport failures in RetryError with isRetryable: true.
+  // Network failures reach here as APICallError with isRetryable: true and no status code.
   if (getIsRetryable(err)) return true;
 
   // Walk the error and its cause chain for transport codes.

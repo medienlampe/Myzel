@@ -74,10 +74,13 @@ Untrusted input arrives in five ways:
 content it reads. Treat the admin token like the model API key, or stronger.
 
 - **Only model and behaviour settings** are editable. Network and access settings (`HOST`,
-  `AUTH_TOKEN`, `ADMIN_TOKEN`, `ALLOWED_*`, `TRUST_PROXY`, the bundle paths) are not in the
+  `AUTH_TOKEN`, `ADMIN_TOKEN`, `ALLOWED_ORIGINS`, `ALLOWED_HOSTS`, `TRUST_PROXY`, the bundle paths) are not in the
   catalog, and `SETTINGS_FILE` entries for them are ignored at startup with a warning.
 - **Secrets stay on the server.** API keys are write-only: the API reports whether one is set,
   never its value, and the log names changed settings without values.
+- **A new endpoint needs its key.** Changing `LLM_API_BASE_URL` or `LLM_FALLBACK_API_BASE_URL` is
+  refused unless the matching API key is set on the settings page too, so the key configured in the
+  environment is never sent to an endpoint the admin picked.
 - **Values are validated** before anything is written: URLs must be `http(s)`, durations and counts
   must parse, and no value may contain a line break or control character (they end up in
   environment variables and request headers). A batch whose model setup would not resolve is

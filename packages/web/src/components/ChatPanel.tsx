@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Chat, useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { MarkdownRenderer } from "../components/MarkdownRenderer";
@@ -11,12 +10,19 @@ import type { AppConfig } from "../api";
  * it, and a chat owned by the panel would lose its history and abort a running
  * agent (useChat stops the chats it creates when it unmounts).
  */
-export function createChat(onRunEnd: () => void): Chat<UIMessage> {
+export function createChat(onWrite: () => void): Chat<UIMessage> {
   return new Chat({
     transport: new DefaultChatTransport({ api: apiUrl("/api/chat"), headers: () => authHeaders() }),
     // Fires when a run ends — finished, failed or aborted — even while the
-    // chat panel is closed. The agent may have written files: refresh views.
-    onFinish: () => onRunEnd(),
+    // chat panel is closed. Views refresh when the run may have written: it
+    // called a write tool, or it broke off before saying what it did. A refresh
+    // re-lays out the graph, which a read-only answer should not cause.
+    onFinish: ({ message, isAbort, isDisconnect, isError }) => {
+      const wrote = message.parts.some(
+        (p) => p.type.startsWith("tool-") && WRITE_TOOLS.has(p.type.slice(5))
+      );
+      if (wrote || isAbort || isDisconnect || isError) onWrite();
+    },
   });
 }
 
@@ -49,13 +55,17 @@ export function chatErrorText(error: Error): string {
 export function ChatPanel({
   chat,
   config,
+  model,
+  onModelChange: setModel,
   onOpenConcept,
 }: {
   chat: Chat<UIMessage>;
   config: AppConfig | null;
+  /** Owned by App, like the chat: a remount must not reset the choice. */
+  model: string;
+  onModelChange: (model: string) => void;
   onOpenConcept: (path: string) => void;
 }) {
-  const [model, setModel] = useState("");
   // The transport is fixed when the chat is created, so per-request values
   // (the model choice) travel with each sendMessage call.
   const { messages, sendMessage, regenerate, stop, status, error } = useChat({ chat });

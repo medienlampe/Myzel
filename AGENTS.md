@@ -68,8 +68,10 @@ packages/core/          # zero-server, zero-express. Reusable library.
     dream.ts            #   autonomous consolidation pass (signals → agent instruction)
     trace.ts            #   traversal recording, persisted to <bundle>/.traces/
     untrusted.ts        #   sanitizers for bundle content headed into a prompt
-  src/providers/        # OpenAI-/Anthropic-compatible model config, fallback wrapper, publicErrorMessage
+  src/providers/        # OpenAI-/Anthropic-compatible model config (index.ts), fallback wrapper
+                        #   (fallback.ts), publicErrorMessage (errors.ts)
   src/util/             # parseDuration, truncate, redactUrl
+  src/okf/types.ts      # shared types + RESERVED_FILENAMES (index.md, log.md)
 
 packages/server/        # Express 5 + MCP SDK
   src/index.ts          # bootstrap: mode (single bundle / profiles), startup checks, listen, shutdown
@@ -88,9 +90,13 @@ packages/server/        # Express 5 + MCP SDK
   src/net-guard.ts      # Origin/Host validation + the CORS delegate
   src/rate-limit.ts     # per-client brake on the token-spending routes
   src/mcp/server.ts     # the five MCP tools + seed memory refresh
+  src/mcp/http.ts       # streamable-HTTP transport at /mcp (stateless, one server per request)
+  src/mcp/stdio.ts      # stdio entry point — stdout is the protocol stream (invariant 11)
   src/mcp/seed.ts       # session-start memory overview injected into the CLIENT model
   src/api/browse.ts     # deterministic REST browse API (never costs tokens)
   src/api/chat.ts       # streaming chat for the web UI (aborts the run when the client disconnects)
+  src/api/attachments.ts # chat file uploads: text-only data URLs, inlined and capped
+  bin/                  # myzel, myzel-profiles executables (listed in the package's `files`)
 
 packages/web/           # Vite 8 + React 19 + Tailwind 4
   src/App.tsx           #   data loading, key prompt / profile label, the three panels' content
@@ -98,7 +104,11 @@ packages/web/           # Vite 8 + React 19 + Tailwind 4
   src/reload.ts         #   reloadPage() — its own module so tests can replace it
   src/layout.ts         #   pure layout model: panel order, visibility, widths (persisted in localStorage)
   src/components/Workspace.tsx  # drag & drop + resizable columns (react-resizable-panels v4)
-sample-bundle/          # a small conformant bundle used for dev + tests
+  src/components/SettingsView.tsx  # the settings page (/admin/settings, ADMIN_TOKEN in memory only)
+  src/okf.ts            #   v0.2 family accessors (sources, trust tier, staleness) for the concept view
+  src/attachments.ts / composer-markdown.ts  # chat attachments; TipTap composer → markdown
+sample-bundle/          # a small conformant bundle: source of demo-bundle/, mounted by docker compose
+Dockerfile, docker-compose*.yml  # the published image and the compose setups (see §8)
 scripts/coverage-badge.mjs  # CI: merges coverage summaries into the README badge
 .github/workflows/      # ci.yml + docker.yml, both run the checks in test.yml
 docs/                   # outline.md → user guides (running, configuration, how it works)
@@ -136,11 +146,14 @@ LLM_API_FORMAT=openai LLM_MODEL=deepseek-chat \
 node packages/server/dist/index.js       # → http://localhost:3800
 ```
 
-Dev mode (server on :3800, Vite HMR on :5180 proxying `/api` and `/mcp`): `make dev`. Without
-make, run the two in separate terminals — with an **absolute** `BUNDLE_ROOT`, because
-`pnpm --filter` runs each script inside its package directory:
+Dev mode (server on :3800, Vite HMR on :5180 proxying `/api`, `/mcp` and `/admin`): `make dev`.
+Without make, run three terminals — with an **absolute** `BUNDLE_ROOT`, because `pnpm --filter`
+runs each script inside its package directory. The server imports `@myzel/core` from its `dist/`,
+so core must be built (and rebuilt on change) for the server to start and see edits:
 
 ```bash
+cp -R sample-bundle demo-bundle            # once
+pnpm --filter @myzel/core dev              # tsc --watch
 BUNDLE_ROOT="$PWD/demo-bundle" pnpm --filter @myzel/server dev
 pnpm --filter @myzel/web dev
 ```
@@ -250,7 +263,7 @@ dummy `LLM_*` values are enough to exercise the UI.
 
 ## 6. Testing
 
-- `make test` (= `pnpm test`) runs every package's tests and typechecks its sources and tests.
+- `make test` (builds, then `pnpm test`) runs every package's tests and typechecks its sources and tests.
   `make coverage` (= `pnpm test:coverage`, what CI runs) adds coverage and **fails below 80%**
   statements, branches, functions or lines in any package (`vitest.config.ts`). Only process
   entry points are excluded from coverage, each with the reason in its config.
@@ -287,7 +300,7 @@ dummy `LLM_*` values are enough to exercise the UI.
 | Add a provider / change model resolution | `packages/core/src/providers/index.ts` |
 | Change conformance rules | `packages/core/src/okf/validate.ts` + a test per spec section |
 | Add a panel to the web UI | add its id to `PANEL_IDS` in `packages/web/src/layout.ts` (+ default size), then a `PanelSpec` in `App.tsx` |
-| Change the graph view | `packages/web/src/components/GraphView.tsx` (d3-force, ~600 lines — the largest file in the repo) |
+| Change the graph view | `packages/web/src/components/GraphView.tsx` (d3-force, ~600 lines — the largest source file) |
 
 ---
 
@@ -320,8 +333,9 @@ dummy `LLM_*` values are enough to exercise the UI.
 - **simple-git 4 strips ambient `GIT_*` env vars** unless listed in `allowEnvironment`
   (`okf/git.ts` allows only the commit-identity ones), and refuses `-c` keys it deems unsafe
   unless unlocked. Expect both when changing git calls.
-- **Shutdown drains writes.** SIGTERM/SIGINT stop the HTTP server and await
-  `KnowledgeBase.idle()` (8s cap); the image runs under `tini` so the signal arrives.
+- **Shutdown drains writes.** SIGTERM/SIGINT stop the HTTP server, close connections still open
+  after 3s (aborting their agent runs) and await `KnowledgeBase.idle()` (8s cap); the image runs
+  under `tini` so the signal arrives.
 - **Docker build:** the runtime image holds only `pnpm --filter @myzel/server deploy --prod` output
   (at `/app/server`) plus the web build (at `/app/web/dist`, which the server finds as
   `../../web/dist`). What a package ships is limited by its `files` field — a new runtime file
@@ -333,8 +347,10 @@ dummy `LLM_*` values are enough to exercise the UI.
 - **The settings page writes `process.env` at runtime** (`server/src/settings.ts`). A setting is
   "live" only if the code reads it where it is used, not once at startup — mark it `live: false`
   in the catalog otherwise. Adding a setting to the catalog means adding it to the page: never add
-  network or access settings (`HOST`, tokens, `ALLOWED_*`, `TRUST_PROXY`, bundle paths); the
-  file must not be able to set them either.
+  network or access settings (`HOST`, tokens, `ALLOWED_ORIGINS`/`ALLOWED_HOSTS`, `TRUST_PROXY`, bundle paths); the
+  file must not be able to set them either. A changed endpoint URL is refused unless its API key
+  is set there too — otherwise an admin could redirect the env-configured key to a host
+  of their choosing.
 - **Module-level caches**: `query-cache.ts` and `hot-memory.ts` hold process-global state so it
   survives the per-request `McpServer` instances of the stateless HTTP transport. Both are
   **partitioned by bundle root**. Within one bundle the state is shared by all callers;
@@ -364,7 +380,7 @@ dummy `LLM_*` values are enough to exercise the UI.
 
 ## 9. Environment variables
 
-`BUNDLE_ROOT` is the only required one. See `.env.example` for the full annotated list; the ones
+`BUNDLE_ROOT` (or `PROFILES_ROOT`) is the only required one. See `.env.example` for the full annotated list; the ones
 worth knowing:
 
 | Var | Effect |

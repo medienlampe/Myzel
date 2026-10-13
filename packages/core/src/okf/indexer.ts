@@ -63,8 +63,6 @@ export async function regenerateIndex(bundle: Bundle, dir = "/"): Promise<string
 /** Regenerate index.md for a directory and every ancestor up to the root. */
 export async function regenerateIndexChain(bundle: Bundle, dir: string): Promise<void> {
   let current = bundle.resolve(dir);
-  // If given a file path, start from its directory.
-  if (current.endsWith(".md")) current = path.dirname(current);
   // The directory may have been pruned away — start from the nearest ancestor
   // that still exists (the root always does), or it would be recreated.
   while (current !== bundle.root) {

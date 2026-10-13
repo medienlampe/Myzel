@@ -99,7 +99,13 @@ export function GraphView({
     node?: SimNode;
     lastX: number;
     lastY: number;
+    /** Set once the pointer travels: the release then ends a drag, not a click. */
+    moved: boolean;
   } | null>(null);
+  // The click after a node drag must not open the node — it fires after pointerup.
+  const suppressClickRef = useRef(false);
+  // Only the most recently selected trace may land; a slower earlier answer is dropped.
+  const requestedTraceRef = useRef<string | null>(null);
 
   // Auto-play: sweep the scrubber to 100, then stop.
   useEffect(() => {
@@ -202,18 +208,21 @@ export function GraphView({
   }, [activeTrace]);
 
   const selectTrace = async (id: string) => {
+    requestedTraceRef.current = id;
     let full: QueryTrace;
     try {
       full = await api.trace(id);
     } catch {
       return; // pruned since the list was loaded — nothing to replay
     }
+    if (requestedTraceRef.current !== id) return;
     setActiveTrace(full);
     setProgress(0);
     setPlaying(true); // sweep the path in on selection
   };
 
   const closeTrace = () => {
+    requestedTraceRef.current = null;
     setActiveTrace(null);
     setPlaying(false);
     setProgress(100);
@@ -233,7 +242,14 @@ export function GraphView({
     e.preventDefault();
     // Engage the drag FIRST — capture is an enhancement and may throw
     // (e.g. for synthetic pointers); it must never kill the pan.
-    dragRef.current = { mode: node ? "node" : "pan", node, lastX: e.clientX, lastY: e.clientY };
+    dragRef.current = {
+      mode: node ? "node" : "pan",
+      node,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      moved: false,
+    };
+    suppressClickRef.current = false;
     try {
       (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     } catch {
@@ -250,6 +266,7 @@ export function GraphView({
     const drag = dragRef.current;
     if (!drag) return;
     if (drag.mode === "node" && drag.node) {
+      if (Math.hypot(e.clientX - drag.lastX, e.clientY - drag.lastY) > 3) drag.moved = true;
       const w = toWorld(e.clientX, e.clientY);
       drag.node.fx = w.x;
       drag.node.fy = w.y;
@@ -271,6 +288,7 @@ export function GraphView({
       drag.node.fx = null;
       drag.node.fy = null;
       simRef.current?.alphaTarget(0);
+      suppressClickRef.current = drag.moved;
     }
     dragRef.current = null;
   };
@@ -460,6 +478,7 @@ export function GraphView({
         onPointerDown={(e) => onPointerDown(e)}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         onWheel={onWheel}
       >
         <defs>
@@ -571,7 +590,13 @@ export function GraphView({
                 }}
                 onPointerEnter={() => setHovered(n.path)}
                 onPointerLeave={() => setHovered(null)}
-                onClick={() => onNavigate(n.path)}
+                onClick={() => {
+                  if (suppressClickRef.current) {
+                    suppressClickRef.current = false;
+                    return;
+                  }
+                  onNavigate(n.path);
+                }}
               >
                 {n.links === 0 && (
                   <circle

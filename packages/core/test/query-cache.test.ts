@@ -67,6 +67,15 @@ describe("runQueryCached", () => {
     expect(runner).toHaveBeenCalledTimes(3);
   });
 
+  it("keeps the hot layer when only the exact cache is off", async () => {
+    process.env.QUERY_CACHE = "false";
+    const runner = fakeRunner("deep");
+    const hot = vi.fn().mockResolvedValue("hot answer");
+    const result = await runQueryCached(kb, "q", {}, runner, hot);
+    expect(result.source).toBe("hot");
+    expect(runner).not.toHaveBeenCalled();
+  });
+
   it("expires entries after the TTL", async () => {
     vi.useFakeTimers();
     try {

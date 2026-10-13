@@ -245,7 +245,7 @@ pnpm --filter @myzel/web dev
 ### Tests
 
 ```bash
-make test       # 362 tests: core 149, server 137, web 76
+make test       # build, then every package's tests and typechecks
 make coverage   # the same with coverage; fails if any package drops below 80%
                 # (statements, branches, functions, lines); reports in packages/*/coverage/
 ```

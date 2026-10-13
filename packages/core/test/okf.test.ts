@@ -33,6 +33,11 @@ afterEach(async () => {
 });
 
 describe("frontmatter round-trip", () => {
+  it("quotes strings the YAML 1.2 core schema would retype", () => {
+    const fm = { type: "T", title: "0o17", tags: ["0x1F", "yes"] };
+    expect(parseDoc(serializeDoc(fm, "b")).frontmatter).toEqual(fm);
+  });
+
   it("writes and reads a concept preserving fields, stamping generated (v0.2 §5.2)", async () => {
     const written = await kb.writeConcept(
       "/tables/customers.md",
@@ -126,6 +131,14 @@ describe("frontmatter round-trip", () => {
 });
 
 describe("sandbox", () => {
+  it("refuses reserved names in any case — LOG.md is log.md on macOS and Windows", async () => {
+    for (const p of ["/LOG.md", "/sub/Index.md"]) {
+      await expect(kb.writeConcept(p, { type: "T" }, "x", "s")).rejects.toMatchObject({
+        code: "RESERVED_NAME",
+      });
+    }
+  });
+
   it("rejects .. escapes", () => {
     const bundle = new Bundle(root);
     expect(() => bundle.resolve("/../../etc/passwd")).toThrow(BundleError);
@@ -332,6 +345,11 @@ describe("sandbox", () => {
 });
 
 describe("index regeneration (spec §8)", () => {
+  it("indexes a directory whose name ends in .md", async () => {
+    await kb.writeConcept("/g.md/x.md", { type: "T" }, "x", "s");
+    expect(await fs.readFile(path.join(root, "g.md", "index.md"), "utf-8")).toContain("x.md");
+  });
+
   it("keeps each index entry on one line with a valid link", async () => {
     await kb.writeConcept(
       "/my notes.md",
@@ -429,6 +447,17 @@ describe("log (spec §9)", () => {
     const entries = await readLog(kb.bundle);
     expect(entries.map((e) => e.action)).toEqual(["Deletion", "Update", "Creation"]);
     expect(entries[0].summary).toBe("Removed one.");
+  });
+
+  it("keeps a CRLF log's history on the next append", async () => {
+    await kb.writeConcept("/one.md", { type: "T" }, "x", "Created one.");
+    const file = path.join(root, "log.md");
+    await fs.writeFile(file, (await fs.readFile(file, "utf-8")).replace(/\n/g, "\r\n"));
+    await kb.writeConcept("/two.md", { type: "T" }, "x", "Created two.");
+    expect((await readLog(kb.bundle)).map((e) => e.summary)).toEqual([
+      "Created two.",
+      "Created one.",
+    ]);
   });
 });
 
@@ -683,6 +712,15 @@ describe("OKF v0.2 families (spec §5, §10)", () => {
 });
 
 describe("search", () => {
+  it("survives frontmatter values that are not strings", async () => {
+    await fs.writeFile(
+      path.join(root, "odd.md"),
+      "---\ntype: T\ntitle: {toString: 1}\ntags: [{a: 1}, crm]\n---\nbody\n"
+    );
+    const hits = await kb.search("body", { tags: ["crm"] });
+    expect(hits.map((h) => h.path)).toEqual(["/odd.md"]);
+  });
+
   it("tolerates a non-string type when filtering by type", async () => {
     await fs.writeFile(path.join(root, "odd.md"), "---\ntype: 123\n---\nbody\n");
     await kb.writeConcept("/ok.md", { type: "Note" }, "body", "Added ok.");

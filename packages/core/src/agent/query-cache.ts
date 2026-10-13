@@ -70,20 +70,21 @@ export async function runQueryCached(
     g?: HotGenerate
   ) => Promise<string | null> = hotLookup
 ): Promise<CachedQueryResult> {
-  if (process.env.QUERY_CACHE === "false") {
-    return { ...(await runner(kb, question, options)), cached: false, source: "deep" };
-  }
-
-  const fingerprint = await bundleFingerprint(kb);
-  // The bundle root is part of the key: two empty bundles share a fingerprint,
-  // and without the root they would share cached answers too.
-  const key = createHash("sha256")
-    .update(`${kb.bundle.root}\n${fingerprint}\n${normalize(question)}\n${options.model ?? ""}`)
-    .digest("hex");
+  // QUERY_CACHE=false turns off layer 1 only; HOT_MEMORY has its own switch.
+  const key =
+    process.env.QUERY_CACHE === "false"
+      ? null
+      : // The bundle root is part of the key: two empty bundles share a fingerprint,
+        // and without the root they would share cached answers too.
+        createHash("sha256")
+          .update(
+            `${kb.bundle.root}\n${await bundleFingerprint(kb)}\n${normalize(question)}\n${options.model ?? ""}`
+          )
+          .digest("hex");
 
   // Layer 1: exact cache — same question, unchanged bundle.
-  const hit = cache.get(key);
-  if (hit && hit.expiresAt > Date.now()) {
+  const hit = key === null ? undefined : cache.get(key);
+  if (key !== null && hit && hit.expiresAt > Date.now()) {
     // Refresh recency (Map preserves insertion order — delete + set = LRU touch).
     cache.delete(key);
     cache.set(key, hit);
@@ -98,14 +99,14 @@ export async function runQueryCached(
   const hotAnswer = await hot(kb, question, options);
   if (hotAnswer !== null) {
     const result: QueryResult = { answer: hotAnswer, steps: 0, traceId: "" };
-    store(key, result, ttl, kb.bundle.root);
+    if (key !== null) store(key, result, ttl, kb.bundle.root);
     return { ...result, cached: false, source: "hot" };
   }
 
   // Layer 3: deep memory — the full agent loop. Its answer feeds the hot set.
   const generation = hotGeneration(kb.bundle.root);
   const result = await runner(kb, question, options);
-  store(key, result, ttl, kb.bundle.root);
+  if (key !== null) store(key, result, ttl, kb.bundle.root);
   recordHotQuery(kb.bundle.root, question, result.answer, generation);
   return { ...result, cached: false, source: "deep" };
 }

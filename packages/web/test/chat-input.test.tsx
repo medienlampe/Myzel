@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChatInput } from "../src/components/ChatInput";
-import { ChatPanel, createChat } from "../src/components/ChatPanel";
+import { createChat } from "../src/components/ChatPanel";
+import { TestChatPanel } from "./support/chat-panel";
 import { formatChars, readAttachment } from "../src/attachments";
 import type { AppConfig } from "../src/api";
 import { installFakeApi, uiStream } from "./support/fake-api";
@@ -174,7 +175,7 @@ describe("ChatPanel with attachments", () => {
           { type: "finish" },
         ]),
     });
-    render(<ChatPanel chat={createChat(() => {})} config={CONFIG} onOpenConcept={() => {}} />);
+    render(<TestChatPanel chat={createChat(() => {})} config={CONFIG} onOpenConcept={() => {}} />);
     pick(textFile("runbook.md", "steps"));
     await screen.findByText("runbook.md");
     await typeMessage("remember this");

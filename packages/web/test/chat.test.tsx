@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChatPanel, chatErrorText, createChat } from "../src/components/ChatPanel";
+import { chatErrorText, createChat } from "../src/components/ChatPanel";
+import { TestChatPanel } from "./support/chat-panel";
 import type { AppConfig } from "../src/api";
 import { installFakeApi, json, uiStream } from "./support/fake-api";
 import { typeMessage } from "./support/composer";
@@ -38,11 +39,34 @@ async function send(text: string) {
 }
 
 describe("ChatPanel", () => {
+  it("does not refresh the views after a read-only answer", async () => {
+    installFakeApi({
+      "/api/chat": () =>
+        uiStream([
+          { type: "start" },
+          { type: "start-step" },
+          { type: "text-start", id: "t" },
+          { type: "text-delta", id: "t", delta: "Fridays." },
+          { type: "text-end", id: "t" },
+          { type: "finish-step" },
+          { type: "finish" },
+        ]),
+    });
+    const onRunEnd = vi.fn();
+    render(<TestChatPanel chat={createChat(onRunEnd)} config={CONFIG} onOpenConcept={() => {}} />);
+    await send("When do we deploy?");
+    expect(await screen.findByText("Fridays.")).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Send" });
+    expect(onRunEnd).not.toHaveBeenCalled();
+  });
+
   it("sends a message, shows tool calls and the answer, then refreshes the views", async () => {
     const fake = installFakeApi({ "/api/chat": () => answer("Recorded Dana.") });
     const onRunEnd = vi.fn();
     const onOpenConcept = vi.fn();
-    render(<ChatPanel chat={createChat(onRunEnd)} config={CONFIG} onOpenConcept={onOpenConcept} />);
+    render(
+      <TestChatPanel chat={createChat(onRunEnd)} config={CONFIG} onOpenConcept={onOpenConcept} />
+    );
     expect(screen.getByText(/Test the knowledge agent here/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
 
@@ -60,7 +84,7 @@ describe("ChatPanel", () => {
   it("sends a chosen model when the server allows overrides", async () => {
     const fake = installFakeApi({ "/api/chat": () => answer("ok") });
     render(
-      <ChatPanel
+      <TestChatPanel
         chat={createChat(() => {})}
         config={{ ...CONFIG, modelOverride: true }}
         onOpenConcept={() => {}}
@@ -74,7 +98,7 @@ describe("ChatPanel", () => {
 
   it("shows the server's error text when the request fails", async () => {
     installFakeApi({ "/api/chat": json({ error: "message too long" }, 413) });
-    render(<ChatPanel chat={createChat(() => {})} config={CONFIG} onOpenConcept={() => {}} />);
+    render(<TestChatPanel chat={createChat(() => {})} config={CONFIG} onOpenConcept={() => {}} />);
     await send("x");
     expect(await screen.findByRole("alert")).toHaveTextContent(/^message too long$/);
   });
@@ -86,7 +110,7 @@ describe("ChatPanel", () => {
         ++attempt === 1 ? json({ error: "model discovery failed" }, 502) : answer("Back again."),
     });
     render(
-      <ChatPanel
+      <TestChatPanel
         chat={createChat(() => {})}
         config={{ ...CONFIG, modelOverride: true }}
         onOpenConcept={() => {}}
@@ -132,7 +156,7 @@ describe("ChatPanel", () => {
       },
     });
     const onRunEnd = vi.fn();
-    render(<ChatPanel chat={createChat(onRunEnd)} config={CONFIG} onOpenConcept={() => {}} />);
+    render(<TestChatPanel chat={createChat(onRunEnd)} config={CONFIG} onOpenConcept={() => {}} />);
     await send("take your time");
     fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
 
@@ -147,7 +171,7 @@ describe("ChatPanel", () => {
     installFakeApi({
       "/api/chat": () => uiStream([{ type: "start" }, { type: "abort", reason: "TimeoutError" }]),
     });
-    render(<ChatPanel chat={createChat(() => {})} config={CONFIG} onOpenConcept={() => {}} />);
+    render(<TestChatPanel chat={createChat(() => {})} config={CONFIG} onOpenConcept={() => {}} />);
     await send("x");
     expect(await screen.findByRole("alert")).toHaveTextContent("No answer");
   });

@@ -12,7 +12,8 @@ function decodeSegment(segment: string): string {
 
 /** Resolve a spec-§6.1 relative href (e.g. "billing-api.md", "tables/") against the doc's directory. */
 function resolveHref(rawHref: string, docPath: string): string | null {
-  if (/^[a-z]+:/i.test(rawHref) || rawHref.startsWith("#")) return null; // external / anchor
+  // External (a scheme, or protocol-relative "//host") or an anchor.
+  if (/^[a-z]+:/i.test(rawHref) || rawHref.startsWith("//") || rawHref.startsWith("#")) return null;
   const href = rawHref.replace(/[?#].*$/, ""); // the view has no anchors to jump to
   if (!href) return null;
   // Bundle-absolute links resolve from the root, relative ones from the doc's directory.

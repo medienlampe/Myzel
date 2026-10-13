@@ -163,7 +163,8 @@ export async function hotLookup(
   if (process.env.HOT_MEMORY_RECALL_QA !== "false") {
     for (const qa of state.qas) {
       if (qa.at < cutoff) continue;
-      sections.push(`PREVIOUS Q&A\nQ: ${qa.question}\nA: ${qa.answer}`);
+      // The question is raw caller input: one line, so it cannot forge an answer.
+      sections.push(`PREVIOUS Q&A\nQ: ${sanitizeInline(qa.question, 500)}\nA: ${qa.answer}`);
     }
   }
 

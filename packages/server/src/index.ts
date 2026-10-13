@@ -14,6 +14,7 @@ import { SettingsStore } from "./settings.js";
 
 /** Below Docker's 10s grace period between SIGTERM and SIGKILL. */
 const SHUTDOWN_DEADLINE_MS = 8_000;
+const SHUTDOWN_GRACE_MS = 3_000;
 
 // PROFILES_ROOT takes precedence: the Docker image always sets BUNDLE_ROOT.
 const bundleRoot = process.env.BUNDLE_ROOT;
@@ -170,9 +171,12 @@ const server = app.listen(port, host, () => {
  * Graceful shutdown: `docker stop` sends SIGTERM, then SIGKILL after 10s. Stop
  * accepting requests, let running requests finish (an agent run may still be
  * writing), then let every memory's mutation queue drain, so a concept is never
- * left written without its index.md, log.md entry or commit. A run that
- * outlasts the deadline is cut off: every file it wrote is complete (writes are
- * atomic), but its last mutation may lack the index, log entry or commit.
+ * left written without its index.md, log.md entry or commit. Requests still open
+ * after a grace period (a chat stream, an agent run) have their connections
+ * closed, which aborts their runs between steps, so the queue can drain before
+ * the deadline. Only a write that outlasts even that is cut off: every file it
+ * wrote is complete (writes are atomic), but its last mutation may lack the
+ * index, log entry or commit.
  */
 let shuttingDown = false;
 const shutdown = (signal: string) => {
@@ -182,6 +186,7 @@ const shutdown = (signal: string) => {
   stopDreamer();
   const requestsDone = new Promise<void>((resolve) => server.close(() => resolve()));
   server.closeIdleConnections();
+  setTimeout(() => server.closeAllConnections(), SHUTDOWN_GRACE_MS).unref();
   const deadline = setTimeout(() => {
     console.error("[myzel] shutdown timed out with requests or writes pending — exiting anyway");
     process.exit(1);

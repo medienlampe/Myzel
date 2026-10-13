@@ -268,8 +268,9 @@ export function buildWriteTools(
         path: conceptPathSchema,
         log_summary: logSummary,
       }),
-      execute: async ({ path: conceptPath, log_summary }) => {
-        await kb.deleteConcept(conceptPath, log_summary);
+      execute: async ({ path: rawPath, log_summary }) => {
+        await kb.deleteConcept(rawPath, log_summary);
+        const conceptPath = kb.bundle.toBundlePath(rawPath);
         filesChanged.add(conceptPath);
         recordHotDelete(kb.bundle.root, conceptPath);
         trace?.record("delete_concept", conceptPath, [conceptPath], true);

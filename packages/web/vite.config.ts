@@ -13,6 +13,7 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:3800",
       "/mcp": "http://localhost:3800",
+      "/admin": "http://localhost:3800",
     },
   },
 });

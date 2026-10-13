@@ -118,6 +118,24 @@ describe("SettingsStore", () => {
     expect(env.LLM_MODEL).toBeUndefined();
   });
 
+  it("refuses a new endpoint without its key, so the env key cannot be redirected", async () => {
+    const store = await SettingsStore.load(file, env);
+    const url = "https://elsewhere.example/v1";
+    await expect(store.update({ LLM_API_BASE_URL: url })).rejects.toThrow(/requires .*LLM_API_KEY/);
+    await expect(store.update({ LLM_FALLBACK_API_BASE_URL: url })).rejects.toThrow(
+      /requires .*LLM_FALLBACK_API_KEY/
+    );
+    // Naming the key with null falls back to the env key: refused too.
+    await expect(store.update({ LLM_API_BASE_URL: url, LLM_API_KEY: null })).rejects.toThrow(
+      /requires/
+    );
+    await store.update({ LLM_API_BASE_URL: url, LLM_API_KEY: "new-key" });
+    expect(env.LLM_API_BASE_URL).toBe(url);
+    // Dropping the key later would hand the new endpoint the env key.
+    await expect(store.update({ LLM_API_KEY: null })).rejects.toThrow(/requires/);
+    expect(env.LLM_API_KEY).toBe("new-key");
+  });
+
   it("is read-only without SETTINGS_FILE", async () => {
     const store = await SettingsStore.load(null, env);
     expect(store.writable).toBe(false);
