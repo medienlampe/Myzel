@@ -279,6 +279,28 @@ edges.
 | [Security](docs/security.md) | Threat model, defenses and known limitations |
 | [Maintenance](docs/maintenance.md) | Pinned versions and how to upgrade them |
 
+## How Myzel differs from understory
+
+Myzel forked from understory after its dreaming feature
+([#9](https://github.com/thecodacus/understory/pull/9)). The main differences since then:
+
+- **Security hardening:** localhost bind by default, Origin and Host checks against DNS rebinding,
+  rate limits, caps on every model-bound input, sanitized bundle content in prompts, a hardened git
+  autocommit that treats the bundle's `.git` as untrusted, a symlink-safe sandbox, atomic writes and
+  redacted provider errors. See [Security](docs/security.md).
+- **OKF v0.2** instead of v0.1: the v0.2 key families, `generated: { by, at }` in place of
+  `timestamp`, and a protected `verified`.
+- **YAML-only frontmatter** parsed with `yaml` (YAML 1.2 core schema) instead of `gray-matter`;
+  fences such as `---js` are refused rather than evaluated.
+- **New features:** a settings page under `/admin`, a read-only demo mode, a rearrangeable panel
+  layout, a Markdown chat input with file uploads, light and dark styles and stopping a running
+  agent.
+- **Current dependencies:** AI SDK 7, Zod 4, TypeScript 6, Express 5 and Node ≥ 24.
+- **Quality bar:** 80% test coverage enforced in CI, a scripted fake model instead of real
+  providers in tests, `pnpm audit` in CI, a Makefile and the [documentation](docs/outline.md).
+
+Upstream changes made after the fork are ported selectively.
+
 ## Credits and license
 
 Started as a fork of [thecodacus/understory](https://github.com/thecodacus/understory) by
