@@ -3,6 +3,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { parseDuration } from "../util/duration.js";
 import { redactUrl } from "../util/url.js";
+import { llmFetch } from "./transport.js";
 
 export { publicErrorMessage } from "./errors.js";
 
@@ -240,7 +241,7 @@ export async function createModel(cfg: ModelConfig): Promise<ResolvedLanguageMod
 
   switch (cfg.format) {
     case "anthropic":
-      return createAnthropic({ baseURL: cfg.baseURL, apiKey: cfg.apiKey })(
+      return createAnthropic({ baseURL: cfg.baseURL, apiKey: cfg.apiKey, fetch: llmFetch })(
         model
       ) as ResolvedLanguageModel;
     case "openai":
@@ -248,6 +249,7 @@ export async function createModel(cfg: ModelConfig): Promise<ResolvedLanguageMod
         name: "custom",
         baseURL: normalizeV1(cfg.baseURL),
         apiKey: cfg.apiKey,
+        fetch: llmFetch,
       })(model) as ResolvedLanguageModel;
   }
 }

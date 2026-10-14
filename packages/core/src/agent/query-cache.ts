@@ -106,8 +106,11 @@ export async function runQueryCached(
   // Layer 3: deep memory — the full agent loop. Its answer feeds the hot set.
   const generation = hotGeneration(kb.bundle.root);
   const result = await runner(kb, question, options);
-  if (key !== null) store(key, result, ttl, kb.bundle.root);
-  recordHotQuery(kb.bundle.root, question, result.answer, generation);
+  // A run cut off by the step budget has no answer worth remembering.
+  if (!result.stepLimited) {
+    if (key !== null) store(key, result, ttl, kb.bundle.root);
+    recordHotQuery(kb.bundle.root, question, result.answer, generation);
+  }
   return { ...result, cached: false, source: "deep" };
 }
 

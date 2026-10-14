@@ -120,7 +120,7 @@ docs/                   # outline.md → user guides (running, configuration, ho
 
 ## 3. Setup and commands
 
-Requires **Node ≥ 22.12** and **pnpm 10.34.6** (pinned via `packageManager`; use `corepack enable`).
+Requires **Node ≥ 24** and **pnpm 10.34.6** (pinned via `packageManager`; use `corepack enable`).
 
 The [Makefile](Makefile) wraps everything below (`make help` lists it); `make check` runs exactly
 what CI runs, and `make dev` / `make start` / `make query` load `.env` and default to the gitignored

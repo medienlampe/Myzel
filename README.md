@@ -11,7 +11,7 @@ A self-organizing knowledge network for your AI tools, kept as plain markdown yo
 [![Build and publish](https://github.com/medienlampe/Myzel/actions/workflows/docker.yml/badge.svg?branch=main)](https://github.com/medienlampe/Myzel/actions/workflows/docker.yml)
 <br>
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A522.12-339933.svg)](package.json)
+[![Node](https://img.shields.io/badge/node-%E2%89%A524-339933.svg)](package.json)
 [![Spec](https://img.shields.io/badge/spec-OKF%20v0.2-8b5cf6.svg)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20%2B%20HTTP-f59e0b.svg)](#connect-your-assistant)
 [![Forked from thecodacus/understory](https://img.shields.io/badge/forked%20from-thecodacus%2Funderstory-8957e5.svg?logo=github)](https://github.com/thecodacus/understory)
@@ -211,7 +211,7 @@ Exposure, reverse proxies, rate limits and prompt injection: [Running Myzel](doc
 
 ## Development
 
-Requires **Node ≥ 22.12** and **pnpm 10.34.6** (`corepack enable` picks it up from `package.json`).
+Requires **Node ≥ 24** and **pnpm 10.34.6** (`corepack enable` picks it up from `package.json`).
 The [Makefile](Makefile) wraps the common tasks:
 
 ```bash

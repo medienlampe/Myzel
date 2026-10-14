@@ -122,7 +122,7 @@ old ones are ignored.
 | `RATE_LIMIT_BROWSE` | Requests per client on the read-only `/api` routes. Default `600` per window; `0` disables. |
 | `TRUST_PROXY` | Set behind a reverse proxy (`1` or the proxy's address) so rate limits apply per client. |
 | `ALLOWED_MODELS` | Models a client may request per call. Unset means the server's model always wins; `*` allows any. |
-| `LLM_TIMEOUT` / `LLM_MAX_STEPS` | Ceiling for one agent run (default `30m`, since local models can take minutes) and its tool-loop budget (default `12`). |
+| `LLM_TIMEOUT` / `LLM_MAX_STEPS` | Ceiling for one agent run (default `30m`, since local models can take minutes) and its tool-loop budget (default `12`; a run that uses every step is reported as unfinished, not as a success). |
 | `LLM_DISCOVERY_TIMEOUT` / `HOT_MEMORY_TIMEOUT` | Ceilings for model discovery (default `10s`) and the hot-memory call (default `1m`). |
 | `GIT_AUTOCOMMIT` | Commit the bundle after every change. Default `false`. A bundle that isn't a git repository yet is initialized at startup; the server refuses to start if committing can't work. |
 | `QUERY_CACHE` / `QUERY_CACHE_TTL` | [Exact-answer cache](how-it-works.md#memory-layers). On by default, `24h`. Independent of `HOT_MEMORY`. |

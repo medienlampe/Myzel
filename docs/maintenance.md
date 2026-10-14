@@ -7,8 +7,8 @@ for when upgrading. Day-to-day commands are in [AGENTS.md](../AGENTS.md) §3.
 
 | What | Pinned to | Why |
 |---|---|---|
-| Node | `engines: >=22.12`; Docker and CI use 24 (LTS) | AI SDK 7, Vite 8 and Vitest 5 need 22.12. |
-| `@types/node` | `^22` | It follows the *oldest* supported runtime, so code cannot use APIs that Node 22 lacks. |
+| Node | `engines: >=24`; Docker and CI use 24 (LTS) | The current LTS; undici 8 needs at least 22.19, AI SDK 7, Vite 8 and Vitest 5 22.12. |
+| `@types/node` | `^24` | It follows the *oldest* supported runtime, so code cannot use APIs that Node 24 lacks. |
 | TypeScript | `~6.0` | `typescript-eslint` supports `<6.1`. Move to 7 once it supports it. |
 | TipTap (`@tiptap/*`, the chat composer) | one exact version for every package | Each package requires its siblings at that exact version; update them together. |
 | pnpm | `packageManager` field (exact version) | `corepack enable` gets everyone the same version. |

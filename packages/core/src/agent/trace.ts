@@ -15,7 +15,8 @@ export interface TraceStep {
   write?: boolean;
 }
 
-export type TraceOutcome = "success" | "partial" | "failed";
+/** "step-limit": the run used its whole step budget and was stopped before it finished. */
+export type TraceOutcome = "success" | "partial" | "failed" | "step-limit";
 
 export interface QueryTrace {
   id: string;
@@ -127,6 +128,8 @@ function outcomeMarker(outcome: TraceOutcome): string {
       return "⚠ partial";
     case "failed":
       return "✗";
+    case "step-limit":
+      return "⚠ step limit";
   }
 }
 

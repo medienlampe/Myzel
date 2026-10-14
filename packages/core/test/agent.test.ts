@@ -300,6 +300,72 @@ describe("streamChat", () => {
   });
 });
 
+describe("step budget (ported from thecodacus/understory#47)", () => {
+  const user = (text: string) => [
+    { role: "user" as const, content: [{ type: "text" as const, text }] },
+  ];
+  const keepSearching = { toolCalls: [{ name: "search_knowledge", args: { query: "billing" } }] };
+  const writeHalf = {
+    toolCalls: [
+      {
+        name: "write_concept",
+        args: {
+          path: "/half.md",
+          frontmatter: { type: "T" },
+          body: "x",
+          log_summary: "Added half.",
+        },
+      },
+    ],
+  };
+
+  beforeEach(() => vi.stubEnv("LLM_MAX_STEPS", "2"));
+
+  it("marks a query that ran out of steps and says so in the answer", async () => {
+    llm.script([keepSearching]);
+    const result = await runQuery(kb, "How does billing work?");
+    expect(result.stepLimited).toBe(true);
+    expect(result.answer).toContain("all 2 steps");
+    expect(llm.requests).toHaveLength(2);
+    const [trace] = await traces();
+    expect(trace).toMatchObject({ outcome: "step-limit" });
+    expect(trace.notation).toContain("⚠ step limit");
+  });
+
+  it("fails a mutation that used every step and wrote nothing", async () => {
+    llm.script([keepSearching]);
+    expect(await runMutation(kb, "Consolidate the memory")).toMatchObject({
+      ok: false,
+      status: "failed",
+      error: expect.stringContaining("LLM_MAX_STEPS"),
+    });
+    expect((await traces())[0]).toMatchObject({ outcome: "step-limit" });
+  });
+
+  it("reports the files a cut-off mutation did write as partial", async () => {
+    llm.script([writeHalf, keepSearching]);
+    expect(await runMutation(kb, "Record half and link it")).toMatchObject({
+      ok: false,
+      status: "partial",
+      filesChanged: ["/half.md"],
+      error: expect.stringContaining("may be incomplete"),
+    });
+  });
+
+  it("keeps a run that answered on its last allowed step a success", async () => {
+    llm.script([keepSearching, { text: "Nothing to change." }]);
+    expect(await runMutation(kb, "Consolidate the memory")).toMatchObject({ ok: true });
+    expect((await traces())[0]).toMatchObject({ outcome: "success" });
+  });
+
+  it("records a chat turn that ran out of steps", async () => {
+    llm.script([keepSearching]);
+    const { result } = await streamChat(kb, user("billing?"));
+    await result.consumeStream();
+    await vi.waitFor(async () => expect((await traces())[0]?.outcome).toBe("step-limit"));
+  });
+});
+
 describe("read-only memory", () => {
   const user = (text: string) => [
     { role: "user" as const, content: [{ type: "text" as const, text }] },

@@ -22,6 +22,20 @@ function maxSteps(env: NodeJS.ProcessEnv = process.env): number {
 }
 
 /**
+ * A run that used every step and whose last step still asked for tools was cut
+ * off by the budget: it did not finish, whatever it wrote on the way. A run
+ * that answered on its last allowed step did finish. Ported from upstream
+ * understory (thecodacus/understory#47), where such runs were recorded as
+ * successes with an empty answer.
+ */
+function hitStepLimit(
+  result: { steps: ReadonlyArray<unknown>; finishReason: string },
+  budget: number
+): boolean {
+  return result.steps.length >= budget && result.finishReason === "tool-calls";
+}
+
+/**
  * Wall-clock ceiling for one agent run, covering the whole tool loop rather
  * than a single request. Without it an unreachable or stalled endpoint pins a
  * connection (and, over HTTP, a client) open indefinitely. The default is
@@ -42,6 +56,8 @@ export interface QueryResult {
   answer: string;
   steps: number;
   traceId: string;
+  /** True when the run used every step without reaching an answer; `answer` then says so. */
+  stepLimited?: boolean;
 }
 
 export interface MutationResult {
@@ -82,6 +98,7 @@ export async function runQuery(
 ): Promise<QueryResult> {
   const ctx = await promptContext(kb, "query");
   const recorder = new TraceRecorder();
+  const budget = maxSteps();
   let modelChain: string[] = [];
   try {
     const resolved = await resolveAgentModel(options, "query");
@@ -91,9 +108,22 @@ export async function runQuery(
       system: buildSystemPrompt(ctx),
       prompt: question,
       tools: buildReadTools(kb, recorder),
-      stopWhen: stepCountIs(maxSteps()),
+      stopWhen: stepCountIs(budget),
       abortSignal: runSignal(options),
     });
+    if (hitStepLimit(result, budget)) {
+      const answer = `The search used all ${budget} steps without reaching an answer. Raise LLM_MAX_STEPS to let it look further.`;
+      const trace = recorder.finalize(
+        "query",
+        question,
+        answer,
+        "step-limit",
+        modelChain,
+        sumUsage(result.steps)
+      );
+      await traceStore(kb).save(trace);
+      return { answer, steps: result.steps.length, traceId: trace.id, stepLimited: true };
+    }
     const trace = recorder.finalize(
       "query",
       question,
@@ -126,6 +156,7 @@ export async function runMutation(
   const ctx = await promptContext(kb, "mutate");
   const recorder = new TraceRecorder();
   const filesChanged = new Set<string>();
+  const budget = maxSteps();
   let modelChain: string[] = [];
   try {
     const resolved = await resolveAgentModel(options, "mutate");
@@ -138,11 +169,30 @@ export async function runMutation(
         ...buildReadTools(kb, recorder),
         ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId)),
       },
-      stopWhen: stepCountIs(maxSteps()),
+      stopWhen: stepCountIs(budget),
       abortSignal: runSignal(options),
       temperature: 0.2,
     });
     const usage = sumUsage(result.steps);
+    if (hitStepLimit(result, budget)) {
+      const files = [...filesChanged].sort();
+      const message =
+        `the run used all ${budget} steps and was stopped before it finished` +
+        (files.length > 0 ? "; the files it changed may be incomplete" : " or changed any file") +
+        ". Raise LLM_MAX_STEPS to give it more room.";
+      const trace = recorder.finalize(
+        "mutation",
+        instruction,
+        message,
+        "step-limit",
+        modelChain,
+        usage
+      );
+      await traceStore(kb).save(trace);
+      return files.length > 0
+        ? { ok: false, status: "partial", filesChanged: files, error: message, traceId: trace.id }
+        : { ok: false, status: "failed", error: message };
+    }
     // Writing nothing while explaining why (already known, nothing to link) is
     // a normal outcome; writing nothing AND saying nothing is a stalled model.
     if (filesChanged.size === 0 && result.text.trim() === "") {
@@ -203,6 +253,7 @@ export async function streamChat(
   const ctx = await promptContext(kb, kb.readOnly ? "query" : "chat");
   const recorder = new TraceRecorder();
   const filesChanged = new Set<string>();
+  const budget = maxSteps();
   let modelChain: string[] = [];
   let failed = false;
   // The user turn that started this run, for the trace record.
@@ -228,14 +279,15 @@ export async function streamChat(
             ...buildReadTools(kb, recorder),
             ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId)),
           },
-      stopWhen: stepCountIs(maxSteps()),
+      stopWhen: stepCountIs(budget),
       abortSignal: runSignal(options),
-      onEnd: async ({ text, steps }) => {
+      onEnd: async ({ text, steps, finishReason }) => {
         // Persist only turns that actually touched the bundle — and not a
         // second time when onError has already recorded the run as failed.
         if (recorder.steps.length > 0 && !failed) {
+          const outcome = hitStepLimit({ steps, finishReason }, budget) ? "step-limit" : "success";
           await traceStore(kb).save(
-            recorder.finalize("chat", input, text, "success", modelChain, sumUsage(steps))
+            recorder.finalize("chat", input, text, outcome, modelChain, sumUsage(steps))
           );
         }
       },
