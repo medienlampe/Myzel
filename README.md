@@ -22,34 +22,30 @@ A self-organizing knowledge network for your AI tools, kept as plain markdown yo
 
 ---
 
-_Myzel_ is German for mycelium: the network under the forest floor that connects the trees and
-carries what they need from one to the next. This is that network for your AI tools. Every
-assistant you connect writes into the same web of linked notes, and every one can draw from it, so
-what you explained to Claude Code yesterday is something Cursor already knows today.
+_Myzel_ is German for mycelium, the fungal network under the forest floor that lets trees pass
+things along to each other. This one does the same for your AI tools. Explain something to Claude
+Code on Monday and Cursor knows it on Tuesday.
 
-- **One memory, every client:** anything that speaks MCP can connect: Claude Code, Claude Desktop,
-  Cursor and more.
-- **Files, not a database:** each fact is a markdown file. Open it in your editor, `grep` it, review
-  changes in git. If you ever stop using Myzel, nothing is locked in.
-- **It does the filing:** say _"remember this"_ and Myzel finds where the fact belongs, links it to
-  what it relates to and replaces what it contradicts.
-- **Runs on a model you pick:** the bookkeeping happens on a model of your choice, so a cheap API or
-  a local model on your own machine is plenty.
+Under the hood it's a folder of markdown files. Every assistant you connect reads from it and writes
+to it. A small agent of Myzel's own does the filing: it puts new facts where they belong, links them
+to related ones and throws out whatever they contradict.
+
+- Works with anything that speaks MCP.
+- Plain files. Open them in your editor, `grep` them, keep them in git. Walk away whenever you like.
+- Runs on whatever model you give it. A cheap API or a local model is plenty.
 
 <p align="center">
-  <img src="docs/images/myzel-dark.png" alt="The Myzel web UI in dark mode: the explorer tree on the left, a concept in the middle, and the agent chat on the right answering a question with the tools it used" width="100%">
+  <img src="docs/images/myzel-dark.png" alt="The Myzel web UI in dark mode: the explorer tree on the left, a concept in the middle and the agent chat on the right answering a question with the tools it used" width="100%">
 </p>
 
 > [!NOTE]
-> Myzel started as a fork of [**thecodacus/understory**](https://github.com/thecodacus/understory)
-> by [@thecodacus](https://github.com/thecodacus), where the idea and the original implementation
-> come from. It is now developed independently and ships its own image
-> (`ghcr.io/medienlampe/myzel`).
+> Myzel began as a fork of [understory](https://github.com/thecodacus/understory) by
+> [@thecodacus](https://github.com/thecodacus). More in [Where it came from](#where-it-came-from).
 
 ## Quick start
 
 You need [Docker](https://docs.docker.com/get-started/get-docker/) with Compose and an API key for a
-language model ([which one?](#pick-a-model)). No need to clone this repo.
+language model ([which one?](#pick-a-model)). No need to clone anything.
 
 **1.** In an empty folder, save this as `docker-compose.yml`:
 
@@ -76,7 +72,7 @@ volumes:
   myzel-config:
 ```
 
-**2.** Next to it, save your model settings as `.env` (this example uses
+**2.** Put your model settings next to it in `.env` (here with
 [DeepSeek](https://platform.deepseek.com/)):
 
 ```bash
@@ -85,7 +81,7 @@ LLM_API_KEY=sk-...
 LLM_MODEL=deepseek-chat
 ```
 
-**3.** Start it and check the log:
+**3.** Start it:
 
 ```bash
 docker compose up -d
@@ -96,77 +92,63 @@ docker compose logs myzel | tail -3
 **4.** Open **[http://localhost:3800](http://localhost:3800)**.
 
 > [!TIP]
-> The memory starts empty, so teach it something. Tell the chat _"We deploy on Fridays, never
-> Mondays."_, open the graph view and watch the new concept appear. Add a related fact and watch
-> Myzel link the two.
+> The memory starts out empty. Tell the chat _"We deploy on Fridays, never Mondays."_, open the
+> graph and watch a new dot appear. Tell it something related and watch the two get linked.
 
-Something wrong? See [Troubleshooting](docs/running.md#troubleshooting).
+Stuck? Try [Troubleshooting](docs/running.md#troubleshooting).
 
 ## Connect your assistant
 
-For **Claude Code**:
+Claude Code:
 
 ```bash
 claude mcp add --transport http myzel http://localhost:3800/mcp
 ```
 
-For **other MCP clients**, add `http://localhost:3800/mcp` as a _streamable HTTP_ server. Restart
-the client afterwards. Your assistant now has five tools:
+Anything else: add `http://localhost:3800/mcp` as a _streamable HTTP_ server and restart the
+client. Your assistant gets five tools:
 
 | Tool | What it does |
 |---|---|
-| `memory_query` | Ask a question, get an answer in prose. |
-| `memory_add` | Teach it something new. Myzel files it in the right place and links it. |
-| `memory_update` | Correct something. The outdated version is replaced, not kept next to the new one. |
-| `memory_status` | Health check: number of concepts, valid files, broken links. |
-| `memory_maintain` | Repair pass: link up orphaned concepts and fix broken links. |
+| `memory_query` | Ask a question, get an answer. |
+| `memory_add` | Teach it something. Myzel files it and links it. |
+| `memory_update` | Correct something. The old version goes away. |
+| `memory_status` | How many concepts, how many broken links. |
+| `memory_maintain` | Tidy up orphans and broken links. |
 
-At the start of every session Myzel also sends a short overview of what the memory contains, so the
-assistant knows when to look. The stdio transport and other options are in
+At the start of each session Myzel also hands the assistant a short summary of what it knows, so
+the assistant knows when to ask. stdio and other options are in
 [Running Myzel](docs/running.md#other-ways-to-connect).
 
 ## Pick a model
 
-Myzel does its own thinking: deciding where a fact belongs, what it links to and whether it
-contradicts something. That runs on **its own** model, so you can pair an expensive coding assistant
-with a cheap or local model here.
-
-Any OpenAI- or Anthropic-compatible API works, as long as the model supports **tool calling**.
-DeepSeek is a good cheap default; a local llama.cpp server costs nothing.
+Myzel's agent needs a model of its own to decide where things go. It doesn't have to be clever or
+expensive. It does have to support **tool calling**. Any OpenAI- or Anthropic-compatible API works.
 
 | Provider | `LLM_API_BASE_URL` | `LLM_MODEL` |
 |---|---|---|
 | DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o` |
 | Anthropic | `https://api.anthropic.com/v1` | `claude-sonnet-5` (plus `LLM_API_FORMAT=anthropic`) |
-| llama.cpp | `http://host.docker.internal:8080/v1` | _leave empty: discovered automatically_ |
+| llama.cpp | `http://host.docker.internal:8080/v1` | _leave empty, Myzel asks the server_ |
 
-More providers, local setups and a fallback model: [Configuration](docs/configuration.md#model-providers).
+More providers and a fallback model: [Configuration](docs/configuration.md#model-providers).
 
 ## The web UI
 
-Three panels side by side:
+Three panels:
 
-- **Explorer:** your files as a folder tree with search. Its **Log** and **Graph** buttons switch
-  what the View panel shows.
-- **View:** the open file, the log or the **graph**, where every concept is a dot and every link a
-  line. Dots ringed in red are orphans that nothing links to yet.
-- **Agent chat:** talk to Myzel's agent directly and watch each step it takes. Markdown is
-  formatted as you type (Enter sends, Shift+Enter starts a new line), text files can be attached
-  by drag and drop, and a run can be stopped or retried.
+- **Explorer:** your files as a tree, with search.
+- **View:** the open file, the log or the graph. Red-ringed dots in the graph are orphans nobody
+  links to yet.
+- **Chat:** talk to Myzel's agent and watch every step. Attach text files, stop a run, retry it.
 
-Drag a panel's title bar to rearrange the panels (put the chat in the middle, say), drag the borders
-to resize and close or reopen panels from the top bar. The **←** / **→** buttons move a panel from
-the keyboard and **Reset layout** restores the default. The arrangement is remembered per browser.
-The UI uses Solarized colors and follows your system's light or dark setting.
+Drag a title bar to move a panel, drag a border to resize it. Your browser remembers the layout.
 
-With `ADMIN_TOKEN` set, **Settings** in the top bar changes the model and behaviour settings (model,
-fallback, timeouts, caches, dreaming, rate limits) without touching files; most apply on the next
-request. Network and access settings stay in the environment.
-[The settings page](docs/configuration.md#the-settings-page) has the details.
-
-To show Myzel off without letting anyone change the memory, run the read-only
-[demo mode](docs/running.md#demo-mode): `make demo`, or `make demo-up` for the container.
+Set `ADMIN_TOKEN` and a **Settings** page lets you change the model, timeouts, caches and more
+without touching a file ([details](docs/configuration.md#the-settings-page)). Want to show Myzel
+off without anyone scribbling in it? [Demo mode](docs/running.md#demo-mode) is read-only:
+`make demo`.
 
 ## How it works
 
@@ -185,88 +167,47 @@ flowchart LR
     D --> E
 ```
 
-- A memory is a folder (a **bundle**) of markdown files, one per **concept**, in the open
-  [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) format.
-  Concepts link to each other, so the memory is a graph.
-- The model decides _what_ to change; **plain code guarantees** the result stays valid and keeps
-  `index.md` and `log.md` up to date.
-- Repeated and recent questions are answered from a **cache** or **hot memory**, without a full
-  search.
-- Optional **dreaming** tidies the graph on a schedule, and every run can be **replayed** on the
-  graph to see why it answered what it did.
+A memory is a folder (a **bundle**) with one markdown file per **concept**, in the open
+[OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) format.
+Concepts link to each other, which turns the whole thing into a graph.
 
-The details: [How it works](docs/how-it-works.md).
+The model decides _what_ to change. Plain code makes sure the result is valid and keeps `index.md`
+and `log.md` up to date. The model can't break the format even if it tries.
+
+Repeated questions come from a cache, recent ones from hot memory. Optional **dreaming** tidies the
+graph on a schedule. Every run can be **replayed** on the graph, so you can see how Myzel got to its
+answer. More in [How it works](docs/how-it-works.md).
 
 ## Running it safely
 
-The memory is readable _and writable_ by anyone who can reach the port. The defaults are safe for
-one machine:
+Anyone who can reach the port can read _and change_ the memory. Out of the box Myzel listens on
+localhost only and refuses browser requests from other sites, so on your own machine you're fine.
 
-- The server listens on **localhost only**, and browser requests from other websites are refused.
-- Before opening it to a network, **set `AUTH_TOKEN`** (`openssl rand -hex 24`).
-- Several people or projects? Give each its own memory and key with
-  **[profiles](docs/running.md#profiles-several-memories-on-one-server)**.
+- Before you open it to a network, **set `AUTH_TOKEN`** (`openssl rand -hex 24`).
+- Several people or projects? Give each their own memory and key with
+  [profiles](docs/running.md#profiles-several-memories-on-one-server).
 
-Exposure, reverse proxies, rate limits and prompt injection: [Running Myzel](docs/running.md).
+Reverse proxies, rate limits and prompt injection: [Running Myzel](docs/running.md).
 
 ## Development
 
-Requires **Node ≥ 24** and **pnpm 10.34.6** (`corepack enable` picks it up from `package.json`).
-The [Makefile](Makefile) wraps the common tasks:
+You need **Node 24+** and **pnpm 10.34.6** (`corepack enable` picks the right one).
 
 ```bash
-cp .env.example .env   # add your model settings; make loads this file
+cp .env.example .env   # add your model settings
 make start             # build and serve on http://localhost:3800
-make dev               # live reload: server on :3800, web UI on http://localhost:5180
-make check             # what CI runs: audit, lint, format check, tests with coverage
-make help              # everything else
+make dev               # live reload, web UI on http://localhost:5180
+make check             # everything CI runs
+make help              # the rest
 ```
 
-`make` works on `demo-bundle/`, a gitignored copy of the [sample memory](sample-bundle), unless you
-set `BUNDLE_ROOT`.
+`make` works on `demo-bundle/`, a throwaway copy of the [sample memory](sample-bundle). Point
+`BUNDLE_ROOT` elsewhere if you want.
 
-<details>
-<summary><b>Without make</b></summary>
+Tests build real bundles in temp folders and talk to a fake model, never a real provider. Coverage
+below 80% fails the build.
 
-```bash
-pnpm install && pnpm build
-BUNDLE_ROOT=./sample-bundle \
-LLM_API_BASE_URL=https://api.deepseek.com/v1 LLM_API_KEY=sk-... LLM_MODEL=deepseek-chat \
-node packages/server/dist/index.js
-
-# dev mode, in two terminals
-cp -R sample-bundle demo-bundle   # once: a scratch copy the agent may write to
-BUNDLE_ROOT="$PWD/demo-bundle" pnpm --filter @myzel/server dev
-pnpm --filter @myzel/web dev
-```
-
-`docker compose up --build` builds the image from source with this repo's
-[docker-compose.yml](docker-compose.yml).
-
-</details>
-
-### Tests
-
-```bash
-make test       # build, then every package's tests and typechecks
-make coverage   # the same with coverage; fails if any package drops below 80%
-                # (statements, branches, functions, lines); reports in packages/*/coverage/
-```
-
-Tests build real bundles in temp directories and never mock the filesystem. No test hits a real
-provider: agent runs talk to a scripted fake model over HTTP, so the real provider, fallback and
-tool-loop code runs. The web UI is tested with Testing Library against a fake API.
-
-### The packages
-
-| Package | What's in it |
-|---|---|
-| [`packages/core`](packages/core) | The bundle layer (plain code), the agent, the memory layers and provider setup |
-| [`packages/server`](packages/server) | MCP over HTTP and stdio, the browse and chat APIs and profiles; serves the UI |
-| [`packages/web`](packages/web) | React web UI: file browser, graph view and chat |
-
-Contributing? Read [AGENTS.md](AGENTS.md) first: it lists the invariants, conventions and sharp
-edges.
+Want to contribute? Read [AGENTS.md](AGENTS.md) first. It lists the rules the code relies on.
 
 ## Documentation
 
@@ -279,36 +220,28 @@ edges.
 | [Security](docs/security.md) | Threat model, defenses and known limitations |
 | [Maintenance](docs/maintenance.md) | Pinned versions and how to upgrade them |
 
-## How Myzel differs from understory
+## Where it came from
 
-Myzel forked from understory after its dreaming feature
-([#9](https://github.com/thecodacus/understory/pull/9)). The main differences since then:
+Myzel started as a fork of [understory](https://github.com/thecodacus/understory) by
+[@thecodacus](https://github.com/thecodacus), who had the idea and built the original. The fork
+happened after understory's dreaming feature
+([#9](https://github.com/thecodacus/understory/pull/9)) and the two have gone separate ways since.
+What changed most:
 
-- **Security hardening:** localhost bind by default, Origin and Host checks against DNS rebinding,
-  rate limits, caps on every model-bound input, sanitized bundle content in prompts, a hardened git
-  autocommit that treats the bundle's `.git` as untrusted, a symlink-safe sandbox, atomic writes and
-  redacted provider errors. See [Security](docs/security.md).
-- **OKF v0.2** instead of v0.1: the v0.2 key families, `generated: { by, at }` in place of
-  `timestamp`, and a protected `verified`.
-- **YAML-only frontmatter** parsed with `yaml` (YAML 1.2 core schema) instead of `gray-matter`;
-  fences such as `---js` are refused rather than evaluated.
-- **New features:** a settings page under `/admin`, a read-only demo mode, a rearrangeable panel
-  layout, a Markdown chat input with file uploads, light and dark styles and stopping a running
-  agent.
-- **Current dependencies:** AI SDK 7, Zod 4, TypeScript 6, Express 5 and Node ≥ 24.
-- **Quality bar:** 80% test coverage enforced in CI, a scripted fake model instead of real
-  providers in tests, `pnpm audit` in CI, a Makefile and the [documentation](docs/outline.md).
+- **Security.** Localhost by default, DNS rebinding protection, rate limits, defenses against prompt
+  injection and a git autocommit that doesn't trust the bundle's `.git`. See
+  [Security](docs/security.md).
+- **OKF v0.2** instead of v0.1.
+- **YAML-only frontmatter.** understory's parser would happily run a `---js` block. Myzel refuses it.
+- **New stuff:** a settings page, a read-only demo mode, panels you can rearrange and file uploads in
+  the chat. Plus a fresh coat of Solarized paint, light and dark.
+- **Fresh dependencies** (AI SDK 7, Zod 4, TypeScript 6, Node 24) and a CI that fails below 80%
+  test coverage.
 
-Upstream changes made after the fork are ported selectively.
+Good fixes from upstream still find their way over now and then.
 
-## Credits and license
+## License
 
-Started as a fork of [thecodacus/understory](https://github.com/thecodacus/understory) by
-[@thecodacus](https://github.com/thecodacus), where the design and the original implementation come
-from. Development continues independently here.
-
-The bundle format is the
+[Apache 2.0](LICENSE), same as upstream. The bundle format is the
 [Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
-an open standard published by Google Cloud Platform.
-
-Licensed [Apache 2.0](LICENSE), the same licence it was forked under.
+an open standard by Google Cloud Platform.
