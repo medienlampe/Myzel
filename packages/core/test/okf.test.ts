@@ -866,3 +866,25 @@ describe("mutation serialization", () => {
     await Promise.all([first, second]);
   });
 });
+
+describe("read-only memory (DEMO_MODE)", () => {
+  it("refuses every write and leaves the bundle untouched", async () => {
+    await kb.writeConcept("/a.md", { type: "T", title: "A" }, "x", "Added a.");
+    const before = await fs.readdir(root, { recursive: true });
+    const readOnly = new KnowledgeBase(root, { readOnly: true });
+    expect(readOnly.readOnly).toBe(true);
+    expect(kb.readOnly).toBe(false);
+
+    const refused = [
+      readOnly.writeConcept("/b.md", { type: "T" }, "x", "Added b."),
+      readOnly.patchConcept("/a.md", { replaceBody: "more" }, "Patched a."),
+      readOnly.deleteConcept("/a.md", "Removed a."),
+    ];
+    for (const write of refused) {
+      await expect(write).rejects.toMatchObject({ name: "BundleError", code: "READ_ONLY" });
+    }
+    expect(await fs.readdir(root, { recursive: true })).toEqual(before);
+    expect((await readOnly.readConcept("/a.md")).body.trim()).toBe("x");
+    expect(await readOnly.idle()).toBeUndefined();
+  });
+});

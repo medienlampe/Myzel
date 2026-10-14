@@ -51,6 +51,7 @@ export async function runDream(
   // Injectable for tests.
   runner: typeof runMutation = runMutation
 ): Promise<DreamReport> {
+  if (kb.readOnly) return { ran: false, reason: "the memory is read-only" };
   const [lint, graph, log, fat] = await Promise.all([
     kb.lint(),
     kb.graph(),

@@ -125,8 +125,15 @@ export function deriveConceptDescription(node: TreeNode): string {
   return description ? `${subject}, ${description}` : subject;
 }
 
-/** The initialize `instructions` block — seed plus the instinct-igniting rules. */
-export function seedInstructions(seed: string): string {
+/**
+ * The initialize `instructions` block — seed plus the instinct-igniting rules.
+ * A read-only memory (DEMO_MODE) offers no write tools, so it must not ask for them.
+ */
+export function seedInstructions(seed: string, readOnly = false): string {
+  const writeRules = readOnly
+    ? `- This memory is read-only (a demo): it can be queried, not changed.`
+    : `- When you learn a lasting fact, decision, preference or piece of documentation, persist it with memory_add. If it isn't stored, it will be forgotten.
+- When existing knowledge turns out to be wrong or outdated, fix it with memory_update.`;
   return `This server is your persistent memory — an OKF knowledge base of markdown concepts that survives across sessions.
 
 ${UNTRUSTED_CONTENT_NOTICE}
@@ -137,7 +144,6 @@ ${seed}
 
 How to use your memory:
 - BEFORE answering anything related to the topics above, call memory_query — the answer may already be stored. Prefer stored knowledge over guessing.
-- When you learn a lasting fact, decision, preference or piece of documentation, persist it with memory_add. If it isn't stored, it will be forgotten.
-- When existing knowledge turns out to be wrong or outdated, fix it with memory_update.
+${writeRules}
 - memory_status reports size and health of the memory.`;
 }

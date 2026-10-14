@@ -6,7 +6,7 @@ import { adminRouter } from "./admin.js";
 import { profileMemoryHost, singleMemoryHost, type MemoryHost } from "./host.js";
 import { isLoopbackHost, parseList } from "./net-guard.js";
 import { parseTrustProxy } from "./rate-limit.js";
-import { envCount } from "./env.js";
+import { envCount, isDemoMode } from "./env.js";
 import { ProfileRegistry } from "./profiles.js";
 import { checkModelConfig, requireGitReady } from "./startup.js";
 import { startDreamer } from "./dreamer.js";
@@ -32,8 +32,18 @@ try {
   console.error(`[myzel] ${(err as Error).message}`);
   process.exit(1);
 }
-const gitAutocommit = process.env.GIT_AUTOCOMMIT === "true";
-const adminToken = process.env.ADMIN_TOKEN;
+// DEMO_MODE shows one bundle and changes nothing: no profiles (creating one is
+// a write), no /admin, no dreaming and no commits.
+const demo = isDemoMode();
+if (demo && profilesRoot) {
+  console.error("[myzel] DEMO_MODE serves one bundle: set BUNDLE_ROOT and unset PROFILES_ROOT");
+  process.exit(1);
+}
+const gitAutocommit = !demo && process.env.GIT_AUTOCOMMIT === "true";
+const adminToken = demo ? undefined : process.env.ADMIN_TOKEN;
+if (demo) {
+  console.log("[myzel] DEMO_MODE: read-only — writes, /admin, dreaming and git autocommit are off");
+}
 
 checkModelConfig((line) => console.log(line));
 
@@ -70,7 +80,7 @@ try {
       );
     }
   } else {
-    const kb = new KnowledgeBase(bundleRoot!, { gitAutocommit });
+    const kb = new KnowledgeBase(bundleRoot!, { gitAutocommit, readOnly: demo });
     if (gitAutocommit) await requireGitReady(kb, "the bundle");
     const authToken = process.env.AUTH_TOKEN;
     memoryHost = singleMemoryHost(kb, authToken);
@@ -93,15 +103,17 @@ if (adminToken) {
     `[myzel] admin: /admin enabled (ADMIN_TOKEN) — ${profilesRoot ? "profiles and " : ""}settings` +
       (settings.writable ? ` saved to ${settings.file}` : " read-only (set SETTINGS_FILE to save)")
   );
-} else {
+} else if (!demo) {
   console.log(
     `[myzel] admin: /admin disabled (set ADMIN_TOKEN${profilesRoot ? ", or use the profiles CLI" : ""} to manage ${profilesRoot ? "profiles and " : ""}settings in the UI)`
   );
 }
 
-const stopDreamer = startDreamer(async () =>
-  (await memoryHost.memories()).map(({ kb, profile }) => ({ kb, label: profile }))
-);
+const stopDreamer = demo
+  ? () => {}
+  : startDreamer(async () =>
+      (await memoryHost.memories()).map(({ kb, profile }) => ({ kb, label: profile }))
+    );
 
 // Bind to loopback unless a public interface is explicitly requested. The
 // memory is personal data and auth is optional, so "reachable from the LAN"
@@ -161,7 +173,10 @@ const server = app.listen(port, host, () => {
   if (!isLoopbackHost(host) && !authEnabled) {
     console.warn(
       "[myzel] WARNING: bound to a non-loopback interface with AUTH_TOKEN unset — " +
-        "anyone who can reach this port can read and rewrite the memory. Set AUTH_TOKEN."
+        (demo
+          ? "anyone who can reach this port can read the memory and spend model tokens " +
+            "through the chat and memory_query. Keep RATE_LIMIT on."
+          : "anyone who can reach this port can read and rewrite the memory. Set AUTH_TOKEN.")
     );
   }
   console.log(`Myzel serving ${serving} on ${host}:${port} (web + /api + /mcp)`);

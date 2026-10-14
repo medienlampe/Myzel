@@ -42,9 +42,9 @@ SETTINGS_ENV := SETTINGS_FILE="$(abspath $(if $(filter /%,$(SETTINGS_HOME)),$(SE
 IMAGE ?= myzel:local
 IMAGE_CHECK_PORT ?= 3899
 
-.PHONY: help install build dev start mcp-stdio profiles query mutate bundle reset-demo \
+.PHONY: help install build dev start demo mcp-stdio profiles query mutate bundle reset-demo \
 	check test coverage lint lint-fix format format-check audit \
-	up down logs image image-check clean distclean \
+	up down logs demo-up demo-down image image-check clean distclean \
 	_dev-core _dev-server _dev-web
 
 ##@ Getting started
@@ -82,6 +82,13 @@ _dev-web:
 
 start: build bundle ## Build, then serve the web UI, /api and /mcp on :3800
 	@BUNDLE_ROOT="$(BUNDLE_PATH)" $(PROFILES_ENV) $(SETTINGS_ENV) node $(NODE_ENV_FILE) packages/server/dist/index.js
+
+demo: build ## Read-only demo of a throwaway copy of sample-bundle/ on :3800 (DEMO_MODE)
+	@tmp="$${TMPDIR:-/tmp}"; dir=$$(mktemp -d "$${tmp%/}/myzel-demo.XXXXXX"); \
+	trap 'rm -rf "$$dir"' EXIT; \
+	cp -R "$(ROOT)/sample-bundle/." "$$dir/"; \
+	echo "Demo of sample-bundle/ (read-only) — http://localhost:$${PORT:-3800} (Ctrl-C stops it)" >&2; \
+	DEMO_MODE=true BUNDLE_ROOT="$$dir" PROFILES_ROOT= node $(NODE_ENV_FILE) packages/server/dist/index.js
 
 mcp-stdio: bundle ## Serve MCP over stdio (run `make build` first; for MCP client configs)
 	@BUNDLE_ROOT="$(BUNDLE_PATH)" $(SETTINGS_ENV) exec node $(NODE_ENV_FILE) packages/server/dist/mcp/stdio.js
@@ -145,6 +152,12 @@ down: ## Stop and remove the container
 
 logs: ## Follow the container's logs
 	docker compose logs -f
+
+demo-up: ## Build and start the read-only demo container (docker-compose.demo.yml)
+	docker compose -f docker-compose.demo.yml up -d --build
+
+demo-down: ## Stop and remove the demo container
+	docker compose -f docker-compose.demo.yml down
 
 image: ## Build the Docker image (tag: IMAGE, default myzel:local)
 	docker build -t $(IMAGE) .

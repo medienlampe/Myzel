@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "../src/App";
 import { installFakeApi, json, standardRoutes } from "./support/fake-api";
 
@@ -50,6 +50,19 @@ describe("App", () => {
     expect(await screen.findByText("Query paths")).toBeInTheDocument();
     fireEvent.click(explorer().getByText("log.md"));
     expect(await screen.findByRole("heading", { name: "Update Log" })).toBeInTheDocument();
+  });
+
+  it("marks a demo server as read-only and offers no settings", async () => {
+    await renderApp();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByText("demo · read-only")).not.toBeInTheDocument();
+    cleanup();
+
+    const routes = standardRoutes();
+    routes["/api/config"] = json({ model: "m", format: "openai", readOnly: true });
+    await renderApp(routes);
+    expect(await screen.findByText("demo · read-only")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
   });
 
   it("shows a load error and clears it when another view is chosen", async () => {

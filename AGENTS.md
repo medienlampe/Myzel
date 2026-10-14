@@ -108,7 +108,8 @@ packages/web/           # Vite 8 + React 19 + Tailwind 4
   src/okf.ts            #   v0.2 family accessors (sources, trust tier, staleness) for the concept view
   src/attachments.ts / composer-markdown.ts  # chat attachments; TipTap composer → markdown
 sample-bundle/          # a small conformant bundle: source of demo-bundle/, mounted by docker compose
-Dockerfile, docker-compose*.yml  # the published image and the compose setups (see §8)
+Dockerfile, docker-compose*.yml  # the published image and the compose setups (see §8);
+                        #   docker-compose.demo.yml runs the read-only demo
 scripts/coverage-badge.mjs  # CI: merges coverage summaries into the README badge
 .github/workflows/      # ci.yml + docker.yml, both run the checks in test.yml
 docs/                   # outline.md → user guides (running, configuration, how it works)
@@ -358,6 +359,11 @@ dummy `LLM_*` values are enough to exercise the UI.
   instance. Use `clearQueryCache()` / `clearHotMemory()` in tests.
 - **The query cache is invalidated by a bundle fingerprint** (path + mtime + size of every concept),
   not by write hooks. Out-of-band edits are picked up; sub-millisecond same-size edits are not.
+- **`DEMO_MODE` is enforced in `KnowledgeBase`** (`readOnly` → every write rejects with
+  `READ_ONLY`), not by hiding tools. The entry points additionally drop what only writes (MCP write
+  tools, the chat's write tools, `/admin`, dreaming), and `runMutation` returns before calling the
+  model. A new write path needs no extra check as long as it goes through `KnowledgeBase`. Traces
+  are still written to `.traces/` — telemetry, not bundle content.
 - **The dreamer's first run is one interval after boot**, never at startup, and `DREAM_INTERVAL`
   is clamped to a 5-minute minimum. It is opt-in; unset means zero background token spend.
 - **`log.md` is parsed and re-rendered on every append**, not patched with string replacement, and
@@ -390,6 +396,7 @@ worth knowing:
 | `LLM_FALLBACK_*` | Optional second model, used on retryable failures. `LLM_FALLBACK_ALLOW_FOR=query` restricts it to read-only ops. |
 | `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, … | **Deprecated** legacy path in `providers/index.ts`. Still supported; don't extend it. |
 | `AUTH_TOKEN` | Bearer token for `/mcp` + `/api`. Unset = open. |
+| `DEMO_MODE` | `true`: read-only demo of one bundle (`KnowledgeBase({ readOnly })`). No MCP/chat write tools, `/admin`, dreaming or autocommit. `make demo`, `make demo-up`. |
 | `PROFILES_ROOT` / `ADMIN_TOKEN` | Profile mode: one bundle per API key (takes precedence over `BUNDLE_ROOT`); `ADMIN_TOKEN` enables `/admin` (profiles, settings page). |
 | `SETTINGS_FILE` | Where the settings page saves; overrides the environment. Only keys in `settings.ts`'s catalog — never network/access settings. |
 | `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Per-client brake on `/mcp` + `/api/chat` (default 60/1m, `0` disables). |

@@ -25,7 +25,8 @@ export class BundleError extends Error {
       | "NOT_MARKDOWN"
       | "HIDDEN_PATH"
       | "AMBIGUOUS_SECTION"
-      | "CLOSED",
+      | "CLOSED"
+      | "READ_ONLY",
     options?: { cause?: unknown }
   ) {
     super(message, options);

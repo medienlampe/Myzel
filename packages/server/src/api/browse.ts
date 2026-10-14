@@ -92,6 +92,8 @@ export function browseRouter(kb: KnowledgeBase): Router {
       modelOverride: parseAllowedModels(process.env.ALLOWED_MODELS).length > 0,
       // Lets the UI turn away an oversized file before sending it.
       attachmentLimit: LIMITS.chatAttachments,
+      // DEMO_MODE: the UI says so, since asking the chat for a change can only fail.
+      readOnly: kb.readOnly,
     });
   });
 

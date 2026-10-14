@@ -11,6 +11,7 @@ is listed in [Configuration](configuration.md).
 - [What the memory can talk your assistant into](#what-the-memory-can-talk-your-assistant-into)
 - [Profiles: several memories on one server](#profiles-several-memories-on-one-server)
 - [Serving under a sub-path](#serving-under-a-sub-path)
+- [Demo mode](#demo-mode)
 - [Troubleshooting](#troubleshooting)
 
 ## Other ways to connect
@@ -203,6 +204,36 @@ handle_path /myzel/* {
 Open it with a trailing slash (`https://host/myzel/`). Without it, relative URLs escape the prefix.
 If you reach the server by a hostname, add it to `ALLOWED_HOSTS` and set `TRUST_PROXY` (see
 [Cost](#cost)).
+
+## Demo mode
+
+`DEMO_MODE=true` serves one bundle read-only: visitors can browse it, search it, look at the graph,
+replay traces and ask the agent questions, but nothing can change it. `KnowledgeBase` refuses every
+write, so the guarantee does not depend on the model behaving. On top of that, the server drops
+everything that exists only to write:
+
+- MCP offers `memory_query` and `memory_status` only, and its instructions say the memory is
+  read-only.
+- The chat gets the read tools and the query prompt, so it answers but never edits.
+- `/admin` (settings, profiles), dreaming and `GIT_AUTOCOMMIT` are off. `PROFILES_ROOT` is refused.
+- The web UI shows a **demo · read-only** chip and hides **Settings**.
+
+Two ways to start it with the [sample memory](../sample-bundle):
+
+```bash
+make demo        # from source, on a throwaway copy of sample-bundle/ — http://localhost:3800
+make demo-up     # docker-compose.demo.yml; `make demo-down` stops it
+```
+
+Both need a model (the `LLM_*` variables, e.g. in `.env`). The container copies the sample into a
+tmpfs at start, so each restart begins from the pristine sample. Point `BUNDLE_ROOT` elsewhere to
+demo your own bundle.
+
+Read-only does not mean free. Every question runs the agent and spends model tokens, so a public
+demo should keep `RATE_LIMIT` on (the demo compose file defaults to 20 per minute) and use a key
+with a spending cap. Visitors also share one memory: the trace list shows everyone's questions,
+and the demo compose file sets `HOT_MEMORY_RECALL_QA=false` so one visitor's questions do not enter
+another's prompt.
 
 ## Troubleshooting
 

@@ -356,6 +356,14 @@ export default function App() {
             </button>
           </span>
         )}
+        {config?.readOnly && (
+          <span
+            title="Demo mode: explore and ask freely — this memory cannot be changed"
+            className="chip bg-blue/15 text-blue"
+          >
+            demo · read-only
+          </span>
+        )}
         {report && (
           <span
             title={`${report.conceptCount} concepts, ${report.issues.length} issues`}
@@ -378,17 +386,20 @@ export default function App() {
               </button>
             );
           })}
-          <button
-            onClick={() => {
-              // Settings open in the View panel; bring it back if it is closed.
-              if (layout.hidden.includes("content")) updateLayout(togglePanel(layout, "content"));
-              showView({ kind: "settings" });
-            }}
-            aria-pressed={view.kind === "settings"}
-            className={`ml-1 rounded-lg px-2 py-1 transition-colors ${view.kind === "settings" ? "bg-blue/15 text-blue" : "text-muted hover:bg-raised hover:text-strong"}`}
-          >
-            Settings
-          </button>
+          {/* A demo server has no /admin, so there are no settings to open. */}
+          {!config?.readOnly && (
+            <button
+              onClick={() => {
+                // Settings open in the View panel; bring it back if it is closed.
+                if (layout.hidden.includes("content")) updateLayout(togglePanel(layout, "content"));
+                showView({ kind: "settings" });
+              }}
+              aria-pressed={view.kind === "settings"}
+              className={`ml-1 rounded-lg px-2 py-1 transition-colors ${view.kind === "settings" ? "bg-blue/15 text-blue" : "text-muted hover:bg-raised hover:text-strong"}`}
+            >
+              Settings
+            </button>
+          )}
           <button
             onClick={() => updateLayout(DEFAULT_LAYOUT)}
             title="Restore the default panel arrangement"

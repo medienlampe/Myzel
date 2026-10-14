@@ -21,3 +21,12 @@ export function parseAllowedModels(raw: string | undefined): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+/**
+ * DEMO_MODE: serve one bundle read-only, for showing Myzel off. Writes are
+ * refused by KnowledgeBase itself; the entry points also drop what only
+ * exists to write (MCP write tools, dreaming, /admin, git autocommit).
+ */
+export function isDemoMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.DEMO_MODE === "true";
+}

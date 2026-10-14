@@ -165,6 +165,9 @@ fallback, timeouts, caches, dreaming, rate limits) without touching files; most 
 request. Network and access settings stay in the environment.
 [The settings page](docs/configuration.md#the-settings-page) has the details.
 
+To show Myzel off without letting anyone change the memory, run the read-only
+[demo mode](docs/running.md#demo-mode): `make demo`, or `make demo-up` for the container.
+
 ## How it works
 
 ```mermaid

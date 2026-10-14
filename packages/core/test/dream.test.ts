@@ -47,6 +47,14 @@ describe("duplicateCandidates", () => {
 });
 
 describe("runDream", () => {
+  it("never dreams on a read-only memory", async () => {
+    await kb.writeConcept("/orphan.md", { type: "T", title: "Orphan" }, "alone", "add orphan");
+    const runner = vi.fn();
+    const report = await runDream(new KnowledgeBase(root, { readOnly: true }), {}, runner as never);
+    expect(report).toEqual({ ran: false, reason: "the memory is read-only" });
+    expect(runner).not.toHaveBeenCalled();
+  });
+
   it("skips (no agent run) when the memory is healthy and quiet", async () => {
     // Two concepts linking to each other: no orphans, no broken links, <5 log entries.
     await kb.writeConcept(

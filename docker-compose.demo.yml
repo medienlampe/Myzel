@@ -1,0 +1,43 @@
+# Read-only demo: shows the sample memory and lets visitors browse, search,
+# replay traces and ask the agent — nothing can change it (DEMO_MODE). Start
+# with `make demo-up` or `docker compose -f docker-compose.demo.yml up -d --build`.
+#
+# The sample is mounted read-only and copied into a tmpfs at start, so query
+# traces have somewhere to go and every restart begins from the pristine sample.
+services:
+  myzel-demo:
+    build: .
+    ports:
+      # Loopback by default. For a public demo set MYZEL_BIND=0.0.0.0: visitors
+      # cannot change the memory, but every question spends model tokens, so
+      # keep RATE_LIMIT on and give the demo a key with a spending cap.
+      - "${MYZEL_BIND:-127.0.0.1}:${MYZEL_DEMO_PORT:-3800}:3800"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./sample-bundle:/sample:ro
+    tmpfs:
+      - /bundle:uid=1000,gid=1000,mode=0755
+    command: ["sh", "-c", "cp -R /sample/. /bundle/ && exec node server/dist/index.js"]
+    environment:
+      DEMO_MODE: "true"
+      BUNDLE_ROOT: /bundle
+      # Optional: a token turns the public demo into a private one.
+      AUTH_TOKEN: ${AUTH_TOKEN:-}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      LLM_API_BASE_URL: ${LLM_API_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_API_FORMAT: ${LLM_API_FORMAT:-openai}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_FALLBACK_API_BASE_URL: ${LLM_FALLBACK_API_BASE_URL:-}
+      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
+      LLM_FALLBACK_API_FORMAT: ${LLM_FALLBACK_API_FORMAT:-openai}
+      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
+      # Stricter than the default 60/min: a demo is open to people you do not know.
+      RATE_LIMIT: ${RATE_LIMIT:-20}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-}
+      LLM_MAX_STEPS: ${LLM_MAX_STEPS:-}
+      # Visitors share one memory: keep one visitor's questions out of another's prompt.
+      HOT_MEMORY_RECALL_QA: "false"
+    restart: unless-stopped

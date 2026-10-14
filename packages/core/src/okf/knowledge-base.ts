@@ -21,6 +21,11 @@ import type {
 export interface KnowledgeBaseOptions {
   /** Commit after each mutation. Requires the bundle to be inside a git repo. */
   gitAutocommit?: boolean;
+  /**
+   * Refuse every write (DEMO_MODE): the bundle is shown, never changed.
+   * Enforced here, at the one write path, so no caller can forget it.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -49,6 +54,11 @@ export class KnowledgeBase {
    */
   async ensureGitReady(): Promise<void> {
     if (this.git) await prepareRepo(this.git, this.bundle.root);
+  }
+
+  /** True when every write is refused (see KnowledgeBaseOptions.readOnly). */
+  get readOnly(): boolean {
+    return this.options.readOnly === true;
   }
 
   // ── Reads (no queue) ────────────────────────────────────────────────
@@ -148,6 +158,9 @@ export class KnowledgeBase {
   }
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.readOnly) {
+      return Promise.reject(new BundleError("this memory is read-only", "READ_ONLY"));
+    }
     if (this.closed) {
       return Promise.reject(new BundleError("this memory has been closed", "CLOSED"));
     }

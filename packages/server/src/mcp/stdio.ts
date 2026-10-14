@@ -11,6 +11,7 @@ import { KnowledgeBase } from "@myzel/core";
 import { buildMcpServer } from "./server.js";
 import { checkModelConfig, requireGitReady } from "../startup.js";
 import { SettingsStore } from "../settings.js";
+import { isDemoMode } from "../env.js";
 
 const bundleRoot = process.env.BUNDLE_ROOT;
 if (!bundleRoot) {
@@ -31,8 +32,9 @@ try {
 
 checkModelConfig((line) => console.error(line));
 
-const gitAutocommit = process.env.GIT_AUTOCOMMIT === "true";
-const kb = new KnowledgeBase(bundleRoot, { gitAutocommit });
+const readOnly = isDemoMode();
+const gitAutocommit = !readOnly && process.env.GIT_AUTOCOMMIT === "true";
+const kb = new KnowledgeBase(bundleRoot, { gitAutocommit, readOnly });
 if (gitAutocommit) {
   try {
     await requireGitReady(kb, "the bundle");
@@ -46,4 +48,6 @@ if (gitAutocommit) {
 const server = await buildMcpServer(kb);
 await server.connect(new StdioServerTransport());
 // stdio transport keeps the process alive; logs must go to stderr only.
-console.error(`[myzel] serving bundle ${bundleRoot} over stdio`);
+console.error(
+  `[myzel] serving bundle ${bundleRoot} over stdio${readOnly ? " (DEMO_MODE: read-only)" : ""}`
+);

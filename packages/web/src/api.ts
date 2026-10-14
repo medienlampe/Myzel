@@ -81,6 +81,8 @@ export interface AppConfig {
   modelOverride?: boolean;
   /** Characters of attached text the server accepts per message. */
   attachmentLimit?: number;
+  /** DEMO_MODE: the memory can be explored and queried, never changed. */
+  readOnly?: boolean;
 }
 
 const TOKEN_KEY = "myzel-token";

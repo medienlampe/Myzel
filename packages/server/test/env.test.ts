@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { envCount, parseAllowedModels } from "../src/env.js";
+import { envCount, isDemoMode, parseAllowedModels } from "../src/env.js";
 
 describe("envCount", () => {
   it.each([
@@ -20,5 +20,13 @@ describe("parseAllowedModels", () => {
   it("splits and trims, keeping case", () => {
     expect(parseAllowedModels(" Model-A, ,model-b ")).toEqual(["Model-A", "model-b"]);
     expect(parseAllowedModels(undefined)).toEqual([]);
+  });
+});
+
+describe("isDemoMode", () => {
+  it("is on only for DEMO_MODE=true", () => {
+    expect(isDemoMode({ DEMO_MODE: "true" })).toBe(true);
+    expect(isDemoMode({ DEMO_MODE: "1" })).toBe(false);
+    expect(isDemoMode({})).toBe(false);
   });
 });

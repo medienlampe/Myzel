@@ -81,6 +81,7 @@ describe("browse API", () => {
     expect((await json(`${base}/api/config`)).body).toMatchObject({
       model: "fake-model",
       modelOverride: false,
+      readOnly: false,
     });
   });
 
@@ -384,6 +385,49 @@ describe("app wiring", () => {
       });
     expect((await post("10.0.0.1")).status).not.toBe(429);
     expect((await post("10.0.0.2")).status).not.toBe(429); // a different client
+  });
+});
+
+describe("demo mode (read-only memory)", () => {
+  const demoBase = () => serve({}, new KnowledgeBase(root, { readOnly: true }));
+  const rpc = (base: string, method: string, params: unknown = {}) =>
+    fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    }).then((r) => r.json());
+
+  it("offers only the read-only MCP tools and says so in the instructions", async () => {
+    const base = await demoBase();
+    const tools = (await rpc(base, "tools/list")).result.tools as { name: string }[];
+    expect(tools.map((t) => t.name).sort()).toEqual(["memory_query", "memory_status"]);
+    const init = await rpc(base, "initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "test", version: "0" },
+    });
+    expect(init.result.instructions).toContain("read-only");
+    expect(init.result.instructions).not.toContain("memory_add");
+  });
+
+  it("tells the UI, and chats without handing the model write tools", async () => {
+    const base = await demoBase();
+    expect((await json(`${base}/api/config`)).body).toMatchObject({ readOnly: true });
+    llm.script([{ text: "Billing charges customers." }]);
+    const res = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "1", role: "user", parts: [{ type: "text", text: "billing?" }] }],
+      }),
+    });
+    expect(await res.text()).toContain("Billing charges customers.");
+    const sent = JSON.stringify(llm.requests.at(-1)?.tools);
+    expect(sent).toContain("read_concept");
+    expect(sent).not.toContain("write_concept");
   });
 });
 

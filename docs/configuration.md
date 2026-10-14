@@ -107,6 +107,7 @@ old ones are ignored.
 | Variable | Effect |
 |---|---|
 | `BUNDLE_ROOT` | The folder holding the memory. **Required** unless `PROFILES_ROOT` is set. |
+| `DEMO_MODE` | `true` serves the bundle read-only for showing Myzel off. See [Demo mode](running.md#demo-mode). |
 | `PROFILES_ROOT` | Host one memory per API key instead of a single bundle. See [Profiles](running.md#profiles-several-memories-on-one-server). |
 | `ADMIN_TOKEN` | Enables `/admin`: the [settings page](#the-settings-page) and, in profile mode, profile management. Unset: no `/admin`. |
 | `SETTINGS_FILE` | Where the settings page saves; its values override the environment. Unset: the page is read-only. |

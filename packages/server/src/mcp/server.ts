@@ -39,7 +39,7 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
 
   const server = new McpServer(
     { name: "myzel", version: "0.1.0" },
-    { instructions: seedInstructions(seed) }
+    { instructions: seedInstructions(seed, kb.readOnly) }
   );
 
   const queryTool = server.registerTool(
@@ -106,65 +106,70 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
     };
   };
 
-  server.registerTool(
-    "memory_add",
-    {
-      title: "Add knowledge",
-      description:
-        "Provide free-form knowledge (facts, docs, decisions, runbooks). An internal agent searches for overlap, then creates or extends OKF concepts; indexes and the update log are maintained automatically.",
-      inputSchema: {
-        content: z
-          .string()
-          .min(1)
-          .max(LIMITS.content)
-          .describe("The knowledge to record, in any prose form"),
-        suggested_path: z
-          .string()
-          .max(LIMITS.path)
-          .optional()
-          .describe('Optional bundle path hint, e.g. "/apis/payments.md"'),
+  // A read-only memory (DEMO_MODE) offers no write tools: KnowledgeBase would
+  // refuse their writes anyway, and a client model should not be offered tools
+  // that can only fail.
+  if (!kb.readOnly) {
+    server.registerTool(
+      "memory_add",
+      {
+        title: "Add knowledge",
+        description:
+          "Provide free-form knowledge (facts, docs, decisions, runbooks). An internal agent searches for overlap, then creates or extends OKF concepts; indexes and the update log are maintained automatically.",
+        inputSchema: {
+          content: z
+            .string()
+            .min(1)
+            .max(LIMITS.content)
+            .describe("The knowledge to record, in any prose form"),
+          suggested_path: z
+            .string()
+            .max(LIMITS.path)
+            .optional()
+            .describe('Optional bundle path hint, e.g. "/apis/payments.md"'),
+        },
       },
-    },
-    async ({ content, suggested_path }, extra) => {
-      // Wrap the payload as an explicit directive. Bare content (e.g. a plain
-      // fact like "The user's name is Anirban Kar.") otherwise reads as a chat
-      // message and the agent replies conversationally instead of persisting it.
-      const instruction =
-        `Persist the following knowledge into the knowledge base. First search for ` +
-        `related or owning concepts. If this is an attribute or detail of an ` +
-        `existing concept, patch it into that concept rather than creating a new ` +
-        `one. Only a distinct stand-alone entity or substantial topic gets its own ` +
-        `concept — and then you must also patch the related existing concepts to ` +
-        `link back to it. This is content to store, not a message to answer — you ` +
-        `must use the write tools.\n\n` +
-        `KNOWLEDGE TO RECORD:\n${content}` +
-        (suggested_path ? `\n\nIf it fits, place new content at ${suggested_path}.` : "");
-      const outcome = await runMutation(kb, instruction, { signal: extra.signal });
-      await refreshSeed();
-      return mutationOutcomeResponse(outcome);
-    }
-  );
+      async ({ content, suggested_path }, extra) => {
+        // Wrap the payload as an explicit directive. Bare content (e.g. a plain
+        // fact like "The user's name is Anirban Kar.") otherwise reads as a chat
+        // message and the agent replies conversationally instead of persisting it.
+        const instruction =
+          `Persist the following knowledge into the knowledge base. First search for ` +
+          `related or owning concepts. If this is an attribute or detail of an ` +
+          `existing concept, patch it into that concept rather than creating a new ` +
+          `one. Only a distinct stand-alone entity or substantial topic gets its own ` +
+          `concept — and then you must also patch the related existing concepts to ` +
+          `link back to it. This is content to store, not a message to answer — you ` +
+          `must use the write tools.\n\n` +
+          `KNOWLEDGE TO RECORD:\n${content}` +
+          (suggested_path ? `\n\nIf it fits, place new content at ${suggested_path}.` : "");
+        const outcome = await runMutation(kb, instruction, { signal: extra.signal });
+        await refreshSeed();
+        return mutationOutcomeResponse(outcome);
+      }
+    );
 
-  server.registerTool(
-    "memory_update",
-    {
-      title: "Update knowledge",
-      description:
-        "Instruct a change to existing knowledge (correct a fact, deprecate a concept, restructure). An internal agent locates the concepts and applies targeted edits.",
-      inputSchema: {
-        instruction: z
-          .string()
-          .min(1)
-          .max(LIMITS.instruction)
-          .describe("What to change, in natural language"),
+    server.registerTool(
+      "memory_update",
+      {
+        title: "Update knowledge",
+        description:
+          "Instruct a change to existing knowledge (correct a fact, deprecate a concept, restructure). An internal agent locates the concepts and applies targeted edits.",
+        inputSchema: {
+          instruction: z
+            .string()
+            .min(1)
+            .max(LIMITS.instruction)
+            .describe("What to change, in natural language"),
+        },
       },
-    },
-    async ({ instruction }, extra) => {
-      const outcome = await runMutation(kb, instruction, { signal: extra.signal });
-      await refreshSeed();
-      return mutationOutcomeResponse(outcome);
-    }
-  );
+      async ({ instruction }, extra) => {
+        const outcome = await runMutation(kb, instruction, { signal: extra.signal });
+        await refreshSeed();
+        return mutationOutcomeResponse(outcome);
+      }
+    );
+  }
 
   server.registerTool(
     "memory_status",
@@ -203,61 +208,63 @@ export async function buildMcpServer(kb: KnowledgeBase): Promise<McpServer> {
     }
   );
 
-  server.registerTool(
-    "memory_maintain",
-    {
-      title: "Maintain / repair memory",
-      description:
-        "Health-check and repair the knowledge graph: an internal agent wires orphaned concepts (nothing links to them) into related concepts and fixes broken links. Run periodically to counter drift. No-op when the graph is already healthy.",
-      inputSchema: {},
-    },
-    async (_args, extra) => {
-      const before = await kb.lint();
-      if (before.healthy) {
+  if (!kb.readOnly) {
+    server.registerTool(
+      "memory_maintain",
+      {
+        title: "Maintain / repair memory",
+        description:
+          "Health-check and repair the knowledge graph: an internal agent wires orphaned concepts (nothing links to them) into related concepts and fixes broken links. Run periodically to counter drift. No-op when the graph is already healthy.",
+        inputSchema: {},
+      },
+      async (_args, extra) => {
+        const before = await kb.lint();
+        if (before.healthy) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Memory is healthy — ${before.conceptCount} concepts, ${before.linkCount} links, no orphans, no broken links. Nothing to repair.`,
+              },
+            ],
+          };
+        }
+
+        // Paths and titles are stored content going into an instruction — same
+        // rule as the seed: one line each, no forged directives.
+        const orphanList = formatOrphanList(before.orphans) || "(none)";
+        const brokenList = formatBrokenLinkList(before.brokenLinks) || "(none)";
+        const instruction =
+          `Repair the knowledge graph. This is a maintenance task — use the write tools.\n\n` +
+          `ORPHANED CONCEPTS (no other concept links to them). For each, read it and the ` +
+          `concepts it relates to, then wire it in: patch a genuinely related concept to ` +
+          `reference it, and/or add outbound links from it to related concepts. Do NOT ` +
+          `invent relationships that don't exist — if an orphan genuinely relates to ` +
+          `nothing, leave it.\n${orphanList}\n\n` +
+          `BROKEN LINKS (target does not exist). Fix the path if the target was renamed/moved, ` +
+          `or remove the link if the target is gone.\n${brokenList}\n\n` +
+          `Follow the enrich / link-both-ways rules. Read concepts before editing.`;
+
+        const outcome = await runMutation(kb, instruction, { signal: extra.signal });
+        await refreshSeed();
+        if (!outcome.ok) return mutationOutcomeResponse(outcome);
+        const { summary, filesChanged } = outcome.result;
+        const after = await kb.lint();
         return {
           content: [
             {
               type: "text",
-              text: `Memory is healthy — ${before.conceptCount} concepts, ${before.linkCount} links, no orphans, no broken links. Nothing to repair.`,
+              text:
+                `${summary}\n\n` +
+                `Graph health: orphans ${before.orphans.length} → ${after.orphans.length}, ` +
+                `broken links ${before.brokenLinks.length} → ${after.brokenLinks.length}.\n` +
+                `Files changed:\n${filesChanged.map((f) => `- ${f}`).join("\n") || "- none"}`,
             },
           ],
         };
       }
-
-      // Paths and titles are stored content going into an instruction — same
-      // rule as the seed: one line each, no forged directives.
-      const orphanList = formatOrphanList(before.orphans) || "(none)";
-      const brokenList = formatBrokenLinkList(before.brokenLinks) || "(none)";
-      const instruction =
-        `Repair the knowledge graph. This is a maintenance task — use the write tools.\n\n` +
-        `ORPHANED CONCEPTS (no other concept links to them). For each, read it and the ` +
-        `concepts it relates to, then wire it in: patch a genuinely related concept to ` +
-        `reference it, and/or add outbound links from it to related concepts. Do NOT ` +
-        `invent relationships that don't exist — if an orphan genuinely relates to ` +
-        `nothing, leave it.\n${orphanList}\n\n` +
-        `BROKEN LINKS (target does not exist). Fix the path if the target was renamed/moved, ` +
-        `or remove the link if the target is gone.\n${brokenList}\n\n` +
-        `Follow the enrich / link-both-ways rules. Read concepts before editing.`;
-
-      const outcome = await runMutation(kb, instruction, { signal: extra.signal });
-      await refreshSeed();
-      if (!outcome.ok) return mutationOutcomeResponse(outcome);
-      const { summary, filesChanged } = outcome.result;
-      const after = await kb.lint();
-      return {
-        content: [
-          {
-            type: "text",
-            text:
-              `${summary}\n\n` +
-              `Graph health: orphans ${before.orphans.length} → ${after.orphans.length}, ` +
-              `broken links ${before.brokenLinks.length} → ${after.brokenLinks.length}.\n` +
-              `Files changed:\n${filesChanged.map((f) => `- ${f}`).join("\n") || "- none"}`,
-          },
-        ],
-      };
-    }
-  );
+    );
+  }
 
   return server;
 }

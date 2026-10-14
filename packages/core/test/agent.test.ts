@@ -300,6 +300,32 @@ describe("streamChat", () => {
   });
 });
 
+describe("read-only memory", () => {
+  const user = (text: string) => [
+    { role: "user" as const, content: [{ type: "text" as const, text }] },
+  ];
+
+  it("refuses a mutation without calling the model", async () => {
+    llm.script([]);
+    const outcome = await runMutation(new KnowledgeBase(root, { readOnly: true }), "Dana");
+    expect(outcome).toEqual({ ok: false, status: "failed", error: "this memory is read-only" });
+    expect(llm.requests).toHaveLength(0);
+  });
+
+  it("chats with the read tools and the query prompt only", async () => {
+    llm.script([{ text: "Billing uses POST /charges." }]);
+    const readOnly = new KnowledgeBase(root, { readOnly: true });
+    const { result } = await streamChat(readOnly, user("billing?"));
+    expect(await result.text).toContain("POST /charges");
+    const request = llm.requests.at(-1) as { tools?: Array<{ function: { name: string } }> };
+    const tools = (request.tools ?? []).map((t) => t.function.name);
+    expect(tools).toContain("read_concept");
+    expect(tools).not.toContain("write_concept");
+    expect(tools).not.toContain("patch_concept");
+    expect(JSON.stringify(request)).toContain("QUERY (read-only)");
+  });
+});
+
 describe("model chain", () => {
   it("falls back to the second model on a retryable failure", async () => {
     const backup = await startFakeLlm([{ text: "from the backup" }]);

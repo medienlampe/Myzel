@@ -118,6 +118,11 @@ export async function runMutation(
   instruction: string,
   options: AgentOptions = {}
 ): Promise<MutationOutcome> {
+  // Refused before the model is called: a read-only memory would refuse every
+  // write anyway, and the run would only spend tokens finding that out.
+  if (kb.readOnly) {
+    return { ok: false, status: "failed", error: "this memory is read-only" };
+  }
   const ctx = await promptContext(kb, "mutate");
   const recorder = new TraceRecorder();
   const filesChanged = new Set<string>();
@@ -186,13 +191,16 @@ export async function runMutation(
   }
 }
 
-/** Interactive chat — full toolset, streaming. Caller converts to a UI stream response. */
+/**
+ * Interactive chat — full toolset, streaming. Caller converts to a UI stream response.
+ * On a read-only memory the model gets the read tools and the query prompt only.
+ */
 export async function streamChat(
   kb: KnowledgeBase,
   messages: ModelMessage[],
   options: AgentOptions = {}
 ): Promise<{ result: ReturnType<typeof streamText<ToolSet>>; filesChanged: Set<string> }> {
-  const ctx = await promptContext(kb, "chat");
+  const ctx = await promptContext(kb, kb.readOnly ? "query" : "chat");
   const recorder = new TraceRecorder();
   const filesChanged = new Set<string>();
   let modelChain: string[] = [];
@@ -214,10 +222,12 @@ export async function streamChat(
       model: resolved.model,
       system: buildSystemPrompt(ctx),
       messages,
-      tools: {
-        ...buildReadTools(kb, recorder),
-        ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId)),
-      },
+      tools: kb.readOnly
+        ? buildReadTools(kb, recorder)
+        : {
+            ...buildReadTools(kb, recorder),
+            ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId)),
+          },
       stopWhen: stepCountIs(maxSteps()),
       abortSignal: runSignal(options),
       onEnd: async ({ text, steps }) => {
