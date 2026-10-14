@@ -415,7 +415,10 @@ describe("demo mode (read-only memory)", () => {
 
   it("tells the UI, and chats without handing the model write tools", async () => {
     const base = await demoBase();
-    expect((await json(`${base}/api/config`)).body).toMatchObject({ readOnly: true });
+    expect((await json(`${base}/api/config`)).body).toMatchObject({
+      readOnly: true,
+      modelConfigured: true,
+    });
     llm.script([{ text: "Billing charges customers." }]);
     const res = await fetch(`${base}/api/chat`, {
       method: "POST",
@@ -488,6 +491,21 @@ describe("startup checks", () => {
     expect(exit).toHaveBeenCalledWith(1);
     exit.mockRestore();
     err.mockRestore();
+  });
+
+  it("only warns in demo mode, and the UI learns there is no model", async () => {
+    for (const k of ["LLM_API_BASE_URL", "LLM_API_KEY"]) vi.stubEnv(k, "");
+    const exit = vi.spyOn(process, "exit");
+    const lines: string[] = [];
+    checkModelConfig((l) => lines.push(l), { optional: true });
+    expect(exit).not.toHaveBeenCalled();
+    expect(lines.join("\n")).toContain("no model");
+    exit.mockRestore();
+    const base = await serve();
+    expect((await json(`${base}/api/config`)).body).toMatchObject({
+      model: "",
+      modelConfigured: false,
+    });
   });
 
   it("names the memory when git autocommit cannot work", async () => {

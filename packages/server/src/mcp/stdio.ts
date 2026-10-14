@@ -30,9 +30,9 @@ try {
   process.exit(1);
 }
 
-checkModelConfig((line) => console.error(line));
-
 const readOnly = isDemoMode();
+checkModelConfig((line) => console.error(line), { optional: readOnly });
+
 const gitAutocommit = !readOnly && process.env.GIT_AUTOCOMMIT === "true";
 const kb = new KnowledgeBase(bundleRoot, { gitAutocommit, readOnly });
 if (gitAutocommit) {

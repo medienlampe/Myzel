@@ -45,7 +45,7 @@ if (demo) {
   console.log("[myzel] DEMO_MODE: read-only — writes, /admin, dreaming and git autocommit are off");
 }
 
-checkModelConfig((line) => console.log(line));
+checkModelConfig((line) => console.log(line), { optional: demo });
 
 // Choose how requests find their memory: one bundle, or one per profile key.
 let memoryHost: MemoryHost;

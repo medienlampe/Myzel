@@ -82,11 +82,18 @@ export function browseRouter(kb: KnowledgeBase): Router {
   });
 
   router.get("/config", (_req, res) => {
-    const config = resolveModelConfig();
+    // Only DEMO_MODE starts without a model; the UI still needs the rest.
+    let config: { model: string; format: string } | null = null;
+    try {
+      config = resolveModelConfig();
+    } catch {
+      // reported as modelConfigured: false
+    }
     const fallback = resolveFallbackConfig();
     res.json({
-      model: config.model,
-      format: config.format,
+      model: config?.model ?? "",
+      format: config?.format ?? "",
+      modelConfigured: config !== null,
       fallbackConfigured: fallback !== null,
       // Lets the UI hide its model picker when the server refuses overrides.
       modelOverride: parseAllowedModels(process.env.ALLOWED_MODELS).length > 0,

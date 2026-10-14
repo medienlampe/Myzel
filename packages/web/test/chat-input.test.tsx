@@ -38,6 +38,11 @@ const decode = (url: string) =>
   new TextDecoder().decode(Uint8Array.from(atob(url.split(",")[1]), (c) => c.charCodeAt(0)));
 
 describe("ChatInput", () => {
+  it("says so when the server has no model", () => {
+    setup({ ...CONFIG, model: "", modelConfigured: false });
+    expect(screen.getByText("no model")).toBeInTheDocument();
+  });
+
   it("sends on Enter and starts a new line on Shift+Enter", async () => {
     const { onSend, field } = setup();
     const user = await typeMessage("line one{Shift>}{Enter}{/Shift}line two");

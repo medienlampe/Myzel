@@ -77,6 +77,8 @@ export interface AppConfig {
   model: string;
   format: "openai" | "anthropic" | string;
   fallbackConfigured: boolean;
+  /** False when the server runs without a model (DEMO_MODE only): questions fail. */
+  modelConfigured?: boolean;
   /** False when the server refuses client-chosen models (ALLOWED_MODELS unset). */
   modelOverride?: boolean;
   /** Characters of attached text the server accepts per message. */

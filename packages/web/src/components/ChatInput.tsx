@@ -229,7 +229,14 @@ export function ChatInput({
 
           {config && (
             <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
-              {config.modelOverride ? (
+              {config.modelConfigured === false ? (
+                <span
+                  title="The server has no LLM configured. Set the LLM_* variables to ask questions."
+                  className="truncate px-1.5 text-muted"
+                >
+                  no model
+                </span>
+              ) : config.modelOverride ? (
                 <input
                   value={model}
                   onChange={(e) => onModelChange(e.target.value)}

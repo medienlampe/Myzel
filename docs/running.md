@@ -225,7 +225,9 @@ make demo        # from source, on a throwaway copy of sample-bundle/ — http:/
 make demo-up     # docker-compose.demo.yml; `make demo-down` stops it
 ```
 
-Both need a model (the `LLM_*` variables, e.g. in `.env`). The container copies the sample into a
+Without a model (the `LLM_*` variables, e.g. in `.env`) the demo still starts: browsing, search,
+the graph and trace replay work, the chat shows **no model** and questions fail with the
+configuration error. Outside demo mode a missing model stops the server at startup. The container copies the sample into a
 tmpfs at start, so each restart begins from the pristine sample. Point `BUNDLE_ROOT` elsewhere to
 demo your own bundle.
 

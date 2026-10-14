@@ -25,9 +25,14 @@ export async function requireGitReady(kb: KnowledgeBase, label: string): Promise
 /**
  * Validate the LLM configuration at startup and log what will be used — fail
  * fast with a clear error instead of on the first request. `log` is stderr for
- * the stdio transport, whose stdout is the protocol stream.
+ * the stdio transport, whose stdout is the protocol stream. With `optional`
+ * (DEMO_MODE) a missing model only warns: browsing needs none, and questions
+ * then fail with the configuration error.
  */
-export function checkModelConfig(log: (line: string) => void): void {
+export function checkModelConfig(
+  log: (line: string) => void,
+  { optional = false }: { optional?: boolean } = {}
+): void {
   try {
     const primary = resolveModelConfig();
     log(
@@ -40,6 +45,10 @@ export function checkModelConfig(log: (line: string) => void): void {
       );
     }
   } catch (err) {
+    if (optional) {
+      log(`[myzel] no model: ${(err as Error).message} Browsing works; questions will fail.`);
+      return;
+    }
     console.error(`[myzel] LLM configuration error: ${(err as Error).message}`);
     console.error("[myzel] Set LLM_API_BASE_URL + LLM_API_KEY, or configure legacy env vars.");
     process.exit(1);
