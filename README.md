@@ -225,20 +225,21 @@ Want to contribute? Read [AGENTS.md](AGENTS.md) first. It lists the rules the co
 Myzel started as a fork of [understory](https://github.com/thecodacus/understory) by
 [@thecodacus](https://github.com/thecodacus), who had the idea and built the original. The fork
 happened after understory's dreaming feature
-([#9](https://github.com/thecodacus/understory/pull/9)) and the two have gone separate ways since.
-What changed most:
+([#9](https://github.com/thecodacus/understory/pull/9)) and Myzel has been developed independently
+since. Where it has taken its own direction:
 
 - **Security.** Localhost by default, DNS rebinding protection, rate limits, defenses against prompt
   injection and a git autocommit that doesn't trust the bundle's `.git`. See
   [Security](docs/security.md).
 - **OKF v0.2** instead of v0.1.
-- **YAML-only frontmatter.** understory's parser would happily run a `---js` block. Myzel refuses it.
+- **YAML-only frontmatter**, read with the `yaml` package. Blocks in other languages such as
+  `---js` are refused.
 - **New stuff:** a settings page, a read-only demo mode, panels you can rearrange and file uploads in
-  the chat. Plus a fresh coat of Solarized paint, light and dark.
-- **Fresh dependencies** (AI SDK 7, Zod 4, TypeScript 6, Node 24) and a CI that fails below 80%
-  test coverage.
+  the chat. Plus Solarized colors, light and dark.
+- **Newer major versions** of the main dependencies (AI SDK 7, Zod 4, TypeScript 6, Node 24) and a
+  CI that fails below 80% test coverage.
 
-Good fixes from upstream still find their way over now and then.
+Fixes from upstream are still ported over now and then. Thanks to @thecodacus for the foundation.
 
 ## License
 
