@@ -228,7 +228,9 @@ export function buildWriteTools(
   trace?: TraceRecorder,
   /** Recorded as generated.by; see agentActor. */
   actor = agentActor(undefined),
-  seen: SeenVersions = new Map()
+  seen: SeenVersions = new Map(),
+  /** Concepts that must not be deleted in this run (MutationOptions.keep). */
+  keep: ReadonlySet<string> = new Set()
 ): ToolSet {
   return {
     write_concept: tool({
@@ -325,8 +327,13 @@ export function buildWriteTools(
         log_summary: logSummary,
       }),
       execute: async ({ path: rawPath, log_summary }) => {
-        await kb.deleteConcept(rawPath, log_summary);
         const conceptPath = kb.bundle.toBundlePath(rawPath);
+        if (keep.has(conceptPath)) {
+          throw new Error(
+            `${conceptPath} must be kept in this run — other concepts link to it. Rewrite it instead of deleting it.`
+          );
+        }
+        await kb.deleteConcept(rawPath, log_summary);
         filesChanged.add(conceptPath);
         recordHotDelete(kb.bundle.root, conceptPath);
         trace?.record("delete_concept", conceptPath, [conceptPath], true);

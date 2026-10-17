@@ -137,6 +137,29 @@ describe("runMutation", () => {
     expect(fm.sources).toEqual([{ id: "runbook", resource: "https://wiki.example/billing" }]);
   });
 
+  it("retries a failing model call once, not the SDK's default twice", async () => {
+    llm.script([{ status: 500 }]);
+    await expect(runQuery(kb, "anything?")).rejects.toThrow("HTTP 500");
+    expect(llm.requests).toHaveLength(2);
+  });
+
+  it("refuses to delete a concept the caller marked to keep", async () => {
+    llm.script([
+      {
+        toolCalls: [
+          {
+            name: "delete_concept",
+            args: { path: "/apis/billing.md", log_summary: "Removed billing." },
+          },
+        ],
+      },
+      { text: "Could not." },
+    ]);
+    await runMutation(kb, "Tidy up", { keep: ["/apis/billing.md"] });
+    expect((await kb.readConcept("/apis/billing.md")).body).toContain("POST /charges");
+    expect(lastToolOutputs()).toContain("must be kept in this run");
+  });
+
   it("refuses to overwrite a concept the model never read", async () => {
     llm.script([
       {

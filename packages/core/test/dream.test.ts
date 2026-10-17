@@ -253,7 +253,7 @@ describe("oversizedConcepts", () => {
       "add"
     );
 
-    const runner = vi.fn(async (_kb: unknown, _instruction: string) => ({
+    const runner = vi.fn(async (_kb: unknown, _instruction: string, _options: unknown) => ({
       ok: true as const,
       result: { summary: "split", filesChanged: ["/people/fat.md"], steps: 4, traceId: "t" },
     }));
@@ -263,5 +263,7 @@ describe("oversizedConcepts", () => {
     expect(instruction).toContain("OVERSIZED CONCEPTS");
     expect(instruction).toContain("/people/fat.md");
     expect(instruction).toContain("NEVER delete or rename the original path");
+    // …and the delete tool holds that, whatever the model makes of the prompt.
+    expect(runner.mock.calls[0][2]).toMatchObject({ keep: ["/people/fat.md"] });
   });
 });

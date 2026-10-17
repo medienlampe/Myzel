@@ -11,9 +11,14 @@ import {
   type SeenVersions,
 } from "./tools.js";
 import { sumUsage, TraceRecorder, TraceStore } from "./trace.js";
-import { resolveAgentModel, type AgentOptions } from "./model.js";
+import {
+  MODEL_RETRIES,
+  resolveAgentModel,
+  type AgentOptions,
+  type MutationOptions,
+} from "./model.js";
 
-export type { AgentOptions } from "./model.js";
+export type { AgentOptions, MutationOptions } from "./model.js";
 
 const DEFAULT_MAX_STEPS = 12;
 const DEFAULT_RUN_TIMEOUT_MS = 30 * 60_000;
@@ -111,6 +116,7 @@ export async function runQuery(
     modelChain = resolved.modelChain;
     const result = await generateText({
       model: resolved.model,
+      maxRetries: MODEL_RETRIES,
       system: buildSystemPrompt(ctx),
       prompt: question,
       tools: buildReadTools(kb, recorder),
@@ -152,7 +158,7 @@ export async function runQuery(
 export async function runMutation(
   kb: KnowledgeBase,
   instruction: string,
-  options: AgentOptions = {}
+  options: MutationOptions = {}
 ): Promise<MutationOutcome> {
   // Refused before the model is called: a read-only memory would refuse every
   // write anyway, and the run would only spend tokens finding that out.
@@ -170,11 +176,19 @@ export async function runMutation(
     modelChain = resolved.modelChain;
     const result = await generateText({
       model: resolved.model,
+      maxRetries: MODEL_RETRIES,
       system: buildSystemPrompt(ctx),
       prompt: instruction,
       tools: {
         ...buildReadTools(kb, recorder, seen),
-        ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId), seen),
+        ...buildWriteTools(
+          kb,
+          filesChanged,
+          recorder,
+          agentActor(resolved.modelId),
+          seen,
+          new Set((options.keep ?? []).map((p) => kb.bundle.toBundlePath(p)))
+        ),
       },
       stopWhen: stepCountIs(budget),
       abortSignal: runSignal(options),
@@ -279,6 +293,7 @@ export async function streamChat(
     modelChain = resolved.modelChain;
     const result = streamText({
       model: resolved.model,
+      maxRetries: MODEL_RETRIES,
       system: buildSystemPrompt(ctx),
       messages,
       tools: kb.readOnly

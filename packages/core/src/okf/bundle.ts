@@ -399,6 +399,33 @@ export class Bundle {
     return out.sort();
   }
 
+  /**
+   * Entries a person may expect to count but every walker skips: symlinks
+   * (anywhere in the visible tree) and hidden `.md` files. Reported by
+   * validate so a skipped file is never silently missing. Hidden directories
+   * such as .git and .traces are Myzel's or git's business and not listed.
+   */
+  async listSkippedEntries(): Promise<string[]> {
+    const out: string[] = [];
+    const visit = async (absDir: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await fs.readdir(absDir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const child = path.join(absDir, entry.name);
+        if (entry.isSymbolicLink()) out.push(this.toBundlePath(child));
+        else if (entry.name.startsWith(".")) {
+          if (entry.isFile() && entry.name.endsWith(".md")) out.push(this.toBundlePath(child));
+        } else if (entry.isDirectory()) await visit(child);
+      }
+    };
+    await visit(this.root);
+    return out.sort();
+  }
+
   /** Immediate subdirectories of a directory. */
   async listSubdirectories(dir = "/"): Promise<string[]> {
     const abs = this.resolve(dir);

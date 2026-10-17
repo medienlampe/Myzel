@@ -262,6 +262,13 @@ describe("sandbox", () => {
       const index = await fs.readFile(path.join(root, "index.md"), "utf-8");
       expect(index).not.toContain("Host secret");
       expect(index).not.toContain("linkdir");
+
+      // …but never silently: validate names what it skipped, and stays conformant.
+      await fs.writeFile(path.join(root, ".draft.md"), "---\ntype: T\n---\nhidden\n");
+      const report = await validateBundle(kb.bundle);
+      expect(report.conformant).toBe(true);
+      const skipped = report.issues.filter((i) => i.message.startsWith("Not read"));
+      expect(skipped.map((i) => i.path)).toEqual(["/.draft.md", "/link.md", "/linkdir"]);
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
     }

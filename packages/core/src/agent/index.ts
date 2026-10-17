@@ -1,5 +1,11 @@
 export { runQuery, runMutation, streamChat } from "./agent.js";
-export type { AgentOptions, QueryResult, MutationResult, MutationOutcome } from "./agent.js";
+export type {
+  AgentOptions,
+  MutationOptions,
+  QueryResult,
+  MutationResult,
+  MutationOutcome,
+} from "./agent.js";
 export { buildSystemPrompt } from "./system-prompt.js";
 export { buildReadTools, buildWriteTools, formatTree, type SeenVersions } from "./tools.js";
 export { TraceRecorder, TraceStore, buildNotation } from "./trace.js";
