@@ -18,8 +18,13 @@ This repository **started as a fork of [thecodacus/understory](https://github.co
 by [@thecodacus](https://github.com/thecodacus), was renamed to Myzel and develops independently
 from it. History and
 design decisions predating the fork live upstream — worth a look before concluding something here is
-unexplained — but do not assume the two are in sync, and do not port changes across without being
-asked. This repository publishes its own image, `ghcr.io/medienlampe/myzel`.
+unexplained — but do not assume the two are in sync. Upstream changes are ported case by case when
+the maintainer judges them worthwhile; do not port any on your own initiative. This repository
+publishes its own image, `ghcr.io/medienlampe/myzel`.
+
+**[docs/premises.md](docs/premises.md) says what Myzel is for, what it promises and its non-goals.**
+A change that conflicts with a premise needs the premise changed first, deliberately — not a quiet
+exception in code.
 
 A "bundle" is a directory of `.md` files with YAML frontmatter. Three entry points drive the same
 internal agent against that bundle:

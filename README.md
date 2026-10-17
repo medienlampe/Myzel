@@ -28,11 +28,14 @@ Code on Monday and Cursor knows it on Tuesday.
 
 Under the hood it's a folder of markdown files. Every assistant you connect reads from it and writes
 to it. A small agent of Myzel's own does the filing: it puts new facts where they belong, links them
-to related ones and throws out whatever they contradict.
+to related ones and replaces what they contradict, as far as it can tell.
 
 - Works with anything that speaks MCP.
 - Plain files. Open them in your editor, `grep` them, keep them in git. Walk away whenever you like.
-- Runs on whatever model you give it. A cheap API or a local model is plenty.
+- Runs on any model with solid tool calling. A cheap API works fine; local models are worth a try.
+
+Made for you alone or a small team you trust, on a machine of yours. What Myzel promises and what it
+won't do: [Premises](docs/premises.md).
 
 <p align="center">
   <img src="docs/images/myzel-dark.png" alt="The Myzel web UI in dark mode: the explorer tree on the left, a concept in the middle and the agent chat on the right answering a question with the tools it used" width="100%">
@@ -239,7 +242,7 @@ since. Where it has taken its own direction:
 - **Newer major versions** of the main dependencies (AI SDK 7, Zod 4, TypeScript 6, Node 24) and a
   CI that fails below 80% test coverage.
 
-Fixes from upstream are still ported over now and then. Thanks to @thecodacus for the foundation.
+Good ideas and fixes from upstream are still ported over, case by case. Thanks to @thecodacus for the foundation.
 
 ## License
 
