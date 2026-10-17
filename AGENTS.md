@@ -73,6 +73,7 @@ packages/core/          # zero-server, zero-express. Reusable library.
     dream.ts            #   autonomous consolidation pass (signals → agent instruction)
     trace.ts            #   traversal recording, persisted to <bundle>/.traces/
     untrusted.ts        #   sanitizers for bundle content headed into a prompt
+    limits.ts           #   PROMPT_LIMITS: budgets for bundle content in prompts and tool output
   src/providers/        # OpenAI-/Anthropic-compatible model config (index.ts), fallback wrapper
                         #   (fallback.ts), publicErrorMessage (errors.ts)
   src/util/             # parseDuration, truncate, redactUrl
@@ -224,8 +225,10 @@ dummy `LLM_*` values are enough to exercise the UI.
 13. **The bundle's `.git` is untrusted.** Git runs only through `createBundleGit`/`autocommit`
     (`okf/git.ts`): fixed `-c` overrides, a refusal when repo config sets command-running keys,
     `.traces/` excluded. Never call `simpleGit()` on the bundle directly.
-14. **Every model-bound input is capped** (`server/src/limits.ts`). A new tool parameter or route
-    that reaches a model gets a `max` from there.
+14. **Every model-bound input is capped.** Caller input by `server/src/limits.ts`: a new tool
+    parameter or route that reaches a model gets a `max` from there. Bundle content by
+    `core/src/agent/limits.ts` (`PROMPT_LIMITS`): any listing that grows with the bundle (tree,
+    orphans, lint, hits) is budgeted there, so a prompt never grows with the bundle size.
 15. **In profile mode the bearer key is the only memory selector.** Never add a request parameter,
     header or path segment that names a profile — it would let one key reach another profile's
     data. Everything per-memory hangs off the resolved `KnowledgeBase`: routers and the seed

@@ -21,6 +21,8 @@
  * does the rest of the work.
  */
 
+import { capList } from "./limits.js";
+
 /**
  * Codepoint ranges dropped outright: C0/C1 controls, zero-width characters, and
  * the bidi overrides that let text render differently from how it parses.
@@ -86,19 +88,25 @@ export const UNTRUSTED_CONTENT_NOTICE =
 /**
  * Lists of stored content that go into an instruction (maintenance, dreaming,
  * the session seed). Shared so every caller gets the same sanitizing: one line
- * per entry, no forged directives.
+ * per entry, no forged directives — and a bounded length, since a synced-in
+ * bundle can hold hundreds of orphans.
  */
 export function formatOrphanList(orphans: readonly { path: string; title?: string }[]): string {
-  return orphans
-    .map((o) => {
-      const title = sanitizeInline(o.title, 120);
-      return `- ${sanitizePath(o.path)}${title ? ` (${title})` : ""}`;
-    })
-    .join("\n");
+  return formatCapped(orphans, (o) => {
+    const title = sanitizeInline(o.title, 120);
+    return `- ${sanitizePath(o.path)}${title ? ` (${title})` : ""}`;
+  });
 }
 
 export function formatBrokenLinkList(links: readonly { path: string; target: string }[]): string {
-  return links.map((b) => `- ${sanitizePath(b.path)} → ${sanitizePath(b.target)}`).join("\n");
+  return formatCapped(links, (b) => `- ${sanitizePath(b.path)} → ${sanitizePath(b.target)}`);
+}
+
+function formatCapped<T>(items: readonly T[], line: (item: T) => string): string {
+  const { shown, omitted } = capList(items);
+  const lines = shown.map(line);
+  if (omitted > 0) lines.push(`- … and ${omitted} more (not listed here)`);
+  return lines.join("\n");
 }
 
 export function formatLogLine(entry: { date: string; action: string; summary: string }): string {

@@ -3,6 +3,8 @@ import { generateText } from "ai";
 import { parseDuration } from "../util/duration.js";
 import { resolveAgentModel, type AgentOptions } from "./model.js";
 import { sanitizeInline, sanitizePath, UNTRUSTED_CONTENT_NOTICE } from "./untrusted.js";
+import { PROMPT_LIMITS } from "./limits.js";
+import { truncate } from "../util/text.js";
 
 /**
  * Hot memory: a small working set of recently written concepts and recent
@@ -103,7 +105,12 @@ export function recordHotQuery(
 ): void {
   const state = stateFor(scope);
   if (hotGeneration(scope) !== generation) return;
-  state.qas.push({ question, answer, at: Date.now() });
+  // Replayed into every hot lookup for the next hour: kept prompt-sized.
+  state.qas.push({
+    question,
+    answer: truncate(answer, PROMPT_LIMITS.hotAnswerChars),
+    at: Date.now(),
+  });
   if (state.qas.length > MAX_QAS) state.qas = state.qas.slice(-MAX_QAS);
 }
 

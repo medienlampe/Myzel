@@ -15,3 +15,4 @@ export {
 export * from "./query-cache.js";
 export * from "./hot-memory.js";
 export * from "./dream.js";
+export { PROMPT_LIMITS } from "./limits.js";
