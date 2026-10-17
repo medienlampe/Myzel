@@ -10,6 +10,15 @@ export function envCount(raw: string | undefined, fallback: number): number {
 }
 
 /**
+ * The bind address. Blank counts as unset like every other setting here: an
+ * empty HOST would make Node listen on every interface, the opposite of what
+ * clearing the variable means.
+ */
+export function resolveBindHost(env: NodeJS.ProcessEnv = process.env): string {
+  return env.HOST?.trim() || "127.0.0.1";
+}
+
+/**
  * Which models a client may request. Unset means none: the server's configured
  * model is used and a client-supplied override is refused, so a request cannot
  * redirect spend onto a different (pricier) model. "*" restores free choice.

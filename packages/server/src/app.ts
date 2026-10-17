@@ -8,7 +8,7 @@ import { chatRouter } from "./api/chat.js";
 import type { AdminRouter } from "./admin.js";
 import { memoryOf, type MemoryHost } from "./host.js";
 import { corsDelegate, netGuard, type NetGuardConfig } from "./net-guard.js";
-import { rateLimit, type RateLimiter } from "./rate-limit.js";
+import { clientKey, rateLimit, type RateLimiter } from "./rate-limit.js";
 import { LIMITS } from "./limits.js";
 
 export interface AppOptions {
@@ -86,6 +86,9 @@ export function buildApp(host: MemoryHost, options: AppOptions): App {
     const limiter = rateLimit({
       ...options.rateLimit,
       hint: "Raise RATE_LIMIT, or set it to 0 to disable.",
+      // Profiles are walls: one memory's traffic behind a shared NAT or proxy
+      // must not use up another memory's budget.
+      key: (req, res) => `${memoryOf(res).profile ?? ""}|${clientKey(req)}`,
     });
     limiters.push(limiter);
     app.use(["/mcp", "/api/chat"], limiter);

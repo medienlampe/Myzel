@@ -20,6 +20,8 @@ export const LIMITS = {
   chatAttachments: 100_000,
   /** Whole /api/chat conversation as sent (JSON characters, tool results included). */
   chatConversation: 200_000,
+  /** Model id a client may request in /api/chat (checked against ALLOWED_MODELS). */
+  modelId: 200,
   /** Messages per /api/chat request. */
   chatMessages: 200,
   /** JSON request bodies (/mcp, /api). Fits `content` even in worst-case UTF-8. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APICallError, RetryError } from "ai";
+import { APICallError, RetryError, TypeValidationError } from "ai";
 import { redactUrl } from "../src/util/url.js";
 import { publicErrorMessage } from "../src/providers/errors.js";
 
@@ -50,5 +50,15 @@ describe("publicErrorMessage", () => {
     expect(publicErrorMessage(new Error("Concept not found: /x.md"))).toBe(
       "Concept not found: /x.md"
     );
+  });
+
+  it("hides the provider body that other AI SDK errors embed", () => {
+    const invalid = new TypeValidationError({
+      value: { debug: "sk-proj-secret" },
+      cause: new Error("bad shape"),
+    });
+    const shown = publicErrorMessage(invalid);
+    expect(shown).toBe("the model returned a response Myzel could not use");
+    expect(shown).not.toContain("sk-proj");
   });
 });

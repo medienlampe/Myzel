@@ -24,7 +24,7 @@ const chatBodySchema = z.object({
     )
     .min(1)
     .max(LIMITS.chatMessages),
-  model: z.string().min(1).max(200).optional(),
+  model: z.string().min(1).max(LIMITS.modelId).optional(),
 });
 
 /** Characters of text in the newest user turn — capped on its own for a clear error. */

@@ -6,7 +6,7 @@ import { adminRouter } from "./admin.js";
 import { profileMemoryHost, singleMemoryHost, type MemoryHost } from "./host.js";
 import { isLoopbackHost, parseList } from "./net-guard.js";
 import { parseTrustProxy } from "./rate-limit.js";
-import { envCount, isDemoMode } from "./env.js";
+import { envCount, isDemoMode, resolveBindHost } from "./env.js";
 import { ProfileRegistry } from "./profiles.js";
 import { checkModelConfig, requireGitReady } from "./startup.js";
 import { startDreamer } from "./dreamer.js";
@@ -118,7 +118,7 @@ const stopDreamer = demo
 // Bind to loopback unless a public interface is explicitly requested. The
 // memory is personal data and auth is optional, so "reachable from the LAN"
 // must be a decision, not a default.
-const host = process.env.HOST ?? "127.0.0.1";
+const host = resolveBindHost();
 const guard = {
   allowedOrigins: parseList(process.env.ALLOWED_ORIGINS),
   allowedHosts: parseList(process.env.ALLOWED_HOSTS),
