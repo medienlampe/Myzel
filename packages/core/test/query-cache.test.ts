@@ -32,6 +32,21 @@ afterEach(async () => {
 });
 
 describe("runQueryCached", () => {
+  it("never serves one bundle's answer to another, even when both look the same", async () => {
+    // Profiles are walls (premise 5): two empty-looking memories asked the same
+    // question must each get their own answer.
+    const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), "myzel-cache-other-"));
+    try {
+      const twin = new KnowledgeBase(otherRoot);
+      await twin.writeConcept("/facts/a.md", { type: "Fact", title: "A" }, "alpha", "add");
+      await runQueryCached(kb, "what is A?", {}, fakeRunner("mine"));
+      const theirs = await runQueryCached(twin, "what is A?", {}, fakeRunner("theirs"));
+      expect(theirs).toMatchObject({ cached: false, answer: "theirs" });
+    } finally {
+      await fs.rm(otherRoot, { recursive: true, force: true });
+    }
+  });
+
   it("serves repeats from cache without re-running the agent", async () => {
     const runner = fakeRunner("answer-1");
     const first = await runQueryCached(kb, "what is A?", {}, runner);
