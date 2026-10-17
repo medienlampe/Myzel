@@ -26,14 +26,48 @@ export interface GraphScan extends GraphData {
   inbound: Map<string, number>;
 }
 
-// Bundle-relative links to concepts: [text](/dir/concept.md)
 /**
- * A bundle-relative concept link: `](/path/to/concept.md)`. Brackets and
- * parentheses are excluded from the path so a match attempt stops at the next
- * link — with them allowed, a body of repeated "](/" made every attempt scan to
- * the end of the text (quadratic; seconds per request on a large concept).
+ * A markdown link to a concept: `](/path/to/concept.md)` or, per spec §6.1, a
+ * path relative to the linking file (`](billing.md)`, `](../apis/x.md)`) — what
+ * editors, Obsidian and GitHub write. URLs with a scheme or `//host` are not
+ * concept links. Brackets and parentheses are excluded from the path so a match
+ * attempt stops at the next link — with them allowed, a body of repeated "](/"
+ * made every attempt scan to the end of the text (quadratic; seconds per
+ * request on a large concept).
  */
-export const BUNDLE_LINK_RE = /\]\((\/[^()[\]#?\s]+\.md)\)/g;
+export const CONCEPT_LINK_RE = /\]\((?![a-z][a-z0-9+.-]*:|\/\/)([^()[\]#?\s]+\.md)\)/gi;
+
+/**
+ * The bundle paths a concept's body links to, resolved against the concept's
+ * own directory. Links that climb above the bundle root point outside it and
+ * are not concept links.
+ */
+export function conceptLinkTargets(body: string, sourcePath: string): string[] {
+  const dir = sourcePath.slice(0, sourcePath.lastIndexOf("/"));
+  const targets: string[] = [];
+  for (const match of body.matchAll(CONCEPT_LINK_RE)) {
+    const href = match[1];
+    const parts: string[] = [];
+    let outside = false;
+    for (const seg of (href.startsWith("/") ? href : `${dir}/${href}`).split("/")) {
+      if (seg === "..") {
+        if (parts.length === 0) outside = true;
+        parts.pop();
+      } else if (seg !== "" && seg !== ".") parts.push(decodeSegment(seg));
+    }
+    if (!outside) targets.push(`/${parts.join("/")}`);
+  }
+  return targets;
+}
+
+/** Index links are percent-encoded (spaces, "#", parentheses in file names). */
+function decodeSegment(seg: string): string {
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
 
 /**
  * One pass over the bundle building the inter-concept link graph.
@@ -76,8 +110,7 @@ export async function scanGraph(bundle: Bundle): Promise<GraphScan> {
   for (const source of nodes.keys()) {
     const body = bodies.get(source) ?? "";
     const targeted = new Set<string>();
-    for (const match of body.matchAll(BUNDLE_LINK_RE)) {
-      const target = match[1];
+    for (const target of conceptLinkTargets(body, source)) {
       if (target === source || targeted.has(target)) continue;
       targeted.add(target);
       if (known.has(target)) {
