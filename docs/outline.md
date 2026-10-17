@@ -1,6 +1,7 @@
 # Documentation outline
 
-Start with the [README](../README.md) for installing and connecting Myzel. The rules every code
+Start with the [README](../README.md) for installing and connecting Myzel. What Myzel is for, what
+it promises and what it won't do: [Premises](premises.md). The rules every code
 change must keep are in [AGENTS.md](../AGENTS.md) (also read by coding agents; `CLAUDE.md` links to
 it).
 
