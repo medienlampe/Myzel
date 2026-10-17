@@ -85,7 +85,7 @@ decides which memory a request reaches:
 - `singleMemoryHost` — one bundle (`BUNDLE_ROOT`), optionally behind `AUTH_TOKEN`;
 - `profileMemoryHost` — one bundle per profile (`PROFILES_ROOT`): the bearer key is looked up in
   the `ProfileRegistry` (`src/profiles.ts`) and selects the memory. Profiles are managed with the
-  CLI (`src/profiles-cli.ts`) or the `/admin` API (`src/admin.ts`, behind `ADMIN_TOKEN`).
+  CLI only (`src/profiles-cli.ts`); there is no HTTP API for them.
 
 Routers are built once per memory and cached by `KnowledgeBase`; each request is dispatched to the
 set its memory resolved to. The middleware order in `buildApp()` matters:
@@ -107,8 +107,7 @@ set its memory resolved to. The middleware order in `buildApp()` matters:
    bundle fingerprint), `GET /api/profile` (which memory the key opened), `/api` browse (no LLM),
    `/api/chat` (streaming, aborted when the client disconnects)
 9. `/admin` (with `ADMIN_TOKEN` only), behind the network guard and its own token check with its
-   own failure throttle (no rate limit beyond that): `/admin/settings` always, the profile routes
-   in profile mode. Settings live in `src/settings.ts`: a catalog of the editable settings, and a
+   own failure throttle (no rate limit beyond that). It serves `/admin/settings` only. Settings live in `src/settings.ts`: a catalog of the editable settings, and a
    `SettingsStore` that applies `SETTINGS_FILE` over `process.env` at startup (both entry
    points) and writes changes to the file and to `process.env`, which most settings are read from
    on every use.

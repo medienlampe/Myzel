@@ -1,6 +1,7 @@
-# Read-only demo: shows the sample memory and lets visitors browse, search,
-# replay traces and ask the agent — nothing can change it (DEMO_MODE). Start
-# with `make demo-up` or `docker compose -f docker-compose.demo.yml up -d --build`.
+# Read-only demo: try Myzel quickly on the sample memory — browse, search,
+# replay traces and, with a model configured, ask the agent. Nothing can change
+# it (DEMO_MODE), and no model is needed to start it. Start with
+# `make demo-up` or `docker compose -f docker-compose.demo.yml up -d --build`.
 #
 # The sample is mounted read-only and copied into a tmpfs at start, so query
 # traces have somewhere to go and every restart begins from the pristine sample.
@@ -8,9 +9,8 @@ services:
   myzel-demo:
     build: .
     ports:
-      # Loopback by default. For a public demo set MYZEL_BIND=0.0.0.0: visitors
-      # cannot change the memory, but every question spends model tokens, so
-      # keep RATE_LIMIT on and give the demo a key with a spending cap.
+      # This machine only. The demo is for trying Myzel yourself, not for
+      # hosting it for others (docs/premises.md).
       - "${MYZEL_BIND:-127.0.0.1}:${MYZEL_DEMO_PORT:-3800}:3800"
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -22,7 +22,7 @@ services:
     environment:
       DEMO_MODE: "true"
       BUNDLE_ROOT: /bundle
-      # Optional: a token turns the public demo into a private one.
+      # Optional, as for any instance.
       AUTH_TOKEN: ${AUTH_TOKEN:-}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
       TRUST_PROXY: ${TRUST_PROXY:-}
@@ -34,10 +34,8 @@ services:
       LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
       LLM_FALLBACK_API_FORMAT: ${LLM_FALLBACK_API_FORMAT:-openai}
       LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
-      # Stricter than the default 60/min: a demo is open to people you do not know.
+      # A low brake on token spend while playing around.
       RATE_LIMIT: ${RATE_LIMIT:-20}
       RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-}
       LLM_MAX_STEPS: ${LLM_MAX_STEPS:-}
-      # Visitors share one memory: keep one visitor's questions out of another's prompt.
-      HOT_MEMORY_RECALL_QA: "false"
     restart: unless-stopped

@@ -60,7 +60,9 @@ Untrusted input arrives in five ways:
 - **Removing a profile stops its memory.** Its `KnowledgeBase` is closed — requests still holding
   it can no longer write — and running writes finish before a purge deletes the data. A profile
   re-created under the same name gets a fresh instance with empty caches.
-- **`/admin` uses a separate `ADMIN_TOKEN`**, which manages profiles and settings but opens no
+- **Profiles are managed with the CLI only.** There is no HTTP API for them; the CLI needs
+  access to the server's files (in Docker, `docker exec`).
+- **`/admin` uses a separate `ADMIN_TOKEN`**, which opens the settings page but no
   memory; neither `AUTH_TOKEN` nor a profile key can reach `/admin`. `/admin` sits behind the same
   network guard, and has a failure throttle of its own (same limits, separate budget).
   Without `ADMIN_TOKEN`, it does not exist.
@@ -209,9 +211,10 @@ content it reads. Treat the admin token like the model API key, or stronger.
    by IP address needs nothing.
 3. **Behind a reverse proxy**, set `TRUST_PROXY` (e.g. `1` for one hop), so rate limits apply per
    client.
-4. **Shared instance:** prefer profiles (`PROFILES_ROOT`) — one memory and key per person or team.
-   If people must share one memory, set `HOT_MEMORY_RECALL_QA=false` so one caller's recent
-   questions and answers stay out of another caller's prompt.
+4. **Several people or projects:** one memory is one circle of trust. Everyone who shares it can
+   read and change all of it and see the others' questions (traces, query cache). For a wall
+   between them, use profiles (`PROFILES_ROOT`) — one memory and key each.
+   `HOT_MEMORY_RECALL_QA=false` only means less cross-talk between callers' answers.
 5. **`GIT_AUTOCOMMIT` with a bind-mounted bundle** works across file owners. A repository whose
    config can run programs is refused, so remove such keys to enable commits.
 
@@ -222,8 +225,6 @@ content it reads. Treat the admin token like the model API key, or stronger.
 - **Whole-bundle reads.** Search, graph and validate read every concept on each request. The
   session seed is cached and the browse API is rate-limited, but a shared, fingerprint-invalidated
   snapshot would remove the rest of that cost.
-- **`HOT_MEMORY_RECALL_QA` defaults to on**, which suits a single user. Turning it off by default
-  would be a product decision.
 - **Two check-then-act windows.** Between the symlink check and the write of a concept, and
   between the git config check and `add`/`commit`, a process that rewrites the bundle at the same
   moment could swap in a symlink or config. Exploiting that needs control of a concurrent writer

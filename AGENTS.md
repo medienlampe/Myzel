@@ -86,7 +86,7 @@ packages/server/        # Express 5 + MCP SDK
   src/host.ts           # MemoryHost: which memory a request reaches (single bundle or profile key)
   src/auth.ts           # bearer parsing, constant-time compare, FailureThrottle
   src/profiles.ts       # ProfileRegistry: profiles.json, hashed keys, cross-process lock
-  src/admin.ts          # /admin: profiles and settings (ADMIN_TOKEN)
+  src/admin.ts          # /admin: the settings page's API (ADMIN_TOKEN); profiles are CLI-only
   src/settings.ts       # the settings page's catalog + SettingsStore (SETTINGS_FILE over process.env)
   src/profiles-commands.ts # the profiles CLI's commands · src/profiles-cli.ts: process wiring
   src/env.ts            # numeric env parsing (blank = unset), ALLOWED_MODELS
@@ -304,7 +304,7 @@ dummy `LLM_*` values are enough to exercise the UI.
 | Add a tool the *internal* model can call | `packages/core/src/agent/tools.ts` (`buildReadTools` / `buildWriteTools`) + a `trace?.record(...)` call + a case in `buildNotation` |
 | Change agent behaviour/rules | `packages/core/src/agent/system-prompt.ts` — but first check §1: is this really a prompt problem? |
 | Change what a new session sees about the memory | `packages/server/src/mcp/seed.ts` |
-| Change how requests find their memory (auth, profiles) | `packages/server/src/host.ts`, `profiles.ts`, `admin.ts` — and the wiring in `app.ts` |
+| Change how requests find their memory (auth, profiles) | `packages/server/src/host.ts`, `profiles.ts`, `profiles-commands.ts` (the CLI) — and the wiring in `app.ts` |
 | Add a REST endpoint for the UI | `packages/server/src/api/browse.ts` (deterministic; must not call the LLM) |
 | Add a provider / change model resolution | `packages/core/src/providers/index.ts` |
 | Change conformance rules | `packages/core/src/okf/validate.ts` + a test per spec section |
@@ -363,8 +363,9 @@ dummy `LLM_*` values are enough to exercise the UI.
 - **Module-level caches**: `query-cache.ts` and `hot-memory.ts` hold process-global state so it
   survives the per-request `McpServer` instances of the stateless HTTP transport. Both are
   **partitioned by bundle root**. Within one bundle the state is shared by all callers;
-  `HOT_MEMORY_RECALL_QA=false` keeps one caller's Q&A out of another's prompt on a shared
-  instance. Use `clearQueryCache()` / `clearHotMemory()` in tests.
+  `HOT_MEMORY_RECALL_QA=false` means less cross-talk between callers' answers, not privacy
+  (traces and the query cache are shared too). Profiles are the wall between people. Use
+  `clearQueryCache()` / `clearHotMemory()` in tests.
 - **The query cache is invalidated by a bundle fingerprint** (path + mtime + size of every concept),
   not by write hooks. Out-of-band edits are picked up; sub-millisecond same-size edits are not.
 - **`DEMO_MODE` is enforced in `KnowledgeBase`** (`readOnly` → every write rejects with
@@ -405,7 +406,7 @@ worth knowing:
 | `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, … | **Deprecated** legacy path in `providers/index.ts`. Still supported; don't extend it. |
 | `AUTH_TOKEN` | Bearer token for `/mcp` + `/api`. Unset = open. |
 | `DEMO_MODE` | `true`: read-only demo of one bundle (`KnowledgeBase({ readOnly })`). No MCP/chat write tools, `/admin`, dreaming or autocommit. `make demo`, `make demo-up`. |
-| `PROFILES_ROOT` / `ADMIN_TOKEN` | Profile mode: one bundle per API key (takes precedence over `BUNDLE_ROOT`); `ADMIN_TOKEN` enables `/admin` (profiles, settings page). |
+| `PROFILES_ROOT` / `ADMIN_TOKEN` | Profile mode: one bundle per API key (takes precedence over `BUNDLE_ROOT`); `ADMIN_TOKEN` enables `/admin` (settings page only). Profiles are managed with the `myzel-profiles` CLI. |
 | `SETTINGS_FILE` | Where the settings page saves; overrides the environment. Only keys in `settings.ts`'s catalog — never network/access settings. |
 | `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Per-client brake on `/mcp` + `/api/chat` (default 60/1m, `0` disables). |
 | `RATE_LIMIT_BROWSE` | Separate brake on the `/api` browse routes (default 600 per window, `0` disables). |

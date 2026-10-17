@@ -128,9 +128,11 @@ counter that:
 
 - **Linking at write time.** A new fact either enriches the concept it belongs to or, when it really
   is a distinct thing, gets its own file _and_ links from related concepts. A fact that contradicts
-  an existing one replaces it instead of sitting next to it.
+  an existing one should replace it rather than sit next to it; the agent is instructed to do so,
+  but which facts conflict is its judgement call.
 - **`memory_maintain`.** A plain-code check finds orphans and broken links (also listed by
-  `memory_status` under `graph`) and hands them to the agent to repair. It does nothing when
+  `memory_status` under `graph`), hands them to the agent to repair and reports the counts before
+  and after. It does nothing when
   nothing is wrong.
 - **Pruning.** When the agent moves or merges concepts, a folder can end up holding only its
   generated `index.md`. Such folders are removed after every change.

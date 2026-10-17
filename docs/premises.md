@@ -50,8 +50,8 @@ server of yours, and connect your own AI tools to it.
 
 **Never:**
 
-- A hosted service for strangers. Profiles and the admin page serve you and your team, not a
-  multi-tenant SaaS.
+- A hosted service for strangers. Profiles are created with a CLI on your own server, and the
+  settings page is for you — not a multi-tenant SaaS.
 
 **Not now** (revisit when a real need shows up):
 
