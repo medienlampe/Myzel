@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Request, Response } from "express";
+import express, { type Request, type Response } from "express";
+import { listen } from "./support/serve.js";
 import {
-  corsDelegate,
+  corsHeaders,
   isAllowedHost,
   isAllowedOrigin,
   isLoopbackHost,
@@ -198,26 +199,50 @@ describe("netGuard", () => {
   });
 });
 
-describe("corsDelegate", () => {
-  const delegate = corsDelegate(LOOPBACK_CONFIG);
-
-  function options(headers: { host?: string; origin?: string }) {
-    const cb = vi.fn();
-    delegate({ headers } as Request, cb);
-    return cb.mock.calls[0][1];
+describe("corsHeaders", () => {
+  async function request(method: string, origin?: string) {
+    const app = express();
+    app.use(corsHeaders(LOOPBACK_CONFIG));
+    app.all("/x", (_req, res) => {
+      res.json({ ok: true });
+    });
+    const { base, close } = await listen(app);
+    try {
+      const res = await fetch(`${base}/x`, {
+        method,
+        headers: origin === undefined ? {} : { origin: origin.replace("BASE", base) },
+      });
+      return { status: res.status, headers: res.headers };
+    } finally {
+      close();
+    }
   }
 
-  it("reflects a same-origin request and exposes Mcp-Session-Id", () => {
-    const opts = options({ host: "localhost:3800", origin: "http://localhost:3800" });
-    expect(opts.origin).toBe("http://localhost:3800");
-    expect(opts.exposedHeaders).toContain("Mcp-Session-Id");
+  it("reflects a same-origin request and exposes Mcp-Session-Id", async () => {
+    const { headers } = await request("GET", "BASE");
+    expect(headers.get("access-control-allow-origin")).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(headers.get("access-control-expose-headers")).toContain("Mcp-Session-Id");
+    expect(headers.get("vary")).toContain("Origin");
   });
 
-  it("refuses to reflect a foreign origin, so its preflight fails", () => {
-    expect(options({ host: "localhost:3800", origin: "https://evil.example" }).origin).toBe(false);
+  it("answers an allowed preflight with methods and headers", async () => {
+    const { status, headers } = await request("OPTIONS", "BASE");
+    expect(status).toBe(204);
+    expect(headers.get("access-control-allow-headers")).toContain("Authorization");
+    expect(headers.get("access-control-allow-methods")).toContain("POST");
   });
 
-  it("emits no allow-origin when the request carries none", () => {
-    expect(options({ host: "localhost:3800" }).origin).toBe(false);
+  it("refuses to reflect a foreign origin, so its preflight fails", async () => {
+    for (const method of ["GET", "OPTIONS"]) {
+      const { headers } = await request(method, "https://evil.example");
+      expect(headers.get("access-control-allow-origin")).toBeNull();
+      expect(headers.get("access-control-allow-headers")).toBeNull();
+    }
+  });
+
+  it("emits no allow-origin when the request carries none", async () => {
+    const { status, headers } = await request("GET");
+    expect(status).toBe(200);
+    expect(headers.get("access-control-allow-origin")).toBeNull();
   });
 });

@@ -26,6 +26,13 @@ updates:
     # Same idea as a minimum release age: let fresh releases settle first.
     cooldown:
       default-days: 7
+    # Held back on purpose; the reason is in docs/maintenance.md's pin table.
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
     groups:
+      # The coverage plugin requires vitest at exactly its own version.
+      vitest:
+        patterns: [vitest, "@vitest/*"]
       minor-and-patch:
         update-types: [minor, patch]

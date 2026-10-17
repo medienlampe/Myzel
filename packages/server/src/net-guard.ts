@@ -1,5 +1,4 @@
 import { isIP } from "node:net";
-import type { CorsOptions } from "cors";
 import type { NextFunction, Request, Response } from "express";
 
 /**
@@ -125,31 +124,41 @@ export function netGuard(config: NetGuardConfig) {
   };
 }
 
-const CORS_BASE: CorsOptions = {
-  exposedHeaders: ["Mcp-Session-Id"],
-  allowedHeaders: [
-    "Content-Type",
-    "Accept",
-    "Authorization",
-    "Mcp-Session-Id",
-    "Mcp-Protocol-Version",
-    "Last-Event-ID",
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-};
+const EXPOSED_HEADERS = "Mcp-Session-Id";
+const ALLOWED_HEADERS =
+  "Content-Type, Accept, Authorization, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID";
+const ALLOWED_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 
 /**
- * CORS delegate mirroring the same allowlist, so a disallowed origin also fails
- * its preflight instead of merely being rejected after the fact.
+ * CORS mirroring the same allowlist, so a disallowed origin also fails its
+ * preflight instead of merely being rejected after the fact. An allowed
+ * origin is reflected (never `*`); any other gets no Access-Control-* header
+ * at all. Preflights end here with 204 either way, before the guard and auth,
+ * as browsers send them without credentials.
  */
-export function corsDelegate(config: NetGuardConfig) {
-  return (req: Request, callback: (err: Error | null, options: CorsOptions) => void): void => {
+export function corsHeaders(config: NetGuardConfig) {
+  return (req: Request, res: Response, next: NextFunction): void => {
     const origin = req.headers.origin;
     const host = String(req.headers.host ?? "");
     const allow =
       typeof origin === "string" &&
       origin !== "" &&
       isAllowedOrigin(origin, host, config.allowedOrigins);
-    callback(null, { ...CORS_BASE, origin: allow ? origin : false });
+    // The response depends on Origin: caches must not hand one origin's answer to another.
+    res.vary("Origin");
+    if (allow) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Expose-Headers", EXPOSED_HEADERS);
+    }
+    if (req.method !== "OPTIONS") {
+      next();
+      return;
+    }
+    if (allow) {
+      res.setHeader("Access-Control-Allow-Methods", ALLOWED_METHODS);
+      res.setHeader("Access-Control-Allow-Headers", ALLOWED_HEADERS);
+    }
+    res.status(204).setHeader("Content-Length", "0");
+    res.end();
   };
 }

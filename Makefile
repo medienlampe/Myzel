@@ -141,6 +141,7 @@ format-check: node_modules ## Check formatting without changing files
 
 audit: node_modules ## Fail on high/critical advisories in production dependencies
 	pnpm audit --prod --audit-level high
+	node scripts/check-deps.mjs reasons
 
 ##@ Docker
 
