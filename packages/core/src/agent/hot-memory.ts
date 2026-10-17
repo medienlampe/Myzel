@@ -38,8 +38,10 @@ const MAX_EXCERPT_CHARS = 1500;
  *
  * Note what is still shared *within* one bundle: every caller of that bundle
  * sees the same working set. Hot concepts are simply bundle content, which all
- * callers may read anyway. Hot Q&A pairs are another caller's conversation, so
- * on an instance serving several people set HOT_MEMORY_RECALL_QA=false.
+ * callers may read anyway. Hot Q&A pairs are another caller's conversation;
+ * HOT_MEMORY_RECALL_QA=false keeps them out to reduce cross-talk between answers.
+ * That is not privacy (traces and the query cache are shared too): one memory is
+ * one circle of trust, and profiles are the wall between people.
  */
 interface HotState {
   concepts: Map<string, number>; // path → touchedAt
@@ -166,7 +168,7 @@ export async function hotLookup(
       state.concepts.delete(path); // deleted behind our back
     }
   }
-  // Q&A pairs are another caller's conversation; a shared instance can opt out.
+  // Q&A pairs are another caller's conversation; callers can opt out of the cross-talk.
   if (process.env.HOT_MEMORY_RECALL_QA !== "false") {
     for (const qa of state.qas) {
       if (qa.at < cutoff) continue;

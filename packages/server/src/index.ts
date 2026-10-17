@@ -66,19 +66,6 @@ try {
     if (process.env.AUTH_TOKEN) {
       console.warn("[myzel] AUTH_TOKEN is ignored in profile mode — each profile has its own key");
     }
-    if (adminToken) {
-      admin = adminRouter(
-        registry,
-        adminToken,
-        async (name) => {
-          if (!gitAutocommit) return;
-          const created = (await registry.memories()).find((m) => m.name === name);
-          if (created) await requireGitReady(created.kb, `profile "${name}"`);
-        },
-        undefined,
-        settings
-      );
-    }
   } else {
     const kb = new KnowledgeBase(bundleRoot!, { gitAutocommit, readOnly: demo });
     if (gitAutocommit) await requireGitReady(kb, "the bundle");
@@ -98,15 +85,13 @@ try {
 }
 if (gitAutocommit) console.log("[myzel] git autocommit: enabled");
 if (adminToken) {
-  admin ??= adminRouter(null, adminToken, async () => {}, undefined, settings);
+  admin = adminRouter(adminToken, undefined, settings);
   console.log(
-    `[myzel] admin: /admin enabled (ADMIN_TOKEN) — ${profilesRoot ? "profiles and " : ""}settings` +
+    `[myzel] admin: /admin enabled (ADMIN_TOKEN) — settings` +
       (settings.writable ? ` saved to ${settings.file}` : " read-only (set SETTINGS_FILE to save)")
   );
 } else if (!demo) {
-  console.log(
-    `[myzel] admin: /admin disabled (set ADMIN_TOKEN${profilesRoot ? ", or use the profiles CLI" : ""} to manage ${profilesRoot ? "profiles and " : ""}settings in the UI)`
-  );
+  console.log(`[myzel] admin: /admin disabled (set ADMIN_TOKEN to change settings in the UI)`);
 }
 
 const stopDreamer = demo

@@ -115,7 +115,7 @@ client. Your assistant gets five tools:
 |---|---|
 | `memory_query` | Ask a question, get an answer. |
 | `memory_add` | Teach it something. Myzel files it and links it. |
-| `memory_update` | Correct something. The old version goes away. |
+| `memory_update` | Correct something. Myzel rewrites what it finds outdated. |
 | `memory_status` | How many concepts, how many broken links. |
 | `memory_maintain` | Tidy up orphans and broken links. |
 
@@ -131,8 +131,8 @@ expensive. It does have to support **tool calling**. Any OpenAI- or Anthropic-co
 | Provider | `LLM_API_BASE_URL` | `LLM_MODEL` |
 |---|---|---|
 | DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o` |
-| Anthropic | `https://api.anthropic.com/v1` | `claude-sonnet-5` (plus `LLM_API_FORMAT=anthropic`) |
+| OpenAI | `https://api.openai.com/v1` | `gpt-5-mini` |
+| Anthropic | `https://api.anthropic.com/v1` | `claude-haiku-4-5` (plus `LLM_API_FORMAT=anthropic`) |
 | llama.cpp | `http://host.docker.internal:8080/v1` | _leave empty, Myzel asks the server_ |
 
 More providers and a fallback model: [Configuration](docs/configuration.md#model-providers).

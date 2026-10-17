@@ -362,69 +362,19 @@ describe("HTTP isolation between profiles", () => {
   });
 });
 
-describe("admin API", () => {
+describe("admin credentials", () => {
   const ADMIN = "admin-secret-token";
-  let base: string;
-  let created: string[];
 
-  beforeEach(async () => {
-    created = [];
-    const admin = adminRouter(registry, ADMIN, async (name) => {
-      created.push(name);
-      if (name === "broken") throw new Error("git is not installed");
-    });
-    base = await serve(profileMemoryHost(registry), admin);
-  });
-
-  const call = (method: string, url: string, token: string, body?: unknown) =>
-    fetch(`${base}${url}`, {
-      method,
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-
-  it("keeps admin and profile credentials separate", async () => {
+  it("keeps admin and profile credentials apart, and serves no profile routes", async () => {
     const { key } = await registry.create("work");
-    expect((await call("GET", "/admin/profiles", key)).status).toBe(401);
+    const base = await serve(profileMemoryHost(registry), adminRouter(ADMIN));
+    const admin = (url: string, token: string, method = "GET") =>
+      fetch(`${base}${url}`, { method, headers: { authorization: `Bearer ${token}` } });
+    expect((await admin("/admin/settings", key)).status).toBe(401);
     expect((await fetch(`${base}/api/tree`, as(ADMIN))).status).toBe(401);
-  });
-
-  it("creates, rotates and revokes profiles", async () => {
-    const res = await call("POST", "/admin/profiles", ADMIN, { name: "team" });
-    expect(res.status).toBe(201);
-    const { key } = await res.json();
-    expect(created).toEqual(["team"]);
-    expect((await fetch(`${base}/api/profile`, as(key))).status).toBe(200);
-
-    expect(await (await call("GET", "/admin/profiles", ADMIN)).json()).toEqual([
-      expect.objectContaining({ name: "team" }),
-    ]);
-    expect((await call("POST", "/admin/profiles", ADMIN, { name: "team" })).status).toBe(409);
-    expect((await call("POST", "/admin/profiles", ADMIN, { name: "../x" })).status).toBe(400);
-
-    const rotated = await (await call("POST", "/admin/profiles/team/rotate", ADMIN)).json();
-    expect((await fetch(`${base}/api/profile`, as(key))).status).toBe(401);
-    expect((await fetch(`${base}/api/profile`, as(rotated.key))).status).toBe(200);
-
-    expect((await call("DELETE", "/admin/profiles/team?purge=true", ADMIN)).status).toBe(204);
-    expect((await call("DELETE", "/admin/profiles/team", ADMIN)).status).toBe(404);
-    await expect(fs.stat(path.join(root, "team"))).rejects.toThrow();
-  });
-
-  it("rolls a profile back when it cannot be initialized, so a retry works", async () => {
-    const res = await call("POST", "/admin/profiles", ADMIN, { name: "broken" });
-    expect(res.status).toBe(500);
-    expect(await registry.list()).toEqual([]);
-    // The name is not blocked: a retry gets past the duplicate check again.
-    expect((await call("POST", "/admin/profiles", ADMIN, { name: "broken" })).status).toBe(500);
-    expect(created).toEqual(["broken", "broken"]);
-  });
-
-  it("refuses cross-site requests to /admin (network guard)", async () => {
-    const res = await fetch(`${base}/admin/profiles`, {
-      headers: { authorization: `Bearer ${ADMIN}`, origin: "https://evil.example" },
-    });
-    expect(res.status).toBe(403);
+    // Profiles are managed with the CLI only.
+    expect((await admin("/admin/profiles", ADMIN)).status).toBe(404);
+    expect((await admin("/admin/profiles", ADMIN, "POST")).status).toBe(404);
   });
 });
 

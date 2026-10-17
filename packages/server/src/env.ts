@@ -32,7 +32,7 @@ export function parseAllowedModels(raw: string | undefined): string[] {
 }
 
 /**
- * DEMO_MODE: serve one bundle read-only, for showing Myzel off. Writes are
+ * DEMO_MODE: serve one bundle read-only, to try Myzel out quickly. Writes are
  * refused by KnowledgeBase itself; the entry points also drop what only
  * exists to write (MCP write tools, dreaming, /admin, git autocommit).
  */

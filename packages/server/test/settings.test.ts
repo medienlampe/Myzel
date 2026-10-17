@@ -177,7 +177,7 @@ describe("settings API", () => {
       guard: { allowedOrigins: [], allowedHosts: [], hostPolicy: "loopback" },
       rateLimit: { limit: 0, windowMs: 60_000 },
       browseLimit: 0,
-      admin: adminRouter(null, ADMIN, async () => {}, undefined, store),
+      admin: adminRouter(ADMIN, undefined, store),
     });
     const { base, close } = await listen(built.app);
     closers.push(close, () => built.close());

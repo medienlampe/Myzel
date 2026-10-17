@@ -55,8 +55,8 @@ Myzel needs.
 | Provider | Settings |
 |---|---|
 | **DeepSeek** | `LLM_API_BASE_URL=https://api.deepseek.com/v1` `LLM_API_KEY=sk-...` `LLM_MODEL=deepseek-chat` |
-| **OpenAI** | `LLM_API_BASE_URL=https://api.openai.com/v1` `LLM_API_KEY=sk-...` `LLM_MODEL=gpt-4o` |
-| **Anthropic** | `LLM_API_BASE_URL=https://api.anthropic.com/v1` `LLM_API_KEY=sk-ant-...` `LLM_API_FORMAT=anthropic` `LLM_MODEL=claude-sonnet-5` |
+| **OpenAI** | `LLM_API_BASE_URL=https://api.openai.com/v1` `LLM_API_KEY=sk-...` `LLM_MODEL=gpt-5-mini` |
+| **Anthropic** | `LLM_API_BASE_URL=https://api.anthropic.com/v1` `LLM_API_KEY=sk-ant-...` `LLM_API_FORMAT=anthropic` `LLM_MODEL=claude-haiku-4-5` |
 | **Groq** | `LLM_API_BASE_URL=https://api.groq.com/openai/v1` `LLM_API_KEY=gsk_...` `LLM_MODEL=llama-3.3-70b-versatile` |
 | **Local llama.cpp** | `LLM_API_BASE_URL=http://localhost:8080/v1` `LLM_MODEL=` _(discovered automatically)_; in Docker use `http://host.docker.internal:8080/v1` |
 
@@ -107,9 +107,9 @@ old ones are ignored.
 | Variable | Effect |
 |---|---|
 | `BUNDLE_ROOT` | The folder holding the memory. **Required** unless `PROFILES_ROOT` is set. |
-| `DEMO_MODE` | `true` serves the bundle read-only for showing Myzel off. See [Demo mode](running.md#demo-mode). |
+| `DEMO_MODE` | `true` serves the bundle read-only, to try Myzel locally without a model. See [Demo mode](running.md#demo-mode). |
 | `PROFILES_ROOT` | Host one memory per API key instead of a single bundle. See [Profiles](running.md#profiles-several-memories-on-one-server). |
-| `ADMIN_TOKEN` | Enables `/admin`: the [settings page](#the-settings-page) and, in profile mode, profile management. Unset: no `/admin`. |
+| `ADMIN_TOKEN` | Enables `/admin`: the [settings page](#the-settings-page). Unset: no `/admin`. Profiles are managed with the [CLI](running.md#profiles-several-memories-on-one-server). |
 | `SETTINGS_FILE` | Where the settings page saves; its values override the environment. Unset: the page is read-only. |
 | `LLM_API_BASE_URL` / `LLM_API_KEY` / `LLM_API_FORMAT` / `LLM_MODEL` | The model Myzel uses. `LLM_MODEL` may stay empty for OpenAI-compatible endpoints that list their models; it is then discovered. |
 | `LLM_FALLBACK_*` | Optional [backup model](#fallback-model), used when the primary fails with a retryable error. |
@@ -127,5 +127,5 @@ old ones are ignored.
 | `GIT_AUTOCOMMIT` | Commit the bundle after every change. Default `false`. A bundle that isn't a git repository yet is initialized at startup; the server refuses to start if committing can't work. |
 | `QUERY_CACHE` / `QUERY_CACHE_TTL` | [Exact-answer cache](how-it-works.md#memory-layers). On by default, `24h`. Independent of `HOT_MEMORY`. |
 | `HOT_MEMORY` / `HOT_MEMORY_TTL` | [Short-term working set](how-it-works.md#memory-layers). On by default, `1h`. |
-| `HOT_MEMORY_RECALL_QA` | Whether recent questions and answers join the working set. Set `false` on a shared instance. |
+| `HOT_MEMORY_RECALL_QA` | Whether recent questions and answers join the working set. `false` means less cross-talk between callers' answers; it is not privacy (traces and the query cache are still shared). To separate people, use [profiles](running.md#profiles-several-memories-on-one-server). |
 | `DREAM_INTERVAL` / `DREAM_INSIGHTS` | [Scheduled consolidation](how-it-works.md#dreaming). Off by default. |

@@ -32,6 +32,10 @@ claude mcp add myzel \
   -- node /path/to/myzel/packages/server/dist/mcp/stdio.js
 ```
 
+Use stdio only when that process is the bundle's only writer. Writes are queued per process, so two
+processes writing the same bundle are not serialized against each other. When several tools share
+one memory, point them all at one HTTP server.
+
 **From the shell.** The same agent without any client, handy for checking a setup (needs a
 [source checkout](../README.md#development)):
 
@@ -137,7 +141,7 @@ services:
       - myzel-profiles:/profiles
     environment:
       PROFILES_ROOT: /profiles
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-} # optional: enables the /admin API
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-} # optional: enables the settings page
 
 volumes:
   myzel-profiles:
@@ -173,9 +177,8 @@ Worth knowing:
 
 - Every request needs a profile key; `AUTH_TOKEN` is not used. Wrong keys are throttled like wrong
   `AUTH_TOKEN` guesses.
-- With `ADMIN_TOKEN` set, `GET`/`POST /admin/profiles`, `POST /admin/profiles/<name>/rotate` and
-  `DELETE /admin/profiles/<name>[?purge=true]` do what the CLI does. The admin token manages
-  profiles but can't open any memory, and a profile key can't reach `/admin`.
+- Profiles are managed with the CLI only; there is no HTTP API for them. `ADMIN_TOKEN` opens the
+  settings page, not any memory, and a profile key can't reach `/admin`.
 - Layout: one bundle per profile at `PROFILES_ROOT/<name>/`, plus `PROFILES_ROOT/profiles.json` (the
   registry, readable by its owner only). To turn an existing bundle into a profile, put it at
   `PROFILES_ROOT/<name>/` and run `create <name>`, which adopts the directory.
@@ -207,7 +210,8 @@ If you reach the server by a hostname, add it to `ALLOWED_HOSTS` and set `TRUST_
 
 ## Demo mode
 
-`DEMO_MODE=true` serves one bundle read-only: visitors can browse it, search it, look at the graph,
+Demo mode is the quickest way to try Myzel locally and play around, no model needed.
+`DEMO_MODE=true` serves one bundle read-only: you can browse it, search it, look at the graph,
 replay traces and ask the agent questions, but nothing can change it. `KnowledgeBase` refuses every
 write, so the guarantee does not depend on the model behaving. On top of that, the server drops
 everything that exists only to write:
@@ -215,7 +219,7 @@ everything that exists only to write:
 - MCP offers `memory_query` and `memory_status` only, and its instructions say the memory is
   read-only.
 - The chat gets the read tools and the query prompt, so it answers but never edits.
-- `/admin` (settings, profiles), dreaming and `GIT_AUTOCOMMIT` are off. `PROFILES_ROOT` is refused.
+- `/admin` (the settings page), dreaming and `GIT_AUTOCOMMIT` are off. `PROFILES_ROOT` is refused.
 - The web UI shows a **demo · read-only** chip and hides **Settings**.
 
 Two ways to start it with the [sample memory](../sample-bundle):
@@ -229,13 +233,11 @@ Without a model (the `LLM_*` variables, e.g. in `.env`) the demo still starts: b
 the graph and trace replay work, the chat shows **no model** and questions fail with the
 configuration error. Outside demo mode a missing model stops the server at startup. The container copies the sample into a
 tmpfs at start, so each restart begins from the pristine sample. Point `BUNDLE_ROOT` elsewhere to
-demo your own bundle.
+browse your own bundle read-only.
 
-Read-only does not mean free. Every question runs the agent and spends model tokens, so a public
-demo should keep `RATE_LIMIT` on (the demo compose file defaults to 20 per minute) and use a key
-with a spending cap. Visitors also share one memory: the trace list shows everyone's questions,
-and the demo compose file sets `HOT_MEMORY_RECALL_QA=false` so one visitor's questions do not enter
-another's prompt.
+Read-only does not mean free: with a model configured, every question runs the agent and spends
+tokens. Traces are still written, so replay shows your questions. Demo mode is meant for trying
+Myzel on your own machine, not as a public showcase.
 
 ## Troubleshooting
 

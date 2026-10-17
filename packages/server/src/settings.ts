@@ -216,7 +216,7 @@ export const SETTINGS: readonly SettingSpec[] = [
     group: MEMORY,
     label: "Recall recent answers",
     description:
-      "Recent Q&A pairs are other callers' conversations — turn off on a shared instance.",
+      "Off means less cross-talk between callers' answers. Not privacy: traces and the query cache stay shared; use profiles to separate people.",
     kind: "boolean",
     fallback: "true",
     live: true,
