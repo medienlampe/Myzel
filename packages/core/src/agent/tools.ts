@@ -2,13 +2,12 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { FAMILY_KEYS, findPlainObjectKeys, STATUSES, SYSTEM_KEYS } from "../okf/index.js";
 import type { KnowledgeBase } from "../okf/index.js";
-import type { TreeNode } from "../okf/types.js";
+import type { SearchHit, TreeNode } from "../okf/types.js";
+import { truncate } from "../util/text.js";
 import type { TraceRecorder } from "./trace.js";
 import { recordHotDelete, recordHotWrite } from "./hot-memory.js";
 import { sanitizeInline, sanitizePath } from "./untrusted.js";
-
-/** Longest concept body handed to the model in one read_concept call. */
-const MAX_READ_CHARS = 20_000;
+import { capList, PROMPT_LIMITS } from "./limits.js";
 
 /** Bundle-relative concept path, e.g. "/tables/customers.md". */
 const conceptPathSchema = z
@@ -105,6 +104,7 @@ export function agentActor(modelId: string | undefined): string {
 
 const logSummary = z
   .string()
+  .max(PROMPT_LIMITS.logSummaryChars)
   .describe(
     "One past-tense sentence for the update log, with bundle-relative links, e.g. 'Added [Billing API](/apis/billing-api.md).'"
   );
@@ -128,7 +128,7 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSe
           query,
           hits.map((h) => h.path)
         );
-        if (hits.length > 0) return hits;
+        if (hits.length > 0) return hits.map(trimHit);
         // Keyword miss ≠ knowledge absent. Put the map in the tool result so
         // the model's next step is to read plausible concepts, not give up.
         const tree = formatTree(await kb.listTree());
@@ -148,20 +148,37 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSe
         trace?.record("read_concept", c.path, [c.path]);
         // A synced bundle can hold huge files; every step re-sends tool output,
         // so one of them would otherwise dominate the bill of the whole run.
+        const max = PROMPT_LIMITS.readBodyChars;
         const body =
-          c.body.length > MAX_READ_CHARS
-            ? `${c.body.slice(0, MAX_READ_CHARS)}\n\n[… truncated: ${c.body.length - MAX_READ_CHARS} more characters]`
+          c.body.length > max
+            ? `${c.body.slice(0, max)}\n\n[… truncated: ${c.body.length - max} more characters]`
             : c.body;
-        return { path: c.path, frontmatter: c.frontmatter, body };
+        const fmJson = JSON.stringify(c.frontmatter);
+        if (fmJson.length <= PROMPT_LIMITS.readFrontmatterChars) {
+          return { path: c.path, frontmatter: c.frontmatter, body };
+        }
+        return {
+          path: c.path,
+          frontmatter_excerpt: `${fmJson.slice(0, PROMPT_LIMITS.readFrontmatterChars)} [… truncated: ${fmJson.length - PROMPT_LIMITS.readFrontmatterChars} more characters]`,
+          body,
+        };
       },
     }),
     list_directory: tool({
       description:
-        "List the bundle's directory tree with concept types/titles/descriptions. Use to understand structure and decide where new concepts belong.",
-      inputSchema: z.object({}),
-      execute: async () => {
-        trace?.record("list_directory", "", []);
-        return formatTree(await kb.listTree());
+        "List the bundle's directory tree with concept types and descriptions. Use to understand structure and decide where new concepts belong. A large bundle is shown as directories only — pass a directory path to list its concepts.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .optional()
+          .describe('Directory to list, e.g. "/apis". Defaults to the whole bundle.'),
+      }),
+      execute: async ({ path: dir }) => {
+        trace?.record("list_directory", dir ?? "", []);
+        const tree = await kb.listTree();
+        if (!dir || dir === "/") return formatTree(tree);
+        const node = findDirectory(tree, dir);
+        return node ? formatTree(node) : `No directory ${sanitizePath(dir)} in the bundle.`;
       },
     }),
     lint_knowledge: tool({
@@ -170,7 +187,16 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSe
       inputSchema: z.object({}),
       execute: async () => {
         trace?.record("lint_knowledge", "", []);
-        return kb.lint();
+        const report = await kb.lint();
+        const orphans = capList(report.orphans);
+        const brokenLinks = capList(report.brokenLinks);
+        return {
+          ...report,
+          orphans: orphans.shown,
+          brokenLinks: brokenLinks.shown,
+          ...(orphans.omitted ? { orphansOmitted: orphans.omitted } : {}),
+          ...(brokenLinks.omitted ? { brokenLinksOmitted: brokenLinks.omitted } : {}),
+        };
       },
     }),
   };
@@ -190,7 +216,10 @@ export function buildWriteTools(
       inputSchema: z.object({
         path: conceptPathSchema,
         frontmatter: frontmatterSchema,
-        body: z.string().describe("Markdown body (no frontmatter block)"),
+        body: z
+          .string()
+          .max(PROMPT_LIMITS.writeBodyChars)
+          .describe("Markdown body (no frontmatter block)"),
         log_summary: logSummary,
       }),
       execute: async ({ path: conceptPath, frontmatter, body, log_summary }) => {
@@ -225,11 +254,15 @@ export function buildWriteTools(
               .describe(
                 "Heading name (any level), e.g. 'Schema'. Must be non-empty — to replace the whole body use replace_body instead."
               ),
-            content: z.string().describe("New content for that section"),
+            content: z
+              .string()
+              .max(PROMPT_LIMITS.writeBodyChars)
+              .describe("New content for that section"),
           })
           .optional(),
         replace_body: z
           .string()
+          .max(PROMPT_LIMITS.writeBodyChars)
           .optional()
           .describe(
             "Replace the entire markdown body (frontmatter untouched). Use for restructuring; prefer replace_section for targeted edits."
@@ -280,16 +313,51 @@ export function buildWriteTools(
   };
 }
 
-/** Compact indented listing for prompts and the list_directory tool. */
-export function formatTree(node: TreeNode, depth = 0): string {
+/** A search hit with its stored title and description cut to a prompt-sized length. */
+function trimHit(hit: SearchHit): SearchHit {
+  const cut = (v: string | undefined) =>
+    v === undefined ? undefined : truncate(v, PROMPT_LIMITS.hitFieldChars);
+  return { ...hit, title: cut(hit.title), description: cut(hit.description) };
+}
+
+function findDirectory(node: TreeNode, dir: string): TreeNode | undefined {
+  const target = `/${dir.replace(/^\/+|\/+$/g, "")}`;
+  for (const child of node.children ?? []) {
+    if (child.kind !== "directory") continue;
+    if (child.path === target) return child;
+    if (target.startsWith(`${child.path}/`)) return findDirectory(child, dir);
+  }
+  return undefined;
+}
+
+/**
+ * Compact indented listing for prompts and the list_directory tool. Within
+ * the budget every concept gets a line; past it the listing falls back to
+ * directories with concept counts, so the prompt stops growing with the
+ * bundle and the model drills down with list_directory or search instead.
+ */
+export function formatTree(node: TreeNode, maxChars: number = PROMPT_LIMITS.treeChars): string {
+  const full = renderTree(node, 0, true);
+  if (full.length <= maxChars) return full;
+  const total = countConcepts(node);
+  const header = `[${total} concepts — too many to list. Directories with their concept counts; list_directory with a path lists one, search_knowledge finds the rest.]`;
+  const outline = `${header}\n${renderTree(node, 0, false)}`;
+  if (outline.length <= maxChars) return outline;
+  const tail = "\n[… more directories not shown]";
+  const cut = outline.slice(0, maxChars - tail.length);
+  return cut.slice(0, cut.lastIndexOf("\n")) + tail;
+}
+
+function renderTree(node: TreeNode, depth: number, withConcepts: boolean): string {
   const lines: string[] = [];
-  if (depth === 0) lines.push("/");
+  if (depth === 0) lines.push(node.path && node.path !== "/" ? `${sanitizePath(node.path)}/` : "/");
   for (const child of node.children ?? []) {
     const indent = "  ".repeat(depth + 1);
     if (child.kind === "directory") {
-      lines.push(`${indent}${sanitizePath(child.name)}/`);
-      lines.push(formatTree(child, depth + 1));
-    } else if (child.kind === "concept") {
+      const count = withConcepts ? "" : `  (${countConcepts(child)})`;
+      lines.push(`${indent}${sanitizePath(child.name)}/${count}`);
+      lines.push(renderTree(child, depth + 1, withConcepts));
+    } else if (child.kind === "concept" && withConcepts) {
       // Names, types and descriptions are stored content: one line each, always.
       const meta = [sanitizeInline(child.type, 60), sanitizeInline(child.description, 160)]
         .filter(Boolean)
@@ -298,4 +366,12 @@ export function formatTree(node: TreeNode, depth = 0): string {
     }
   }
   return lines.filter(Boolean).join("\n");
+}
+
+function countConcepts(node: TreeNode): number {
+  return (node.children ?? []).reduce(
+    (n, child) =>
+      n + (child.kind === "concept" ? 1 : child.kind === "directory" ? countConcepts(child) : 0),
+    0
+  );
 }

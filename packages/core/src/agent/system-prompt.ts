@@ -8,6 +8,9 @@ export interface PromptContext {
   mode: "query" | "mutate" | "chat";
 }
 
+/** Types named in the prompt; a bundle with more is listed in part (60 chars each). */
+const MAX_TYPES_LISTED = 100;
+
 export function buildSystemPrompt(ctx: PromptContext): string {
   return `You are the Knowledge Keeper — an agent that manages a knowledge base conforming to the Open Knowledge Format (OKF) v0.2 specification.
 
@@ -29,6 +32,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
 4. REUSE TYPES. Prefer a type already in use over inventing a synonym. Types currently in the bundle: ${
     ctx.existingTypes.length
       ? ctx.existingTypes
+          .slice(0, MAX_TYPES_LISTED)
           .map((t) => sanitizeInline(t, 60))
           .filter(Boolean)
           .join(", ")
