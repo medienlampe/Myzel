@@ -1,7 +1,7 @@
 import type { KnowledgeBase } from "../okf/index.js";
 import { generateText } from "ai";
 import { parseDuration } from "../util/duration.js";
-import { resolveAgentModel, type AgentOptions } from "./model.js";
+import { MODEL_RETRIES, resolveAgentModel, type AgentOptions } from "./model.js";
 import { sanitizeInline, sanitizePath, UNTRUSTED_CONTENT_NOTICE } from "./untrusted.js";
 import { PROMPT_LIMITS } from "./limits.js";
 import { truncate } from "../util/text.js";
@@ -213,6 +213,7 @@ const defaultGenerate: HotGenerate = async (system, prompt, options) => {
   const { model } = await resolveAgentModel(options, "query");
   const result = await generateText({
     model,
+    maxRetries: MODEL_RETRIES,
     system,
     prompt,
     temperature: 0,

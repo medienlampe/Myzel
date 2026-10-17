@@ -21,6 +21,14 @@ export async function validateBundle(bundle: Bundle): Promise<ConformanceReport>
   };
   await countDirs("/");
 
+  for (const skipped of await bundle.listSkippedEntries()) {
+    issues.push({
+      path: skipped,
+      severity: "warning",
+      message: "Not read: symlinks and hidden files are skipped, so this is not part of the memory",
+    });
+  }
+
   for (const conceptPath of paths) {
     let raw: string;
     try {

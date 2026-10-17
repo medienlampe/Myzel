@@ -123,7 +123,8 @@ export async function runDream(
     `\n\nWork through the applicable items above. Be conservative: prefer small, clearly ` +
     `justified edits over sweeping rewrites. Summarize exactly what changed.`;
 
-  const outcome = await runner(kb, instruction, options);
+  // Oversized concepts become hubs; others link to them, so they stay put.
+  const outcome = await runner(kb, instruction, { ...options, keep: fat.map((f) => f.path) });
   // Only a dream that did its work counts: a failed one (provider down,
   // timeout) must be retried on the next interval, not skipped as "seen".
   // The dream's own log entries count as seen, or it would trigger the next one.

@@ -177,6 +177,10 @@ export class TraceStore {
       if (!(await this.isRealDir())) {
         throw new Error(".traces is not a plain directory inside the bundle — not writing traces");
       }
+      // Traces hold users' prompts and answers: keep them out of the user's own
+      // commits too, not only out of autocommit. "wx" never follows or replaces
+      // an existing entry.
+      await fs.writeFile(path.join(this.dir, ".gitignore"), "*\n", { flag: "wx" }).catch(() => {});
       await writeFileAtomic(
         path.join(this.dir, `${trace.id}.json`),
         JSON.stringify(trace, null, 2)

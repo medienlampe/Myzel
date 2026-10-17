@@ -19,6 +19,21 @@ export interface AgentOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Retries per model call, set explicitly rather than left to the SDK default
+ * (2). The SDK retries wrap the fallback model, so each retry is a primary and
+ * a fallback attempt; one retry covers a transient blip, the fallback the rest.
+ */
+export const MODEL_RETRIES = 1;
+
+export interface MutationOptions extends AgentOptions {
+  /**
+   * Concepts this run may change but not delete — a rule the caller needs to
+   * hold, so it is enforced by the delete tool rather than asked of the model.
+   */
+  keep?: readonly string[];
+}
+
 export interface ResolvedAgentModel {
   model: LanguageModel;
   modelChain: string[];

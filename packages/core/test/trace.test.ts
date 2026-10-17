@@ -28,6 +28,15 @@ describe("TraceStore", () => {
     expect((await store.read(t.id))?.input).toBe("q");
   });
 
+  it("keeps traces out of the user's own git commits", async () => {
+    await new TraceStore(root).save(trace());
+    expect(await fs.readFile(path.join(root, ".traces", ".gitignore"), "utf-8")).toBe("*\n");
+    // A hand-made ignore file is left as it is.
+    await fs.writeFile(path.join(root, ".traces", ".gitignore"), "mine\n");
+    await new TraceStore(root).save(trace());
+    expect(await fs.readFile(path.join(root, ".traces", ".gitignore"), "utf-8")).toBe("mine\n");
+  });
+
   it("neither writes into nor prunes a .traces symlinked out of the bundle", async () => {
     for (let i = 0; i < 55; i++) await fs.writeFile(path.join(outside, `app-${i}.json`), "{}");
     await fs.symlink(outside, path.join(root, ".traces"), "dir");
