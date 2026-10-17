@@ -118,7 +118,8 @@ content it reads. Treat the admin token like the model API key, or stronger.
     drivers, aliases, `include.path`, …) or points git elsewhere (`core.worktree`). Every
     repository-controlled scope is checked, including `.git/config.worktree`. The check fails
     closed;
-  - stages everything except `.traces/`, which holds users' prompts.
+  - stages and commits only the files the mutation touched (the concept, its `index.md` chain,
+    `log.md`), never `.traces/` (users' prompts) and never the user's own edits.
 
 ### Prompt injection
 

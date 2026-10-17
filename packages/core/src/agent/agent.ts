@@ -3,7 +3,13 @@ import type { KnowledgeBase } from "../okf/index.js";
 import { publicErrorMessage } from "../providers/errors.js";
 import { parseDuration } from "../util/duration.js";
 import { buildSystemPrompt } from "./system-prompt.js";
-import { agentActor, buildReadTools, buildWriteTools, formatTree } from "./tools.js";
+import {
+  agentActor,
+  buildReadTools,
+  buildWriteTools,
+  formatTree,
+  type SeenVersions,
+} from "./tools.js";
 import { sumUsage, TraceRecorder, TraceStore } from "./trace.js";
 import { resolveAgentModel, type AgentOptions } from "./model.js";
 
@@ -156,6 +162,7 @@ export async function runMutation(
   const ctx = await promptContext(kb, "mutate");
   const recorder = new TraceRecorder();
   const filesChanged = new Set<string>();
+  const seen: SeenVersions = new Map();
   const budget = maxSteps();
   let modelChain: string[] = [];
   try {
@@ -166,8 +173,8 @@ export async function runMutation(
       system: buildSystemPrompt(ctx),
       prompt: instruction,
       tools: {
-        ...buildReadTools(kb, recorder),
-        ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId)),
+        ...buildReadTools(kb, recorder, seen),
+        ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId), seen),
       },
       stopWhen: stepCountIs(budget),
       abortSignal: runSignal(options),
@@ -253,6 +260,7 @@ export async function streamChat(
   const ctx = await promptContext(kb, kb.readOnly ? "query" : "chat");
   const recorder = new TraceRecorder();
   const filesChanged = new Set<string>();
+  const seen: SeenVersions = new Map();
   const budget = maxSteps();
   let modelChain: string[] = [];
   let failed = false;
@@ -276,8 +284,8 @@ export async function streamChat(
       tools: kb.readOnly
         ? buildReadTools(kb, recorder)
         : {
-            ...buildReadTools(kb, recorder),
-            ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId)),
+            ...buildReadTools(kb, recorder, seen),
+            ...buildWriteTools(kb, filesChanged, recorder, agentActor(resolved.modelId), seen),
           },
       stopWhen: stepCountIs(budget),
       abortSignal: runSignal(options),

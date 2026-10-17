@@ -110,6 +110,7 @@ describe("runMutation", () => {
       "---\ntype: API\nverified: { by: 'human:ana', at: '2026-06-25T09:00:00Z' }\n---\nOld.\n"
     );
     llm.script([
+      { toolCalls: [{ name: "read_concept", args: { path: "/apis/billing.md" } }] },
       {
         toolCalls: [
           {
@@ -134,6 +135,54 @@ describe("runMutation", () => {
     expect(fm.generated?.by).toBe("myzel/fake-model");
     expect(fm.verified).toEqual({ by: "human:ana", at: "2026-06-25T09:00:00Z" });
     expect(fm.sources).toEqual([{ id: "runbook", resource: "https://wiki.example/billing" }]);
+  });
+
+  it("refuses to overwrite a concept the model never read", async () => {
+    llm.script([
+      {
+        toolCalls: [
+          {
+            name: "write_concept",
+            args: {
+              path: "/apis/billing.md",
+              frontmatter: { type: "API" },
+              body: "Blind rewrite.",
+              log_summary: "Rewrote billing.",
+            },
+          },
+        ],
+      },
+      { text: "Could not." },
+    ]);
+    await runMutation(kb, "Rewrite billing");
+    expect((await kb.readConcept("/apis/billing.md")).body).toContain("POST /charges");
+    expect(lastToolOutputs()).toContain("Read it with read_concept first");
+  });
+
+  it("refuses to overwrite a hand edit made after the model read the concept", async () => {
+    const write = {
+      name: "write_concept",
+      args: {
+        path: "/apis/billing.md",
+        frontmatter: { type: "API" },
+        body: "Model version.",
+        log_summary: "Rewrote billing.",
+      },
+    };
+    llm.script([
+      { toolCalls: [{ name: "read_concept", args: { path: "/apis/billing.md" } }] },
+      { toolCalls: [write] },
+      { text: "Done." },
+    ]);
+    // The person saves in their editor while the model is thinking.
+    llm.onRequest = async (n) => {
+      if (n === 1)
+        await fs.writeFile(path.join(root, "apis/billing.md"), "---\ntype: API\n---\nHand edit.\n");
+    };
+    await runMutation(kb, "Rewrite billing");
+    llm.onRequest = undefined;
+    expect((await kb.readConcept("/apis/billing.md")).body).toBe("Hand edit.\n");
+    expect(lastToolOutputs()).toContain("changed after you read it");
   });
 
   it("does not let the model set generated or verified, or hand objects for strings", async () => {

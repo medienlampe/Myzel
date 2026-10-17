@@ -102,48 +102,49 @@ function linkTarget(name: string): string {
 }
 
 /**
- * Remove directories left holding nothing but their generated index.md (or
- * nothing at all).
- * Agents that move or merge concepts leave such husks behind, and delete_concept
- * cannot remove them (index.md is reserved), so the cleanup is deterministic:
- * bottom-up over the bundle, so a parent emptied by pruning its children goes
- * too. Never touches the root, hidden directories or symlinks, and removes only
- * index.md itself — a directory holding anything else (even a dot-file) stays.
- * Returns the removed bundle paths. (Ported from upstream understory.)
+ * Remove the directory a mutation just emptied — left holding nothing but its
+ * generated index.md, or nothing at all — and every parent that emptying
+ * leaves bare in turn. Agents that move or merge concepts leave such husks
+ * behind, and delete_concept cannot remove them (index.md is reserved).
+ *
+ * Only the changed path's own chain is touched: folders elsewhere are the
+ * user's, and an empty one they made by hand is not Myzel's to delete
+ * (premise: Myzel adapts to hand edits instead of fighting them). Never
+ * touches the root, hidden directories or symlinks, and removes only index.md
+ * itself — a directory holding anything else (even a dot-file) stays.
+ * Returns the removed bundle paths. (Adapted from upstream understory.)
  */
-export async function pruneEmptyDirs(bundle: Bundle): Promise<string[]> {
+export async function pruneEmptyDirs(bundle: Bundle, fromDir: string): Promise<string[]> {
   const removed: string[] = [];
-
-  // Best-effort per directory: one unreadable or busy folder (lost+found on a
-  // volume root, a mount point) must not stop the rest of the sweep.
-  const visit = async (absDir: string): Promise<void> => {
-    let entries;
+  let current = bundle.resolve(fromDir);
+  while (current !== bundle.root && bundle.toBundlePath(current) !== "/") {
     try {
-      entries = await fs.readdir(absDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory() && !isHiddenOrLink(entry)) await visit(path.join(absDir, entry.name));
-    }
-    if (absDir === bundle.root) return;
-    try {
-      // Re-read: children may have been pruned during the recursion above.
-      const remaining = await fs.readdir(absDir, { withFileTypes: true });
-      if (remaining.length > 1) return;
+      // The chain came from a write that was already sandboxed; checking the
+      // real path again keeps rmdir from ever following a link out of the bundle.
+      await bundle.resolveContained(bundle.toBundlePath(current));
+      const stat = await fs.lstat(current);
+      if (!stat.isDirectory() || path.basename(current).startsWith(".")) break;
+      const remaining = await fs.readdir(current, { withFileTypes: true });
+      if (remaining.length > 1) break;
       if (remaining.length === 1) {
         const [only] = remaining;
-        if (only.name !== "index.md" || only.isDirectory()) return;
-        await fs.rm(path.join(absDir, "index.md"));
+        if (only.name !== "index.md" || !only.isFile()) break;
+        await fs.rm(path.join(current, "index.md"));
       }
-      await fs.rmdir(absDir);
-      removed.push(bundle.toBundlePath(absDir));
+      await fs.rmdir(current);
+      removed.push(bundle.toBundlePath(current));
     } catch {
-      // Raced with a writer, or not removable here — leave it for next time.
+      // Already gone (a deleted chain), raced with a writer, or not removable
+      // here — the parent may still be a husk, so keep climbing only if gone.
+      try {
+        await fs.lstat(current);
+        break;
+      } catch {
+        // gone: fall through to the parent
+      }
     }
-  };
-
-  await visit(bundle.root);
+    current = path.dirname(current);
+  }
   return removed;
 }
 

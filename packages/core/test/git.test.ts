@@ -52,6 +52,25 @@ describe("git autocommit", () => {
     expect(files).not.toContain(".traces");
   });
 
+  it("commits only what the mutation touched, never the user's own work", async () => {
+    const kb = new KnowledgeBase(root, { gitAutocommit: true });
+    await kb.writeConcept("/notes/a.md", { type: "T" }, "body", "Added a.");
+    await fs.writeFile(path.join(root, "draft.md"), "---\ntype: T\n---\nhalf-finished\n");
+    await fs.writeFile(path.join(root, "staged.md"), "---\ntype: T\n---\nmine\n");
+    git("add", "staged.md");
+    await kb.writeConcept("/notes/b.md", { type: "T" }, "body", "Added b.");
+    await kb.deleteConcept("/notes/a.md", "Removed a.");
+    expect(commitCount()).toBe(3);
+    const files = git("ls-files").split("\n");
+    expect(files).toEqual(
+      expect.arrayContaining(["notes/b.md", "notes/index.md", "index.md", "log.md"])
+    );
+    expect(files).not.toContain("notes/a.md");
+    expect(files).not.toContain("draft.md");
+    // Still staged for the user's own commit, but not part of any of ours.
+    expect(git("diff", "--cached", "--name-only")).toBe("staged.md");
+  });
+
   it("refuses to commit into a repository whose config runs programs (fsmonitor)", async () => {
     git("config", "core.fsmonitor", await plantScript("monitor.sh"));
     const kb = new KnowledgeBase(root, { gitAutocommit: true });

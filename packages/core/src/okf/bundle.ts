@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -14,6 +15,28 @@ import type { Concept, ConceptFrontmatter, TreeNode } from "./types.js";
  */
 export const DEFAULT_ACTOR = "process:myzel";
 
+/** A short fingerprint of a file's exact text, for "unchanged since read" checks. */
+export function contentVersion(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex").slice(0, 16);
+}
+
+export interface WriteOptions {
+  /**
+   * contentVersion() of the file as the caller last read it, or null when the
+   * caller expects to create it. A mismatch means someone (a person in their
+   * editor, another client) changed it in between: the write is refused with
+   * CONFLICT instead of silently replacing their edit.
+   */
+  expectedVersion?: string | null;
+  /**
+   * Keep the file's existing `verified` when the new frontmatter has none
+   * (default). Verification is independent of the content (spec §5.2), so a
+   * rewrite keeps who confirmed it. patchConcept has merged the file's own
+   * keys already and turns this off, so a deliberate removal sticks.
+   */
+  carryVerified?: boolean;
+}
+
 export class BundleError extends Error {
   constructor(
     message: string,
@@ -26,7 +49,8 @@ export class BundleError extends Error {
       | "HIDDEN_PATH"
       | "AMBIGUOUS_SECTION"
       | "CLOSED"
-      | "READ_ONLY",
+      | "READ_ONLY"
+      | "CONFLICT",
     options?: { cause?: unknown }
   ) {
     super(message, options);
@@ -231,7 +255,8 @@ export class Bundle {
     frontmatter: ConceptFrontmatter,
     body: string,
     /** Who wrote it, in the actor convention (spec §7). */
-    actor: string = DEFAULT_ACTOR
+    actor: string = DEFAULT_ACTOR,
+    options: WriteOptions = {}
   ): Promise<Concept> {
     const canonical = this.toBundlePath(bundlePath);
     this.assertConceptPath(canonical);
@@ -251,18 +276,42 @@ export class Bundle {
         "INVALID_FRONTMATTER"
       );
     }
+    const abs = this.resolve(canonical);
+    await this.assertRealPathInside(abs, canonical);
+    const previous = await fs.readFile(abs, "utf-8").catch(() => undefined);
+    if (options.expectedVersion !== undefined) {
+      const actual = previous === undefined ? null : contentVersion(previous);
+      if (actual !== options.expectedVersion) {
+        throw new BundleError(
+          previous === undefined
+            ? `${canonical} no longer exists — it was deleted after you read it`
+            : `${canonical} changed after you read it (edited by hand or by another client) — read it again and rewrite from the current version`,
+          "CONFLICT"
+        );
+      }
+    }
+    let carried: Record<string, unknown> = {};
+    if (options.carryVerified !== false && !("verified" in frontmatter) && previous) {
+      try {
+        const { verified } = parseDoc(previous).frontmatter;
+        if (verified !== undefined) carried = { verified };
+      } catch {
+        // Unparseable file: nothing to carry forward.
+      }
+    }
     // v0.2 records the last change as generated: { by, at } (spec §5.2); it
     // supersedes v0.1's timestamp (§13.1), which is dropped on write.
     const { timestamp: _legacy, ...rest } = frontmatter;
     const stamped: ConceptFrontmatter = {
       ...rest,
+      ...carried,
       generated: { by: actor, at: new Date().toISOString() },
     };
-    const abs = this.resolve(canonical);
-    await this.assertRealPathInside(abs, canonical);
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    await writeFileAtomic(abs, serializeDoc(stamped, body));
-    return { path: canonical, frontmatter: stamped, body, raw: serializeDoc(stamped, body) };
+    // Rewrites edit the file's own YAML, so hand formatting survives (premise 2).
+    const raw = serializeDoc(stamped, body, previous);
+    await writeFileAtomic(abs, raw);
+    return { path: canonical, frontmatter: stamped, body, raw };
   }
 
   /**
@@ -322,7 +371,7 @@ export class Bundle {
     if (changes.replaceSection) {
       body = replaceSection(body, changes.replaceSection.heading, changes.replaceSection.content);
     }
-    return this.writeConcept(existing.path, fm, body, actor);
+    return this.writeConcept(existing.path, fm, body, actor, { carryVerified: false });
   }
 
   async deleteConcept(bundlePath: string): Promise<void> {

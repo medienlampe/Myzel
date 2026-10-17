@@ -35,8 +35,9 @@ correctness guarantees can be tested without a model or network.
   (`/tables/customers.md`). `resolve()` normalizes a path and rejects anything outside the root.
   Content reads and writes also go through `assertRealPathInside()`, which follows symlinks.
 - **`KnowledgeBase`** is the only write path. It serializes mutations in a per-process queue. After
-  each change it prunes folders left holding only their `index.md`, regenerates the chain of
-  `index.md` files up to the root, appends to `log.md` and optionally git-commits.
+  each change it prunes the changed concept's folder chain if that left them holding only their
+  `index.md` (folders elsewhere are the user's), regenerates the chain of `index.md` files up to
+  the root, appends to `log.md` and optionally commits exactly those files.
 - **`frontmatter.ts`** finds the `---` fence and parses its content with the `yaml` package
   (YAML 1.2 core schema), so values keep the type they were written with. Unknown keys are
   allowed (permissive), but only YAML is accepted. Output is written in a form that YAML 1.1

@@ -1,6 +1,12 @@
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import { FAMILY_KEYS, findPlainObjectKeys, STATUSES, SYSTEM_KEYS } from "../okf/index.js";
+import {
+  contentVersion,
+  FAMILY_KEYS,
+  findPlainObjectKeys,
+  STATUSES,
+  SYSTEM_KEYS,
+} from "../okf/index.js";
 import type { KnowledgeBase } from "../okf/index.js";
 import type { SearchHit, TreeNode } from "../okf/types.js";
 import { truncate } from "../util/text.js";
@@ -109,7 +115,20 @@ const logSummary = z
     "One past-tense sentence for the update log, with bundle-relative links, e.g. 'Added [Billing API](/apis/billing-api.md).'"
   );
 
-export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSet {
+/**
+ * What the model has seen of each concept in one run: path → contentVersion of
+ * the text it read or last wrote. write_concept replaces a whole file, so it
+ * may only replace the version the model actually saw — never one it never
+ * read, nor one a person edited in between (premise: Myzel adapts to hand
+ * edits instead of fighting them). Shared by a run's read and write tools.
+ */
+export type SeenVersions = Map<string, string>;
+
+export function buildReadTools(
+  kb: KnowledgeBase,
+  trace?: TraceRecorder,
+  seen: SeenVersions = new Map()
+): ToolSet {
   return {
     search_knowledge: tool({
       description:
@@ -145,6 +164,7 @@ export function buildReadTools(kb: KnowledgeBase, trace?: TraceRecorder): ToolSe
       inputSchema: z.object({ path: conceptPathSchema }),
       execute: async ({ path: conceptPath }) => {
         const c = await kb.readConcept(conceptPath);
+        seen.set(c.path, contentVersion(c.raw));
         trace?.record("read_concept", c.path, [c.path]);
         // A synced bundle can hold huge files; every step re-sends tool output,
         // so one of them would otherwise dominate the bill of the whole run.
@@ -207,12 +227,13 @@ export function buildWriteTools(
   filesChanged: Set<string>,
   trace?: TraceRecorder,
   /** Recorded as generated.by; see agentActor. */
-  actor = agentActor(undefined)
+  actor = agentActor(undefined),
+  seen: SeenVersions = new Map()
 ): ToolSet {
   return {
     write_concept: tool({
       description:
-        "Create a new concept or fully overwrite an existing one. Frontmatter must include a non-empty 'type'. index.md and log.md maintenance is automatic — never write those. Who wrote it and when (generated) is recorded automatically; an existing verification (verified) is kept.",
+        "Create a new concept or fully overwrite an existing one. Overwriting requires reading the concept with read_concept first in this run. Frontmatter must include a non-empty 'type'. index.md and log.md maintenance is automatic — never write those. Who wrote it and when (generated) is recorded automatically; an existing verification (verified) is kept.",
       inputSchema: z.object({
         path: conceptPathSchema,
         frontmatter: frontmatterSchema,
@@ -223,17 +244,18 @@ export function buildWriteTools(
         log_summary: logSummary,
       }),
       execute: async ({ path: conceptPath, frontmatter, body, log_summary }) => {
-        // Verification is independent of the content (spec §5.2): a rewrite
-        // keeps who confirmed it, and the model cannot add or drop that.
-        const existing = await kb.readConcept(conceptPath).catch(() => null);
-        const verified = existing?.frontmatter.verified;
-        const c = await kb.writeConcept(
-          conceptPath,
-          verified === undefined ? frontmatter : { ...frontmatter, verified },
-          body,
-          log_summary,
-          actor
-        );
+        const canonical = kb.bundle.toBundlePath(conceptPath);
+        const known = seen.get(canonical);
+        if (known === undefined && (await kb.bundle.exists(canonical))) {
+          throw new Error(
+            `${canonical} already exists. Read it with read_concept first, then rewrite it — or use patch_concept for a targeted change.`
+          );
+        }
+        // Checked again inside the write queue: a hand edit since the read wins.
+        const c = await kb.writeConcept(canonical, frontmatter, body, log_summary, actor, {
+          expectedVersion: known ?? null,
+        });
+        seen.set(c.path, contentVersion(c.raw));
         filesChanged.add(c.path);
         recordHotWrite(kb.bundle.root, c.path);
         trace?.record("write_concept", c.path, [c.path], true);
@@ -288,6 +310,7 @@ export function buildWriteTools(
           log_summary,
           actor
         );
+        seen.set(c.path, contentVersion(c.raw));
         filesChanged.add(c.path);
         recordHotWrite(kb.bundle.root, c.path);
         trace?.record("patch_concept", c.path, [c.path], true);

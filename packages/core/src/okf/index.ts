@@ -1,6 +1,13 @@
 export * from "./types.js";
 export { parseDoc, serializeDoc, hasNonEmptyType } from "./frontmatter.js";
-export { Bundle, BundleError, DEFAULT_ACTOR, replaceSection } from "./bundle.js";
+export {
+  Bundle,
+  BundleError,
+  contentVersion,
+  DEFAULT_ACTOR,
+  replaceSection,
+  type WriteOptions,
+} from "./bundle.js";
 export {
   OKF_VERSION,
   STATUSES,
