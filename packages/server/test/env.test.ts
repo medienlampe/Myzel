@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { envCount, isDemoMode, parseAllowedModels } from "../src/env.js";
+import { envCount, isDemoMode, parseAllowedModels, resolveBindHost } from "../src/env.js";
+
+describe("resolveBindHost", () => {
+  it("binds loopback unless HOST names an address — blank counts as unset", () => {
+    expect(resolveBindHost({})).toBe("127.0.0.1");
+    expect(resolveBindHost({ HOST: "" })).toBe("127.0.0.1");
+    expect(resolveBindHost({ HOST: "  " })).toBe("127.0.0.1");
+    expect(resolveBindHost({ HOST: "0.0.0.0" })).toBe("0.0.0.0");
+  });
+});
 
 describe("envCount", () => {
   it.each([

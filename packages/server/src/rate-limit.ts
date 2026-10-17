@@ -21,6 +21,8 @@ export interface RateLimitOptions {
   windowMs: number;
   /** Shown in the 429 body: how to adjust this particular limit. */
   hint?: string;
+  /** The bucket a request counts against; default: the client address (clientKey). */
+  key?: (req: Request, res: Response) => string;
 }
 
 interface Window {
@@ -105,7 +107,7 @@ export function rateLimit(options: RateLimitOptions): RateLimiter {
       next();
       return;
     }
-    const window = windows.current(clientKey(req));
+    const window = windows.current(options.key ? options.key(req, res) : clientKey(req));
     window.count++;
     const reset = secondsLeft(window);
     res.setHeader("RateLimit-Limit", String(options.limit));

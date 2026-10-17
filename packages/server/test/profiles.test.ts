@@ -257,10 +257,14 @@ afterEach(() => {
   closeServer = built = undefined;
 });
 
-async function serve(host: MemoryHost, admin?: ReturnType<typeof adminRouter>): Promise<string> {
+async function serve(
+  host: MemoryHost,
+  admin?: ReturnType<typeof adminRouter>,
+  rateLimit = 0
+): Promise<string> {
   built = buildApp(host, {
     guard: GUARD,
-    rateLimit: { limit: 0, windowMs: 60_000 },
+    rateLimit: { limit: rateLimit, windowMs: 60_000 },
     browseLimit: 0,
     admin,
   });
@@ -345,6 +349,16 @@ describe("HTTP isolation between profiles", () => {
     expect((await init(work)).result.instructions).toContain("Work deploys");
     expect((await init(personal)).result.instructions).toContain("Diary");
     expect((await init(work)).result.instructions).not.toContain("Diary");
+  });
+
+  it("keeps one profile's rate limit from starving another on the same address", async () => {
+    closeServer?.();
+    built?.close();
+    base = await serve(profileMemoryHost(registry), undefined, 2);
+    const post = (key: string) =>
+      fetch(`${base}/mcp`, { method: "POST", ...as(key) }).then((r) => r.status);
+    expect([await post(work), await post(work), await post(work)].at(-1)).toBe(429);
+    expect(await post(personal)).not.toBe(429);
   });
 });
 
