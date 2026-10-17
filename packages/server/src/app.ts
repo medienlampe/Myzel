@@ -1,13 +1,12 @@
 import { existsSync } from "node:fs";
 import express, { type Express, type Router } from "express";
-import cors from "cors";
 import type { KnowledgeBase } from "@myzel/core";
 import { mcpRouter } from "./mcp/http.js";
 import { browseRouter } from "./api/browse.js";
 import { chatRouter } from "./api/chat.js";
 import type { AdminRouter } from "./admin.js";
 import { memoryOf, type MemoryHost } from "./host.js";
-import { corsDelegate, netGuard, type NetGuardConfig } from "./net-guard.js";
+import { corsHeaders, netGuard, type NetGuardConfig } from "./net-guard.js";
 import { clientKey, rateLimit, type RateLimiter } from "./rate-limit.js";
 import { LIMITS } from "./limits.js";
 
@@ -70,7 +69,7 @@ export function buildApp(host: MemoryHost, options: AppOptions): App {
   // Same-origin plus an explicit allowlist — never a blanket reflection of the
   // request origin, which would let any page in the user's browser read the
   // memory off an unauthenticated instance.
-  app.use(cors(corsDelegate(options.guard)));
+  app.use(corsHeaders(options.guard));
   app.use(express.json({ limit: LIMITS.jsonBody }));
 
   // Origin/Host validation for everything that touches a memory or the

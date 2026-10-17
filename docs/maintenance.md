@@ -9,16 +9,44 @@ for when upgrading. Day-to-day commands are in [AGENTS.md](../AGENTS.md) §3.
 |---|---|---|
 | Node | `engines: >=24`; Docker and CI use 24 (LTS) | The current LTS; undici 8 needs at least 22.19, AI SDK 7, Vite 8 and Vitest 5 22.12. |
 | `@types/node` | `^24` | It follows the *oldest* supported runtime, so code cannot use APIs that Node 24 lacks. |
-| TypeScript | `~6.0` | `typescript-eslint` supports `<6.1`. Move to 7 once it supports it. |
+| TypeScript (`typescript`) | `~6.0` | `typescript-eslint` supports `<6.1`. Move to 7 once it supports it. Dependabot ignores its majors until then. |
+| `vitest` and `@vitest/coverage-v8` | one exact version for both | The coverage plugin requires vitest at exactly its own version; dependabot updates them as a group. |
 | TipTap (`@tiptap/*`, the chat composer) | one exact version for every package | Each package requires its siblings at that exact version; update them together. |
 | pnpm | `packageManager` field (exact version) | `corepack enable` gets everyone the same version. |
 | GitHub Actions | full commit SHA, with the release in a comment | A tag can be moved to different code. |
 | Base image | `node:24-alpine@sha256:…` | The tag stays for readability; the digest decides what is used. |
 
 Dependabot (`.github/dependabot.yml`) updates npm packages, actions and the base image weekly,
-with a 7-day cooldown so brand-new releases can settle first. If your environment enforces a
+with a 7-day cooldown so brand-new releases can settle first. A weekly workflow
+(`.github/workflows/outdated.yml`, `node scripts/check-deps.mjs outdated`) fails when a dependency
+falls a major version behind without a row in the table above. If your environment enforces a
 minimum release age, pick an older release rather than adding exemptions to
 `pnpm-workspace.yaml`.
+
+## Runtime dependencies
+
+What ships, and why each one is worth having (premise 8: few dependencies, kept current). A new
+runtime dependency needs a row here — CI fails without one (`node scripts/check-deps.mjs reasons`).
+For something small, write the code or use the standard library instead.
+
+| Package | In | Why |
+|---|---|---|
+| `ai` | core, server, web | The agent's tool loop, streaming and the chat protocol (Vercel AI SDK). |
+| `@ai-sdk/openai-compatible` | core | Talks to any OpenAI-compatible endpoint, local servers included. |
+| `@ai-sdk/anthropic` | core | Talks to Anthropic-format endpoints. |
+| `undici` | core | Node's built-in `fetch` takes no custom agent; slow local models need one without header and body timeouts. |
+| `yaml` | core | The only frontmatter parser (invariant 5): YAML 1.2 core schema, never evaluates code, keeps comments on edit. |
+| `zod` | core, server | Tool and request schemas; the AI SDK and the MCP SDK both take them. |
+| `simple-git` | core | Runs git for autocommit. Costs two workarounds (see Known traps); five plain `git` calls could replace it, kept for now because the hardening tests cover it as is. |
+| `@modelcontextprotocol/sdk` | server | The MCP protocol, stdio and streamable HTTP. |
+| `express` | server | HTTP routing and middleware for the API, MCP transport and static UI. |
+| `react`, `react-dom` | web | The UI. |
+| `@ai-sdk/react` | web | The chat state (`useChat`) matching the server's stream. |
+| `react-markdown`, `remark-gfm`, `rehype-sanitize` | web | Renders concepts and answers as markdown, with GitHub tables and a sanitizer between model output and the DOM. |
+| `shiki`, `@shikijs/langs`, `@shikijs/themes` | web | Code highlighting; languages and themes are listed directly so only those load. |
+| `d3-force` | web | The graph layout. Only the force simulation, not all of d3. |
+| `react-resizable-panels` | web | Resizable workspace columns. |
+| `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extensions`, `@tiptap/core`, `@tiptap/pm` | web | The chat composer (rich input converted back to markdown). Heavy for one input — ProseMirror comes along; a textarea would do if the composer ever gets simpler. `core` and `pm` are required peers. |
 
 ## Upgrade checklist
 

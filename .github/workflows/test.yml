@@ -26,6 +26,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Fail on known high/critical advisories in what ships in the image.
       - run: pnpm audit --prod --audit-level high
+      # Every runtime dependency has a written reason (docs/maintenance.md).
+      - run: node scripts/check-deps.mjs reasons
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm -r build
