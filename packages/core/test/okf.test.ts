@@ -813,6 +813,34 @@ describe("lint (graph health)", () => {
     expect(report.orphans).toEqual([]);
     expect(report.healthy).toBe(true);
   });
+
+  it("follows relative links (spec §6.1) the way editors write them", async () => {
+    await kb.writeConcept("/apis/billing.md", { type: "T" }, "See [x](invoices.md).", "add");
+    await kb.writeConcept(
+      "/apis/invoices.md",
+      { type: "T" },
+      "Back to [b](./billing.md), on to [c](../people/dana%20k.md) and [d](../gone.md).",
+      "add"
+    );
+    await kb.writeConcept("/people/dana k.md", { type: "T" }, "[up](../apis/billing.md)", "add");
+    const report = await lintBundle(kb.bundle);
+    expect(report.orphans).toEqual([]);
+    expect(report.brokenLinks).toEqual([{ path: "/apis/invoices.md", target: "/gone.md" }]);
+    const { issues } = await validateBundle(kb.bundle);
+    expect(issues.map((i) => i.message)).toContain("Broken link: /gone.md");
+  });
+
+  it("ignores URLs and links that climb out of the bundle", async () => {
+    await kb.writeConcept(
+      "/a.md",
+      { type: "T" },
+      "[w](https://example.com/x.md) [p](//host/y.md) [o](../../outside.md)",
+      "add"
+    );
+    const report = await lintBundle(kb.bundle);
+    expect(report.brokenLinks).toEqual([]);
+    expect(report.linkCount).toBe(0);
+  });
 });
 
 describe("graph export", () => {

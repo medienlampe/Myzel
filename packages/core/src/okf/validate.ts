@@ -1,7 +1,7 @@
 import { parseDoc, hasNonEmptyType } from "./frontmatter.js";
 import type { Bundle } from "./bundle.js";
 import { familyIssues } from "./families.js";
-import { BUNDLE_LINK_RE } from "./graph.js";
+import { conceptLinkTargets } from "./graph.js";
 import type { ConformanceIssue, ConformanceReport } from "./types.js";
 
 /**
@@ -62,13 +62,13 @@ export async function validateBundle(bundle: Bundle): Promise<ConformanceReport>
       });
     }
     issues.push(...familyIssues(conceptPath, frontmatter));
-    // Broken bundle-relative links → warnings only (spec: MUST tolerate).
-    for (const match of body.matchAll(BUNDLE_LINK_RE)) {
-      if (!known.has(match[1])) {
+    // Broken links → warnings only (spec: MUST tolerate).
+    for (const target of conceptLinkTargets(body, conceptPath)) {
+      if (!known.has(target)) {
         issues.push({
           path: conceptPath,
           severity: "warning",
-          message: `Broken bundle-relative link: ${match[1]}`,
+          message: `Broken link: ${target}`,
         });
       }
     }
