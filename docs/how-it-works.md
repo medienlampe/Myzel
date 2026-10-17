@@ -49,7 +49,9 @@ Billing events reference this table from the [Billing API](/apis/billing-api.md)
 
 The link to `/apis/billing-api.md` is the important part. Concepts point at each other, so the
 memory is a **graph** rather than a pile of loose notes, and Myzel maintains those links for you.
-`index.md` and `log.md` are written by Myzel, never by hand.
+`index.md` and `log.md` are written by Myzel and rewritten on every change, so leave those two
+alone. Everything else you can edit by hand: Myzel keeps your formatting and will not overwrite an
+edit you make while it is working.
 
 The format follows the
 [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),

@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 
 async function realpathOrSelf(p: string): Promise<string> {
@@ -129,10 +130,23 @@ export async function prepareRepo(git: SimpleGit, root: string): Promise<void> {
 }
 
 /**
- * Stage everything except traces and commit. Traces hold users' prompts and
- * answers — telemetry, not knowledge — so they stay out of history.
+ * Commit what one mutation changed — the concept, the index.md files it
+ * regenerated, log.md — and nothing else. The bundle is also the user's
+ * folder: their half-finished hand edits and unrelated files are theirs to
+ * commit, not ours to sweep into an agent's commit. Anything they had staged
+ * stays staged and out of this commit. Traces never match: they hold users'
+ * prompts and answers, telemetry rather than knowledge.
+ *
+ * `paths` are bundle-relative ("/a/b.md"); missing ones count when git still
+ * tracks them (a deletion). Pathspecs are literal, so a file name holding `*`
+ * or `:` matches only itself.
  */
-export async function autocommit(git: SimpleGit, message: string): Promise<void> {
+export async function autocommit(
+  git: SimpleGit,
+  root: string,
+  message: string,
+  paths: string[]
+): Promise<void> {
   const unsafe = await unsafeRepoConfigKeys(git);
   if (unsafe.length > 0) {
     throw new Error(
@@ -140,6 +154,21 @@ export async function autocommit(git: SimpleGit, message: string): Promise<void>
         `(${unsafe.join(", ")}). Remove them to re-enable GIT_AUTOCOMMIT.`
     );
   }
-  await git.add(["--all", "--", ".", ":(exclude).traces"]);
-  await git.commit(message, undefined, { "--no-verify": null });
+  const specs: string[] = [];
+  for (const p of new Set(paths)) {
+    const rel = p.replace(/^\/+/, "");
+    if (!rel || rel.split("/").some((seg) => seg.startsWith("."))) continue;
+    const spec = `:(literal)${rel}`;
+    const exists = await fs
+      .access(path.join(root, rel))
+      .then(() => true)
+      .catch(() => false);
+    if (exists || (await git.raw(["ls-files", "--", spec])).trim()) specs.push(spec);
+  }
+  if (specs.length === 0) return;
+  await git.raw(["add", "--all", "--", ...specs]);
+  const staged = await git.raw(["diff", "--cached", "--name-only", "--", ...specs]);
+  if (!staged.trim()) return;
+  // Naming the paths makes this an --only commit: other staged changes stay out.
+  await git.raw(["commit", "--no-verify", "-m", message, "--", ...specs]);
 }

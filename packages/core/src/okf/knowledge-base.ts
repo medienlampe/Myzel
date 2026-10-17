@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { SimpleGit } from "simple-git";
 import { autocommit, createBundleGit, prepareRepo } from "./git.js";
-import { Bundle, BundleError } from "./bundle.js";
+import { Bundle, BundleError, type WriteOptions } from "./bundle.js";
 import { pruneEmptyDirs, regenerateIndexChain } from "./indexer.js";
 import { appendLog, readLog } from "./logger.js";
 import { searchBundle, listTypes, type SearchOptions } from "./search.js";
@@ -105,11 +105,18 @@ export class KnowledgeBase {
     frontmatter: ConceptFrontmatter,
     body: string,
     logSummary: string,
-    actor?: string
+    actor?: string,
+    options?: WriteOptions
   ): Promise<Concept> {
     return this.enqueue(async () => {
       const existed = await this.bundle.exists(conceptPath);
-      const concept = await this.bundle.writeConcept(conceptPath, frontmatter, body, actor);
+      const concept = await this.bundle.writeConcept(
+        conceptPath,
+        frontmatter,
+        body,
+        actor,
+        options
+      );
       await this.afterMutation(concept.path, existed ? "Update" : "Creation", logSummary);
       return concept;
     });
@@ -176,7 +183,7 @@ export class KnowledgeBase {
   ): Promise<void> {
     // Prune before indexing, so parent indexes drop the dead subdirectory links.
     // Housekeeping only: a failure must not fail the mutation that just landed.
-    await pruneEmptyDirs(this.bundle).catch((err) =>
+    await pruneEmptyDirs(this.bundle, path.posix.dirname(conceptPath)).catch((err) =>
       console.error(`[myzel] pruning empty folders failed: ${(err as Error).message}`)
     );
     await regenerateIndexChain(this.bundle, path.posix.dirname(conceptPath));
@@ -184,11 +191,27 @@ export class KnowledgeBase {
     await appendLog(this.bundle, action, logSummary || `${action} of ${linked}.`);
     if (this.git) {
       try {
-        await autocommit(this.git, `${action.toLowerCase()}: ${logSummary || conceptPath}`);
+        await autocommit(
+          this.git,
+          this.bundle.root,
+          `${action.toLowerCase()}: ${logSummary || conceptPath}`,
+          [conceptPath, "/log.md", ...indexChain(conceptPath)]
+        );
       } catch (err) {
         // Autocommit is best-effort; the KB write itself already succeeded.
         console.error(`[myzel] git autocommit failed: ${(err as Error).message}`);
       }
     }
+  }
+}
+
+/** index.md of every directory from the concept's own up to the root — what a mutation regenerates or prunes. */
+function indexChain(conceptPath: string): string[] {
+  const chain: string[] = [];
+  let dir = path.posix.dirname(conceptPath);
+  while (true) {
+    chain.push(path.posix.join(dir, "index.md"));
+    if (dir === "/") return chain;
+    dir = path.posix.dirname(dir);
   }
 }

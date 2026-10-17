@@ -28,6 +28,8 @@ export interface FakeLlm {
   script(steps: FakeStep[]): void;
   /** Models listed at /v1/models (for discovery); default: none. */
   models(list: Array<{ id: string; status?: { value: string } }>): void;
+  /** Runs before the n-th chat request (0-based) is answered — to change the world mid-run. */
+  onRequest?: (n: number) => Promise<void> | void;
   /** Resolves when the client gives up on a hanging request (cancellation reached the provider). */
   hangUp(): Promise<void>;
   close(): Promise<void>;
@@ -46,7 +48,8 @@ export async function startFakeLlm(steps: FakeStep[] = [{ text: "ok" }]): Promis
   const server: Server = createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
-    req.on("end", () => {
+    req.on("end", () => void answer());
+    const answer = async () => {
       if (req.url?.endsWith("/models")) {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ object: "list", data: modelList }));
@@ -54,6 +57,7 @@ export async function startFakeLlm(steps: FakeStep[] = [{ text: "ok" }]): Promis
       }
       const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
       requests.push(body);
+      await fake.onRequest?.(requests.length - 1);
       const step = script[Math.min(next++, script.length - 1)];
       if ("hang" in step) {
         res.on("close", () => hungUp()); // leave the request open
@@ -110,14 +114,14 @@ export async function startFakeLlm(steps: FakeStep[] = [{ text: "ok" }]): Promis
       delta({}, finish);
       send({ ...base, object: "chat.completion.chunk", choices: [], usage: USAGE });
       res.end("data: [DONE]\n\n");
-    });
+    };
   });
 
   server.listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
   const { port } = server.address() as AddressInfo;
 
-  return {
+  const fake: FakeLlm = {
     url: `http://127.0.0.1:${port}/v1`,
     requests,
     script(steps) {
@@ -135,6 +139,7 @@ export async function startFakeLlm(steps: FakeStep[] = [{ text: "ok" }]): Promis
       return new Promise((resolve) => server.close(() => resolve()));
     },
   };
+  return fake;
 }
 
 /** Environment pointing the agent at the fake (merge into process.env with vi.stubEnv). */

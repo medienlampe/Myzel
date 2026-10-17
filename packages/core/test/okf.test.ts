@@ -6,6 +6,7 @@ import {
   Bundle,
   BundleError,
   KnowledgeBase,
+  contentVersion,
   parseDoc,
   serializeDoc,
   replaceSection,
@@ -95,6 +96,28 @@ describe("frontmatter round-trip", () => {
     const raw = await fs.readFile(path.join(root, "d.md"), "utf-8");
     expect(raw).toContain("released: '2026-01-01'");
     expect(raw).toContain("flag: 'yes'");
+  });
+
+  it("keeps a hand-edited file's comments, quoting, flow lists and order on a patch", async () => {
+    const hand =
+      '---\n# owned by the payments team\ntype: T\ntags: [red, blue] # keep short\nnote: "quoted"\ntitle: Alpha\n---\nbody\n';
+    await fs.writeFile(path.join(root, "h.md"), hand);
+    await kb.patchConcept("/h.md", { frontmatter: { title: "Beta" } }, "Renamed h.");
+    const raw = await fs.readFile(path.join(root, "h.md"), "utf-8");
+    expect(raw).toContain(
+      "# owned by the payments team\ntype: T\ntags: [ red, blue ] # keep short"
+    );
+    expect(raw).toContain('note: "quoted"\ntitle: Beta\n');
+    expect(raw).toMatch(/generated:/);
+
+    await kb.patchConcept(
+      "/h.md",
+      { frontmatter: { tags: ["red", "blue", "green"], note: null } },
+      "Tagged."
+    );
+    const again = await fs.readFile(path.join(root, "h.md"), "utf-8");
+    expect(again).toContain("tags: [ red, blue, green ]");
+    expect(again).not.toContain("note:");
   });
 
   it("rejects frontmatter that is not a mapping or never closed", () => {
@@ -402,11 +425,14 @@ describe("pruning husk directories", () => {
     expect(rootIndex).toContain("(keep.md)");
   });
 
-  it("heals husks left by earlier changes on the next mutation", async () => {
-    await fs.mkdir(path.join(root, "husk"));
-    await fs.writeFile(path.join(root, "husk", "index.md"), "# Husk\n");
-    await kb.writeConcept("/fresh.md", { type: "T" }, "body", "Added fresh.");
-    await expect(fs.access(path.join(root, "husk"))).rejects.toThrow();
+  it("leaves hand-made folders elsewhere in the bundle alone", async () => {
+    await fs.mkdir(path.join(root, "drafts"));
+    await fs.mkdir(path.join(root, "handdir"));
+    await fs.writeFile(path.join(root, "handdir", "index.md"), "# My notes\n");
+    await kb.writeConcept("/notes/a.md", { type: "T" }, "body", "Added a.");
+    await kb.patchConcept("/notes/a.md", { replaceBody: "new" }, "Changed a.");
+    await expect(fs.access(path.join(root, "drafts"))).resolves.toBeUndefined();
+    await expect(fs.access(path.join(root, "handdir", "index.md"))).resolves.toBeUndefined();
   });
 
   it("never fails a mutation over a folder it cannot read or clean up", async () => {
@@ -428,7 +454,9 @@ describe("pruning husk directories", () => {
     await fs.writeFile(path.join(root, "notes", "index.md"), "# Notes\n");
     await fs.writeFile(path.join(root, "notes", ".keep"), "");
     await fs.mkdir(path.join(root, ".traces"));
-    expect(await pruneEmptyDirs(kb.bundle)).toEqual([]);
+    expect(await pruneEmptyDirs(kb.bundle, "/notes")).toEqual([]);
+    expect(await pruneEmptyDirs(kb.bundle, "/.traces")).toEqual([]);
+    expect(await pruneEmptyDirs(kb.bundle, "/")).toEqual([]);
     await expect(fs.access(path.join(root, "notes", "index.md"))).resolves.toBeUndefined();
     await expect(fs.access(path.join(root, ".traces"))).resolves.toBeUndefined();
   });
@@ -458,6 +486,32 @@ describe("log (spec §9)", () => {
       "Created two.",
       "Created one.",
     ]);
+  });
+});
+
+describe("writes against hand edits", () => {
+  it("refuses a write whose expected version no longer matches the file", async () => {
+    const first = await kb.writeConcept("/v.md", { type: "T" }, "one", "Added v.");
+    const seen = contentVersion(first.raw);
+    await fs.writeFile(path.join(root, "v.md"), "---\ntype: T\n---\nhand\n");
+    await expect(
+      kb.writeConcept("/v.md", { type: "T" }, "two", "Rewrote v.", undefined, {
+        expectedVersion: seen,
+      })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await kb.readConcept("/v.md")).body).toBe("hand\n");
+    await expect(
+      kb.writeConcept("/v.md", { type: "T" }, "x", "Created.", undefined, { expectedVersion: null })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("carries verified forward on a rewrite, but lets a patch remove it", async () => {
+    const verified = { by: "human:ana", at: "2026-06-25T09:00:00Z" };
+    await kb.writeConcept("/c.md", { type: "T", verified }, "one", "Added c.");
+    await kb.writeConcept("/c.md", { type: "T" }, "two", "Rewrote c.");
+    expect((await kb.readConcept("/c.md")).frontmatter.verified).toEqual(verified);
+    await kb.patchConcept("/c.md", { frontmatter: { verified: null } }, "Unverified c.");
+    expect((await kb.readConcept("/c.md")).frontmatter.verified).toBeUndefined();
   });
 });
 

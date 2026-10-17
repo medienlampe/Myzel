@@ -16,7 +16,8 @@ server of yours, and connect your own AI tools to it.
 2. **Plain files you own.** A memory is a folder of markdown in the open
    [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) format.
    It stays valid and useful with Myzel gone. You may edit it in any editor, keep it in git or
-   `grep` it; Myzel adapts to hand edits instead of fighting them.
+   `grep` it; Myzel adapts to hand edits instead of fighting them. The exception is `index.md`
+   and `log.md`: they are Myzel's, regenerated on every change, so hand text in them is lost.
 
 3. **Code guards the shape, the model owns the meaning.** Plain code makes sure every write leaves
    a valid bundle: frontmatter, `index.md`, `log.md`, the path sandbox, one write at a time. The
