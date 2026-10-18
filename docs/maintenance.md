@@ -44,6 +44,7 @@ For something small, write the code or use the standard library instead.
 | `@ai-sdk/react` | web | The chat state (`useChat`) matching the server's stream. |
 | `react-markdown`, `remark-gfm`, `rehype-sanitize` | web | Renders concepts and answers as markdown, with GitHub tables and a sanitizer between model output and the DOM. |
 | `shiki`, `@shikijs/langs`, `@shikijs/themes` | web | Code highlighting; languages and themes are listed directly so only those load. |
+| `mermaid` | web | Draws ```` ```mermaid ```` blocks, which models and people write into concepts. Heavy (d3, cytoscape, katex …), so it loads with the first diagram, not with the app. |
 | `d3-force` | web | The graph layout. Only the force simulation, not all of d3. |
 | `react-resizable-panels` | web | Resizable workspace columns. |
 | `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extensions`, `@tiptap/core`, `@tiptap/pm` | web | The chat composer (rich input converted back to markdown). Heavy for one input — ProseMirror comes along; a textarea would do if the composer ever gets simpler. `core` and `pm` are required peers. |

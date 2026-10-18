@@ -382,6 +382,8 @@ dummy `LLM_*` values are enough to exercise the UI.
 - **Web `MarkdownRenderer` uses `dangerouslySetInnerHTML`** for Shiki output. That is safe only
   because Shiki escapes its input; don't route any other HTML through that path. Its
   `rehype-sanitize` schema needs **flat** protocol lists — a nested array silently strips links.
+  Mermaid's SVG is shown through an `<img>` data URL (`MermaidDiagram.tsx`), never inlined — keep
+  it that way; an image runs no script even if Mermaid's sanitizer misses something.
 - **The chat is owned by `App`, not by `ChatPanel`** (`createChat`, passed as `useChat({ chat })`).
   Panels remount whenever the layout changes, and `useChat` stops the chats it creates itself on
   unmount — that would wipe the history and abort a running agent. The post-run refresh is the

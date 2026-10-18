@@ -130,7 +130,8 @@ It is sent both in the `instructions` field and in the `memory_query` tool descr
   panel remounts that layout changes cause.
 - `GraphView.tsx` draws the link graph with d3-force and replays recorded query paths.
 - `MarkdownRenderer.tsx` renders concept bodies with remark-gfm and rehype-sanitize, and
-  highlights code with Shiki.
+  highlights code with Shiki. `MermaidDiagram.tsx` draws ```` ```mermaid ```` blocks; Mermaid loads
+  with the first diagram, not with the app.
 - `api.ts` keeps the optional bearer token in `sessionStorage` (for the life of the tab) and
   attaches it to every request.
 

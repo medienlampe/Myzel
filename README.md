@@ -142,8 +142,8 @@ More providers and a fallback model: [Configuration](docs/configuration.md#model
 Three panels:
 
 - **Explorer:** your files as a tree, with search.
-- **View:** the open file, the log or the graph. Red-ringed dots in the graph are orphans nobody
-  links to yet.
+- **View:** the open file, the log or the graph. Mermaid blocks show as diagrams. Red-ringed dots
+  in the graph are orphans nobody links to yet.
 - **Chat:** talk to Myzel's agent and watch every step. Attach text files, stop a run, retry it.
 
 Drag a title bar to move a panel, drag a border to resize it. Your browser remembers the layout.
