@@ -194,7 +194,7 @@ Reverse proxies, rate limits and prompt injection: [Running Myzel](docs/running.
 
 ## Development
 
-You need **Node 24+** and **pnpm 10.34.6** (`corepack enable` picks the right one).
+You need **Node 24+** and **pnpm 12.17.0** (`corepack enable` picks the right one).
 
 ```bash
 cp .env.example .env   # add your model settings

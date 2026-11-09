@@ -1,2 +1,7 @@
 packages:
   - "packages/*"
+
+# esbuild's install script only checks its platform binary, which pnpm already
+# installs as an optional dependency; Vite runs fine without it.
+allowBuilds:
+  esbuild: false
