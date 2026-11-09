@@ -194,7 +194,7 @@ Reverse proxies, rate limits and prompt injection: [Running Myzel](docs/running.
 
 ## Development
 
-You need **Node 24+** and **pnpm 12.17.0** (`corepack enable` picks the right one).
+You need **Node 26+** and **pnpm 12.17.0** (any recent pnpm switches to the pinned version itself).
 
 ```bash
 cp .env.example .env   # add your model settings
@@ -239,7 +239,7 @@ since. Where it has taken its own direction:
   `---js` are refused.
 - **New stuff:** a settings page, a read-only demo mode, panels you can rearrange and file uploads in
   the chat. Plus Solarized colors, light and dark.
-- **Newer major versions** of the main dependencies (AI SDK 7, Zod 4, TypeScript 6, Node 24) and a
+- **Newer major versions** of the main dependencies (AI SDK 7, Zod 4, TypeScript 6, Node 26) and a
   CI that fails below 80% test coverage.
 
 Good ideas and fixes from upstream are still ported over, case by case. Thanks to @thecodacus for the foundation.

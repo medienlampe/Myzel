@@ -126,7 +126,8 @@ docs/                   # outline.md → user guides (running, configuration, ho
 
 ## 3. Setup and commands
 
-Requires **Node ≥ 24** and **pnpm 12.17.0** (pinned via `packageManager`; use `corepack enable`).
+Requires **Node ≥ 26** and **pnpm 12.17.0** (pinned via `packageManager`; any recent pnpm switches
+to it itself — Node 26 ships no corepack).
 
 The [Makefile](Makefile) wraps everything below (`make help` lists it); `make check` runs exactly
 what CI runs, and `make dev` / `make start` / `make query` load `.env` and default to the gitignored
@@ -141,7 +142,7 @@ pnpm test                  # vitest + typecheck in every package
 ```
 
 CI runs `pnpm install --frozen-lockfile`, then `pnpm audit --prod --audit-level high`, lint,
-format:check, build and `pnpm test:coverage` (tests, typechecks, 80% coverage) on Node 24. Run `make check` before pushing and you will not be
+format:check, build and `pnpm test:coverage` (tests, typechecks, 80% coverage) on Node 26. Run `make check` before pushing and you will not be
 surprised.
 
 Run the server from source:
