@@ -117,7 +117,7 @@ with their types and descriptions, recent activity) through both channels that r
    tool-calling client loads tool descriptions.
 
 The overview is regenerated for every new session. In a long-lived stdio session it also refreshes
-after `memory_add` and `memory_update`, so the session sees its own writes. Edits from elsewhere
+after `memory_add`, `memory_update` and `memory_maintain`, so the session sees its own writes. Edits from elsewhere
 show up at the next session.
 
 ## Graph health and maintenance

@@ -11,7 +11,7 @@ A self-organizing knowledge network for your AI tools, kept as plain markdown yo
 [![Build and publish](https://github.com/medienlampe/Myzel/actions/workflows/docker.yml/badge.svg?branch=main)](https://github.com/medienlampe/Myzel/actions/workflows/docker.yml)
 <br>
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A524-339933.svg)](package.json)
+[![Node](https://img.shields.io/badge/node-%E2%89%A526-339933.svg)](package.json)
 [![Spec](https://img.shields.io/badge/spec-OKF%20v0.2-8b5cf6.svg)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20%2B%20HTTP-f59e0b.svg)](#connect-your-assistant)
 [![Forked from thecodacus/understory](https://img.shields.io/badge/forked%20from-thecodacus%2Funderstory-8957e5.svg?logo=github)](https://github.com/thecodacus/understory)
@@ -58,14 +58,16 @@ services:
     image: ghcr.io/medienlampe/myzel:latest
     ports:
       - "127.0.0.1:3800:3800" # this machine only
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # reach a model server on this machine (Linux)
     volumes:
-      - myzel-memory:/bundle # or a folder you can see: ./my-memory:/bundle
+      - myzel-memory:/bundle # or a folder you can see (writable by uid 1000): ./my-memory:/bundle
       - myzel-config:/config # settings changed in the web UI
     environment:
       BUNDLE_ROOT: /bundle
       LLM_API_BASE_URL: ${LLM_API_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
-      LLM_API_FORMAT: openai
+      LLM_API_FORMAT: ${LLM_API_FORMAT:-openai}
       LLM_MODEL: ${LLM_MODEL:-}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-} # optional: enables the settings page
     restart: unless-stopped
@@ -143,7 +145,7 @@ Three panels:
 
 - **Explorer:** your files as a tree, with search.
 - **View:** the open file, the log or the graph. Mermaid blocks show as diagrams. Red-ringed dots
-  in the graph are orphans nobody links to yet.
+  in the graph have no links yet, in or out.
 - **Chat:** talk to Myzel's agent and watch every step. Attach text files, stop a run, retry it.
 
 Drag a title bar to move a panel, drag a border to resize it. Your browser remembers the layout.

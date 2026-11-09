@@ -74,8 +74,10 @@ packages/core/          # zero-server, zero-express. Reusable library.
     trace.ts            #   traversal recording, persisted to <bundle>/.traces/
     untrusted.ts        #   sanitizers for bundle content headed into a prompt
     limits.ts           #   PROMPT_LIMITS: budgets for bundle content in prompts and tool output
+    cli.ts              #   agent:query / agent:mutate smoke entries (excluded from coverage)
   src/providers/        # OpenAI-/Anthropic-compatible model config (index.ts), fallback wrapper
-                        #   (fallback.ts), publicErrorMessage (errors.ts)
+                        #   (fallback.ts), publicErrorMessage (errors.ts), llmFetch (transport.ts:
+                        #   no undici header/body timeouts, LLM_TIMEOUT decides)
   src/util/             # parseDuration, truncate, redactUrl
   src/okf/types.ts      # shared types + RESERVED_FILENAMES (index.md, log.md)
 
@@ -117,7 +119,10 @@ sample-bundle/          # a small conformant bundle: source of demo-bundle/, mou
 Dockerfile, docker-compose*.yml  # the published image and the compose setups (see §8);
                         #   docker-compose.demo.yml runs the read-only demo
 scripts/coverage-badge.mjs  # CI: merges coverage summaries into the README badge
-.github/workflows/      # ci.yml + docker.yml, both run the checks in test.yml
+scripts/check-deps.mjs  # CI: every runtime dependency has a reason in docs/maintenance.md;
+                        #   weekly: no dependency a major version behind without a pin row
+.github/workflows/      # ci.yml + docker.yml, both run the checks in test.yml;
+                        #   outdated.yml runs the weekly major-version check
 docs/                   # outline.md → user guides (running, configuration, how it works)
                         #   and architecture, security, maintenance
 ```
@@ -141,9 +146,11 @@ pnpm build                 # tsc for core+server, tsc -b && vite build for web (
 pnpm test                  # vitest + typecheck in every package
 ```
 
-CI runs `pnpm install --frozen-lockfile`, then `pnpm audit --prod --audit-level high`, lint,
-format:check, build and `pnpm test:coverage` (tests, typechecks, 80% coverage) on Node 26. Run `make check` before pushing and you will not be
-surprised.
+CI runs `pnpm install --frozen-lockfile`, then `pnpm audit --prod --audit-level high`,
+`node scripts/check-deps.mjs reasons` (every runtime dependency needs a row in
+[docs/maintenance.md](docs/maintenance.md#runtime-dependencies)), lint, format:check, build and
+`pnpm test:coverage` (tests, typechecks, 80% coverage) on Node 26. Run `make check` before pushing
+and you will not be surprised.
 
 Run the server from source:
 
@@ -310,7 +317,7 @@ dummy `LLM_*` values are enough to exercise the UI.
 | Add a provider / change model resolution | `packages/core/src/providers/index.ts` |
 | Change conformance rules | `packages/core/src/okf/validate.ts` + a test per spec section |
 | Add a panel to the web UI | add its id to `PANEL_IDS` in `packages/web/src/layout.ts` (+ default size), then a `PanelSpec` in `App.tsx` |
-| Change the graph view | `packages/web/src/components/GraphView.tsx` (d3-force, ~600 lines — the largest source file) |
+| Change the graph view | `packages/web/src/components/GraphView.tsx` (d3-force, ~650 lines — the largest source file) |
 
 ---
 
@@ -346,7 +353,7 @@ dummy `LLM_*` values are enough to exercise the UI.
 - **Shutdown drains writes.** SIGTERM/SIGINT stop the HTTP server, close connections still open
   after 3s (aborting their agent runs) and await `KnowledgeBase.idle()` (8s cap); the image runs
   under `tini` so the signal arrives.
-- **Docker build:** the runtime image holds only `pnpm --filter @myzel/server deploy --prod` output
+- **Docker build:** the runtime image holds only `pnpm --filter @myzel/server deploy --prod --legacy` output
   (at `/app/server`) plus the web build (at `/app/web/dist`, which the server finds as
   `../../web/dist`). What a package ships is limited by its `files` field — a new runtime file
   outside `dist` must be listed there. Don't go back to `pnpm prune --prod`: it leaves workspace
@@ -434,7 +441,7 @@ worth knowing:
 - Match the commit style of recent history (`git log --oneline`). Upstream-era commits use
   conventional subjects (`feat: …`, `fix: …`); commits in this fork use short sentence-case
   summaries ending in a period (`Fixes further security issues.`).
-- CI (`.github/workflows/ci.yml`) runs audit, lint, format:check, build and test with coverage
+- CI (`.github/workflows/ci.yml`) runs audit, the dependency-reasons check, lint, format:check, build and test with coverage
   (`test.yml`) on every push and PR, and publishes the README's coverage badge to the `badges`
   branch from `main`. `docker.yml` runs the same checks, then builds and publishes the container
   on `main`/tags. Green build + green tests are the bar.

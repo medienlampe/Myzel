@@ -158,7 +158,7 @@ content it reads. Treat the admin token like the model API key, or stronger.
   - the read-only `/api` routes, which read the whole bundle: `RATE_LIMIT_BROWSE`, default 600/min.
 
   IPv6 clients are grouped by /64. Behind a reverse proxy, set `TRUST_PROXY`.
-- **Input caps** (`server/src/limits.ts`):
+- **Input caps** (`server/src/limits.ts`; the `read_concept` row is core's `PROMPT_LIMITS`):
 
   | Input | Limit |
   |---|---|

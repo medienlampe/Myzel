@@ -31,9 +31,10 @@ correctness guarantees can be tested without a model or network.
 
 ## 2. The deterministic OKF layer (`packages/core/src/okf`)
 
-- **`Bundle`** is the only code that touches the filesystem. It works with bundle-relative paths
-  (`/tables/customers.md`). `resolve()` normalizes a path and rejects anything outside the root.
-  Content reads and writes also go through `assertRealPathInside()`, which follows symlinks.
+- **`Bundle`** does all path resolution and sandboxing, and is the only code that reads or writes
+  concepts. It works with bundle-relative paths (`/tables/customers.md`). `resolve()` normalizes a
+  path and rejects anything outside the root. Content reads and writes also go through
+  `assertRealPathInside()`, which follows symlinks.
 - **`KnowledgeBase`** is the only write path. It serializes mutations in a per-process queue. After
   each change it prunes the changed concept's folder chain if that left them holding only their
   `index.md` (folders elsewhere are the user's), regenerates the chain of `index.md` files up to
@@ -115,8 +116,9 @@ set its memory resolved to. The middleware order in `buildApp()` matters:
 11. a final error handler that logs the error and returns `{ "error": "internal error" }` with no
     stack trace
 
-On SIGTERM or SIGINT the server stops accepting requests, lets running requests finish, and
-waits for the mutation queue of every memory it opened to drain (`MemoryHost.drain()`), within
+On SIGTERM or SIGINT the server stops accepting requests, gives running requests 3 seconds,
+then closes the rest (aborting their agent runs) and waits for the mutation queue of every memory
+it opened to drain (`MemoryHost.drain()`), within
 an 8-second deadline.
 
 `src/mcp/seed.ts` builds the overview of the memory that MCP clients receive at session start.

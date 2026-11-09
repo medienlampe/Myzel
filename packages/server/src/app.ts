@@ -20,7 +20,7 @@ export interface AppOptions {
   browseLimit: number;
   /** Built web UI to serve, when present. */
   webDist?: string;
-  /** Administration (profiles, settings), mounted at /admin when ADMIN_TOKEN is set. */
+  /** Administration (the settings page), mounted at /admin when ADMIN_TOKEN is set. */
   admin?: AdminRouter;
 }
 

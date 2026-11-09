@@ -11,8 +11,8 @@ annotated template is [.env.example](../.env.example).
 
 ## With Docker Compose
 
-A setting reaches the container only if the compose file passes it through. This repo's compose
-files pass the model settings (except `LLM_FALLBACK_RETRY_429`), the legacy provider keys,
+A setting reaches the container only if the compose file passes it through. This repo's main and
+Portainer compose files pass the model settings (except `LLM_FALLBACK_RETRY_429`),
 `AUTH_TOKEN`, `ADMIN_TOKEN`, `ALLOWED_*`, `TRUST_PROXY`, the rate limits, `LLM_TIMEOUT` /
 `LLM_MAX_STEPS`, `HOT_MEMORY_RECALL_QA`, `DREAM_INTERVAL` and `GIT_AUTOCOMMIT`. Add a line under
 `environment:` for anything else you set.
@@ -121,7 +121,7 @@ old ones are ignored.
 | `RATE_LIMIT` / `RATE_LIMIT_WINDOW` | Requests per client on `/mcp` and `/api/chat`. Default `60` per `1m`; `0` disables. |
 | `RATE_LIMIT_BROWSE` | Requests per client on the read-only `/api` routes. Default `600` per window; `0` disables. |
 | `TRUST_PROXY` | Set behind a reverse proxy (`1` or the proxy's address) so rate limits apply per client. |
-| `ALLOWED_MODELS` | Models a client may request per call. Unset means the server's model always wins; `*` allows any. |
+| `ALLOWED_MODELS` | Models a client may request per call. Unset refuses a request that names a model; `*` allows any. |
 | `LLM_TIMEOUT` / `LLM_MAX_STEPS` | Ceiling for one agent run (default `30m`, since local models can take minutes) and its tool-loop budget (default `12`; a run that uses every step is reported as unfinished, not as a success). |
 | `LLM_DISCOVERY_TIMEOUT` / `HOT_MEMORY_TIMEOUT` | Ceilings for model discovery (default `10s`) and the hot-memory call (default `1m`). |
 | `GIT_AUTOCOMMIT` | Commit the bundle after every change. Default `false`. A bundle that isn't a git repository yet is initialized at startup; the server refuses to start if committing can't work. |

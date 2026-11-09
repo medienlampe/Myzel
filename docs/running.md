@@ -248,7 +248,7 @@ Start with `docker compose logs myzel`. Most failures print exactly what is miss
 | `BUNDLE_ROOT (one memory) or PROFILES_ROOT … is required` | Neither `BUNDLE_ROOT` nor `PROFILES_ROOT` is in the `environment:` block. |
 | `LLM configuration error: No LLM configured.` | No model settings arrived. Usually `.env` isn't next to `docker-compose.yml` or is named differently. `docker compose config` prints what Compose actually resolved. |
 | `LLM_MODEL is required for this endpoint.` | Your provider doesn't support model discovery. Set `LLM_MODEL` to a concrete model id. |
-| `Model discovery failed: HTTP 404 at …` / `No models listed at …` | `LLM_API_BASE_URL` is probably wrong. It must include the API version path, e.g. `https://api.deepseek.com/v1`. |
+| `Model discovery failed: HTTP 404` / `Model discovery failed: no models listed` | `LLM_API_BASE_URL` is probably wrong. It must include the API version path, e.g. `https://api.deepseek.com/v1`. |
 | `port is already allocated` | Something else uses port 3800. Change the **left** number (`"3900:3800"`) and open `localhost:3900`. |
 | The web UI loads but the graph is empty | Expected for a fresh memory. Teach it a fact in the chat first. |
 | The web UI asks for a token | `AUTH_TOKEN` is set (see [Auth](#auth)) or the server runs in [profile mode](#profiles-several-memories-on-one-server) and wants a profile key. |

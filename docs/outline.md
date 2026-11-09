@@ -13,11 +13,13 @@ it).
    3. What the memory can talk your assistant into
    4. Profiles: several memories on one server
    5. Serving under a sub-path
-   6. Troubleshooting
+   6. Demo mode
+   7. Troubleshooting
 2. **[Configuration](configuration.md)** — every setting.
    1. With Docker Compose
-   2. Model providers: local llama.cpp, fallback model, deprecated variables
-   3. All variables
+   2. The settings page
+   3. Model providers: local llama.cpp, fallback model, deprecated variables
+   4. All variables
 3. **[How it works](how-it-works.md)** — what happens to a fact on its way to disk.
    1. The memory on disk (bundles, concepts, OKF)
    2. Why the files stay valid
@@ -35,11 +37,12 @@ it).
    5. The web UI, including the drag & drop workspace and how to add a panel
 5. **[Security](security.md)** — how the memory is defended.
    1. Threat model
-   2. Defenses: network, profiles, bundle files, prompt injection, model output, cost, secrets,
-      supply chain
+   2. Defenses: network, profiles, the settings page, bundle files, prompt injection, model
+      output, cost, secrets, supply chain
    3. Deploying safely
    4. Known limitations
 6. **[Maintenance](maintenance.md)** — keeping dependencies current.
    1. Pinned versions and why
-   2. Upgrade checklist, including running the Docker image
-   3. Known upgrade traps
+   2. Runtime dependencies and why each is worth having
+   3. Upgrade checklist, including running the Docker image
+   4. Known upgrade traps

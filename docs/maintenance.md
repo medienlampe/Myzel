@@ -7,7 +7,7 @@ for when upgrading. Day-to-day commands are in [AGENTS.md](../AGENTS.md) §3.
 
 | What | Pinned to | Why |
 |---|---|---|
-| Node | `engines: >=26`; Docker and CI use 26 (LTS) | The current LTS; undici 8 needs at least 22.19, AI SDK 7, Vite 8 and Vitest 5 22.12. |
+| Node | `engines: >=26`; Docker and CI use 26 (LTS) | The current LTS, one version everywhere. The dependencies themselves need less (undici 8: 22.19). |
 | `@types/node` | `^26` | It follows the *oldest* supported runtime, so code cannot use APIs that Node 26 lacks. |
 | TypeScript (`typescript`) | `~6.0` | `typescript-eslint` supports `<6.1`. Move to 7 once it supports it. Dependabot ignores its majors until then. |
 | `vitest` and `@vitest/coverage-v8` | one exact version for both | The coverage plugin requires vitest at exactly its own version; dependabot updates them as a group. |
@@ -37,7 +37,7 @@ For something small, write the code or use the standard library instead.
 | `undici` | core | Node's built-in `fetch` takes no custom agent; slow local models need one without header and body timeouts. |
 | `yaml` | core | The only frontmatter parser (invariant 5): YAML 1.2 core schema, never evaluates code, keeps comments on edit. |
 | `zod` | core, server | Tool and request schemas; the AI SDK and the MCP SDK both take them. |
-| `simple-git` | core | Runs git for autocommit. Costs two workarounds (see Known traps); five plain `git` calls could replace it, kept for now because the hardening tests cover it as is. |
+| `simple-git` | core | Runs git for autocommit. Costs two workarounds (see Known traps); about a dozen plain `git` calls could replace it, kept for now because the hardening tests cover it as is. |
 | `@modelcontextprotocol/sdk` | server | The MCP protocol, stdio and streamable HTTP. |
 | `express` | server | HTTP routing and middleware for the API, MCP transport and static UI. |
 | `react`, `react-dom` | web | The UI. |
@@ -56,6 +56,7 @@ Run this before merging any dependency change:
 ```bash
 pnpm install --frozen-lockfile   # what CI does: the lockfile must match package.json
 pnpm audit --prod --audit-level high
+node scripts/check-deps.mjs reasons   # every runtime dependency has a row below
 pnpm lint && pnpm format:check
 pnpm -r build && pnpm test:coverage   # fails below 80% coverage in any package
 ```
@@ -77,7 +78,7 @@ These cost time once. Check them again when the package in question moves.
   dependencies. Don't use `pnpm prune --prod` there: it asks for confirmation without a TTY, and
   with the prompt disabled it leaves the workspace packages unlinked, so the image builds but
   cannot start.
-- **No corepack from Node 25 on.** The image installs pnpm with `npm install -g` from the
+- **No corepack from Node 25 on.** The image installs pnpm with `npm install -g --ignore-scripts` from the
   `packageManager` field instead; don't bring `corepack enable` back.
 - **pnpm 11+ refuses unapproved build scripts.** `allowBuilds` in `pnpm-workspace.yaml` lists
   each dependency with an install script as allowed or denied; a new one fails the install until
