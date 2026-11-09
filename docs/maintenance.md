@@ -7,14 +7,14 @@ for when upgrading. Day-to-day commands are in [AGENTS.md](../AGENTS.md) §3.
 
 | What | Pinned to | Why |
 |---|---|---|
-| Node | `engines: >=24`; Docker and CI use 24 (LTS) | The current LTS; undici 8 needs at least 22.19, AI SDK 7, Vite 8 and Vitest 5 22.12. |
-| `@types/node` | `^24` | It follows the *oldest* supported runtime, so code cannot use APIs that Node 24 lacks. |
+| Node | `engines: >=26`; Docker and CI use 26 (LTS) | The current LTS; undici 8 needs at least 22.19, AI SDK 7, Vite 8 and Vitest 5 22.12. |
+| `@types/node` | `^26` | It follows the *oldest* supported runtime, so code cannot use APIs that Node 26 lacks. |
 | TypeScript (`typescript`) | `~6.0` | `typescript-eslint` supports `<6.1`. Move to 7 once it supports it. Dependabot ignores its majors until then. |
 | `vitest` and `@vitest/coverage-v8` | one exact version for both | The coverage plugin requires vitest at exactly its own version; dependabot updates them as a group. |
 | TipTap (`@tiptap/*`, the chat composer) | one exact version for every package | Each package requires its siblings at that exact version; update them together. |
-| pnpm | `packageManager` field (exact version) | `corepack enable` gets everyone the same version. |
+| pnpm | `packageManager` field (exact version) | Any recent pnpm switches to that version itself, the lockfile records its hashes, and the Docker build installs exactly it. |
 | GitHub Actions | full commit SHA, with the release in a comment | A tag can be moved to different code. |
-| Base image | `node:24-alpine@sha256:…` | The tag stays for readability; the digest decides what is used. |
+| Base image | `node:26-alpine@sha256:…` | The tag stays for readability; the digest decides what is used. |
 
 Dependabot (`.github/dependabot.yml`) updates npm packages, actions and the base image weekly,
 with a 7-day cooldown so brand-new releases can settle first. A weekly workflow
@@ -77,6 +77,11 @@ These cost time once. Check them again when the package in question moves.
   dependencies. Don't use `pnpm prune --prod` there: it asks for confirmation without a TTY, and
   with the prompt disabled it leaves the workspace packages unlinked, so the image builds but
   cannot start.
+- **No corepack from Node 25 on.** The image installs pnpm with `npm install -g` from the
+  `packageManager` field instead; don't bring `corepack enable` back.
+- **pnpm 11+ refuses unapproved build scripts.** `allowBuilds` in `pnpm-workspace.yaml` lists
+  each dependency with an install script as allowed or denied; a new one fails the install until
+  it is listed.
 - **simple-git 4:**
   - it drops ambient `GIT_*` environment variables unless they are listed in `allowEnvironment`;
   - it refuses some `-c` keys (`core.hooksPath`, `core.fsmonitor`) unless they are unlocked.

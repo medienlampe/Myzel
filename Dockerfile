@@ -1,7 +1,10 @@
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
-RUN corepack enable
+FROM node:26-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS build
 WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
+# Node 25+ ships no corepack. `packageManager` ("pnpm@x.y.z") is a valid npm
+# spec, so the pinned version stays in one place. Its install scripts only swap
+# the bins for a native binary; without them pnpm runs on Node, as under corepack.
+RUN npm install -g --ignore-scripts "$(node -p 'require("./package.json").packageManager')"
 COPY packages/core/package.json packages/core/
 COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
@@ -14,7 +17,7 @@ COPY packages packages
 RUN pnpm -r build \
   && pnpm --filter @myzel/server deploy --prod --legacy /deploy/server
 
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+FROM node:26-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797
 # tini: a real PID 1 that forwards SIGTERM to Node and reaps zombies, so
 # `docker stop` triggers the graceful shutdown instead of a SIGKILL.
 # git: needed for GIT_AUTOCOMMIT.
