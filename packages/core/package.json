@@ -24,19 +24,19 @@
     "test:coverage": "pnpm run typecheck:test && vitest run --coverage"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.79",
-    "@ai-sdk/openai-compatible": "^3.0.68",
-    "ai": "^7.0.138",
+    "@ai-sdk/anthropic": "^4.0.94",
+    "@ai-sdk/openai-compatible": "^3.0.82",
+    "ai": "^7.0.160",
     "simple-git": "^4.0.2",
-    "undici": "^8.11.2",
+    "undici": "^8.12.3",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
-    "@vitest/coverage-v8": "5.0.4",
+    "@vitest/coverage-v8": "5.1.0",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
-    "vitest": "5.0.4"
+    "vitest": "5.1.0"
   }
 }
