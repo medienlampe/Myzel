@@ -24,7 +24,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@myzel/core": "workspace:*",
-    "ai": "^7.0.160",
+    "ai": "^7.0.173",
     "express": "^5.3.0",
     "zod": "^4.6.7"
   },
